@@ -861,6 +861,69 @@ def _config_dir_bundle(
 
 # A caller-chosen group key (BE-0484): wide enough for a CI run's coordinates, `gha/<run>/<attempt>`.
 _GROUP_KEY = re.compile(r"[A-Za-z0-9._/:-]{1,128}")
+# The commit a `github-check` selection checks: a full lowercase SHA-1, as the event payload names it.
+_HEAD_SHA = re.compile(r"[0-9a-f]{40}")
+
+
+def _notify_selections(
+    state: ServeState, raw: object, actor: str | None
+) -> tuple[list[dict[str, str]] | None, str | None, tuple[Any, int] | None]:
+    """The sinks a `run-set` request selects and the repository its checks go to (BE-0500).
+
+    A selection names a sink the operator defined, never a URL, so no request can make the server
+    send a request anywhere the operator did not list. The repository is the one the caller's
+    machine session verified, so a workflow writes checks to its own repository alone.
+    """
+    from bajutsu.serve.group_notify import GITHUB_CHECK
+    from bajutsu.serve.sessions.principal import machine_repository
+
+    if raw is None:
+        return None, None, None
+    if not isinstance(raw, list) or not all(isinstance(s, dict) for s in raw):
+        return None, None, ({"error": "notify must be a list of sink selections"}, 400)
+    selections: list[dict[str, str]] = []
+    for item in raw:
+        name = item.get("sink")
+        sink = state.group_sinks.get(name) if isinstance(name, str) else None
+        if sink is None:
+            return (
+                None,
+                None,
+                ({"error": f"notify names no sink this server defines: {name!r}"}, 400),
+            )
+        if any(s["sink"] == name for s in selections):
+            return None, None, ({"error": f"notify selects sink {name!r} more than once"}, 400)
+        extra = set(item) - {"sink", "headSha"}
+        if extra:
+            return None, None, ({"error": f"notify takes no {', '.join(sorted(extra))}"}, 400)
+        head_sha = item.get("headSha")
+        if sink.format == GITHUB_CHECK and not (
+            isinstance(head_sha, str) and _HEAD_SHA.fullmatch(head_sha)
+        ):
+            return (
+                None,
+                None,
+                (
+                    {"error": f"sink {name!r} needs headSha: 40 lowercase hexadecimal digits"},
+                    400,
+                ),
+            )
+        selections.append({"sink": name, "headSha": str(head_sha)})
+    repository = machine_repository(actor)
+    if selections and repository is None:
+        return (
+            None,
+            None,
+            (
+                {
+                    "error": "notify needs a machine session (a CI job's OIDC exchange): the checks go "
+                    "to the repository it verified"
+                },
+                400,
+            ),
+        )
+    # Sorted, so a retry listing the same sinks in another order matches the request digest.
+    return sorted(selections, key=lambda s: s["sink"]) or None, repository, None
 
 
 def _run_set_refusal(state: ServeState, body: dict[str, Any]) -> tuple[Any, int] | None:
@@ -1058,7 +1121,7 @@ def _run_environment(body: dict[str, Any]) -> tuple[list[str] | None, tuple[Any,
 # itself asks for (BE-0386). Those guards are also what the complexity and branch counts tally, so
 # C901 and PLR0912 are exempted for the same reason; the self-contained steps, `_batch_requests` and
 # `_batch_application`, are already split.
-def start_run_set(  # noqa: C901, PLR0911
+def start_run_set(  # noqa: C901, PLR0911, PLR0912
     state: ServeState,
     body: dict[str, Any],
     *,
@@ -1146,6 +1209,12 @@ def start_run_set(  # noqa: C901, PLR0911
     fail_fast = body.get("failFast", False)
     if not isinstance(fail_fast, bool):
         return {"error": "failFast must be a boolean"}, 400
+    selections, repository, notify_err = _notify_selections(state, body.get("notify"), actor)
+    if notify_err:
+        return notify_err
+    notify = (
+        {"repository": repository, "target": target, "sinks": selections} if selections else None
+    )
     # Last of the checks: snapshotting the binary reads and copies it whole, so every plain body
     # refusal above stays free.
     ships_files = bool(requests[0][1])
@@ -1193,9 +1262,11 @@ def start_run_set(  # noqa: C901, PLR0911
             app_digest,
             label,
             fail_fast,
+            notify,
         ),
         compat_key=_compat_key(config_text, app_digest, platform, target),
         fail_fast=fail_fast,
+        notify=notify,
         audit=(actor, org, target, ci_job),
     )
 
@@ -1208,6 +1279,7 @@ def _register_group(
     digest: str,
     compat_key: str,
     fail_fast: bool,
+    notify: dict[str, Any] | None,
     audit: tuple[str | None, str, str, dict[str, str] | None],
 ) -> tuple[Any, int]:
     """Write *jobs* to the queue as one group, all or nothing, and admit them once written (BE-0484).
@@ -1240,6 +1312,7 @@ def _register_group(
         compat_key=compat_key,
         jobs=rows,
         fail_fast=fail_fast,
+        notify=notify,
     )
     if held is None:
         return {"error": f"groupKey {key!r} already names a different run-set request"}, 409
@@ -1261,15 +1334,17 @@ def _request_digest(
     app_digest: str | None,
     label: str | None,
     fail_fast: bool,
+    notify: dict[str, Any] | None = None,
 ) -> str:
     """What a `run-set` request asks to run, so a repeated group key tells a retry from another
-    request (BE-0484). The scenarios are a set: a retry need not list them in the same order."""
+    request (BE-0484). The scenarios are a set: a retry need not list them in the same order. The
+    notify selections and their repository join only when present (BE-0500), so a group registered
+    before them keeps its digest."""
     config_digest = hashlib.sha256(config_text.encode()).hexdigest()
-    return hashlib.sha256(
-        json.dumps(
-            [target, sorted(scenarios), config_digest, app_digest, label, fail_fast]
-        ).encode()
-    ).hexdigest()
+    parts: list[Any] = [target, sorted(scenarios), config_digest, app_digest, label, fail_fast]
+    if notify is not None:
+        parts.append(notify)
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
 
 
 def _app_digest(

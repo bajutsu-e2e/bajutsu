@@ -16,11 +16,15 @@ from ._functions import engine_from_url, repository_from_env
 from ._shared import (
     DEFAULT_LEASE_MAX_ATTEMPTS,
     DEFAULT_RUN_LIMIT,
+    LEASE_EXPIRED,
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
+    ended_cancelled,
+    group_conclusion,
     job_failed,
 )
 from .concurrency_caps import ConcurrencyCaps
+from .group_event_claim import GroupEventClaim
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
@@ -33,8 +37,10 @@ __all__ = [
     "DEFAULT_LEASE_MAX_ATTEMPTS",
     "DEFAULT_LEASE_TIMEOUT_SECONDS",
     "DEFAULT_RUN_LIMIT",
+    "LEASE_EXPIRED",
     "TERMINAL_JOB_STATUSES",
     "ConcurrencyCaps",
+    "GroupEventClaim",
     "JobMetrics",
     "LeasedJob",
     "OrgRecord",
@@ -43,7 +49,9 @@ __all__ = [
     "RunRecord",
     "SqlRepository",
     "cancelled_job_result",
+    "ended_cancelled",
     "engine_from_url",
+    "group_conclusion",
     "job_failed",
     "repository_from_env",
 ]

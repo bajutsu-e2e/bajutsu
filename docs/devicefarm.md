@@ -495,6 +495,7 @@ Two requests count as the same when they agree on each of these:
 - the application
 - the run label
 - the `failFast` flag
+- the `notify` selections and the repository they publish to, when the request names any
 
 The comparison leaves the placement out, since a request names none. A key registered before
 BE-0484 unit 5 also covered the environment. Repeating that key after the upgrade returns 409.
@@ -532,6 +533,27 @@ Each job of the group read carries `cancelReason`. A job that a cancel route sto
 `user`. A job that the group's own stop cancelled reads `failFast`. Every other job reads
 `null`, a job its worker stopped on its own included. A job keeps the first reason recorded. A
 job that a person cancelled thus reads `user` even when a sibling fails before its worker stops.
+
+A request may also name a `notify` list of sinks that publish the group (BE-0500). The operator
+defines each sink in the file that `serve` reads at startup. A request thus names a sink and
+never a URL. A `github-check` sink writes the group as a GitHub check run. The check goes on the
+commit that `headSha` names:
+
+```json
+{ "target": "demo", "notify": [{ "sink": "github", "headSha": "<40 lowercase hex digits>" }] }
+```
+
+serve refuses the request with a 400 error in these cases:
+
+- `notify` is not a list of objects, or a selection carries a field other than `sink` and
+  `headSha`;
+- a selection names a sink the server does not define, or names one sink twice;
+- a `github-check` selection has no `headSha` of 40 lowercase hexadecimal digits;
+- the caller has no machine session. The check goes to the repository the session verified. A
+  browser session or the shared token thus cannot name a `github-check` sink.
+
+[Self-hosting](self-hosting.md#publishing-a-run-set-as-a-github-check-run-optional-be-0500) covers
+the sink file, the GitHub App, and what the check shows.
 
 Both routes answer 404 for a group of an org the caller does not belong to. The cancel route also
 answers 404 to a member below the editor role in the group's org. A `GET` still reads that group. A pipeline reaches the

@@ -182,7 +182,11 @@ def test_the_attempt_cap_fails_a_poison_job(tmp_path: Path) -> None:
     assert repo.reclaim_expired_leases(timedelta(seconds=120), max_attempts=1) == []
     info = repo.get_job("j1")
     assert info is not None and info["status"] == "failed"
-    assert info["result"] == {"error": "lease expired after 1 attempts"}
+    assert info["result"] == {
+        "error": "lease expired after 1 attempts",
+        "reason": "lease-expired",
+        "attempts": 1,
+    }
 
 
 def test_a_file_backed_sqlite_uses_wal_and_a_busy_timeout(tmp_path: Path) -> None:

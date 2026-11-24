@@ -415,6 +415,41 @@ def test_0026_makes_a_group_key_unique_within_its_org(migration_db_url: str) -> 
 
 
 @pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0028_adds_an_unset_notify_and_an_empty_group_events_table(migration_db_url: str) -> None:
+    """0028 lands under a live queue: an existing group notifies no sink, and each event is owed once
+    per group and sink. The downgrade drops the table and keeps the group."""
+    from alembic import command
+    from sqlalchemy.exc import IntegrityError
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0027")
+    engine = create_engine(migration_db_url)
+    event = (
+        "INSERT INTO group_events (id, group_id, sink, event, occurred_at, state, attempts, "
+        "next_attempt_at) VALUES (:id, 'g1', 'github', 'queued', CURRENT_TIMESTAMP, 'pending', 0, "
+        "CURRENT_TIMESTAMP)"
+    )
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO job_groups (id, org_id, key) VALUES ('g1', 'o', 'k')"))
+        command.upgrade(cfg, "0028")
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT notify FROM job_groups")).scalar_one() is None
+            assert conn.execute(text("SELECT count(*) FROM group_events")).scalar_one() == 0
+        with engine.begin() as conn:
+            conn.execute(text(event), {"id": "e1"})
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(text(event), {"id": "e2"})
+        command.downgrade(cfg, "0027")
+        assert "group_events" not in inspect(engine).get_table_names()
+        assert "notify" not in {c["name"] for c in inspect(engine).get_columns("job_groups")}
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT id FROM job_groups")).scalar_one() == "g1"
+    finally:
+        engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
 def test_0027_adds_an_unset_fail_fast_flag_and_cancel_reason_to_existing_rows(
     migration_db_url: str,
 ) -> None:

@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0500](BE-0500-run-set-github-check.md) |
 | Author | [@paihu](https://github.com/paihu) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0500") |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0224](../BE-0224-github-private-repo-config-auth/BE-0224-github-private-repo-config-auth.md), [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
@@ -154,14 +154,14 @@ GitHub caps `summary` at 65,535 characters. The adapter stops adding rows before
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The sink file, its validation at startup, and the App check
-- [ ] The `notify` request field, its validation, its column, and the request digest
-- [ ] The `group_events` table and the rows written by registration, lease, and the terminal paths, cancels included
-- [ ] A structured lease-expiry reason in the reclaim result
-- [ ] The `completed` snapshot: scenario names and failure lines, built once and stored on the row
-- [ ] The delivery loop: claim, order, retry, abandonment, and the metric
-- [ ] The `github-check` adapter: installation by repository, the recovery lookup, the takeover of an earlier attempt's run, the three calls, and the output
-- [ ] Documentation in both languages
+- [x] The sink file, its validation at startup, and the App check
+- [x] The `notify` request field, its validation, its column, and the request digest
+- [x] The `group_events` table and the rows written by registration, lease, and the terminal paths, cancels included
+- [x] A structured lease-expiry reason in the reclaim result
+- [x] The `completed` snapshot: scenario names and failure lines, built once and stored on the row
+- [x] The delivery loop: claim, order, retry, abandonment, and the metric
+- [x] The `github-check` adapter: installation by repository, the recovery lookup, the takeover of an earlier attempt's run, the three calls, and the output
+- [x] Documentation in both languages
 
 ## References
 

@@ -167,6 +167,13 @@ def serve(
         hidden=True,
         help="removed (BE-0492): set commandExecution.remote in each worker's worker.yaml",
     ),
+    group_notify_config: str = typer.Option(
+        "",
+        "--group-notify-config",
+        envvar="BAJUTSU_GROUP_NOTIFY_CONFIG",
+        help="file of group-notify sinks a run-set request may select with its notify field, such "
+        "as a github-check sink that publishes the group as a GitHub check run (BE-0500)",
+    ),
 ) -> None:
     """Launch a local web UI to run scenarios and view their reports (Tier 1; not for CI).
 
@@ -229,6 +236,16 @@ def serve(
         )
         return
 
+    group_sinks = {}
+    if group_notify_config:
+        from bajutsu.serve.group_notify import GroupNotifyConfigError, load_group_sinks
+
+        try:
+            group_sinks = load_group_sinks(Path(group_notify_config), os.environ)
+        except GroupNotifyConfigError as e:
+            typer.echo(f"--group-notify-config: {e}")
+            raise typer.Exit(2) from None
+
     config_path, cwd, config_provenance = _bind_startup_config(config)
 
     # The initial theme selection is a serve-only `ui.default_theme` key, read from the startup
@@ -254,6 +271,7 @@ def serve(
             config_provenance=config_provenance,
             themes_dir=Path(themes) if themes else None,
             default_theme=default_theme,
+            group_sinks=group_sinks,
         )
     except ServeStartupError as e:
         # A startup check refused the settings (a `--port 0` for a local start, a malformed key):

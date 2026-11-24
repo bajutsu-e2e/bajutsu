@@ -869,6 +869,15 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
     - Each job stores its group, compatibility, route, and base keys. A lease with `maxJobs` returns a bundle. The bundle holds the oldest servable job and that group's next queued jobs with the same route key (the same base key, for a worker that checks no routes). The lease scans one candidate per group and route key.
     - The concurrency caps apply to group jobs at lease time, not at registration. The caps thus never cut a group short.
     - A group registered with `failFast` stops at its first failed job ([BE-0499](../roadmaps/BE-0499-run-set-fail-fast/BE-0499-run-set-fail-fast.md)). The failure cancels the group's queued jobs and sets the cancel flag on its leased jobs, which their workers read on the next heartbeat. `GET /api/run-set/<groupId>` reports `cancelReason: failFast` on each job the stop ended.
+    - A group may publish its lifecycle to operator-defined sinks ([BE-0500](../roadmaps/BE-0500-run-set-github-check/BE-0500-run-set-github-check.md)). `job_groups.notify` holds the request's `notify` selections and their repository.
+      - The `group_events` table holds three events per selected sink. The transaction that causes an event writes its row.
+      - `queued` lands with the registration, and `started` with the first lease.
+      - `completed` lands with the change that leaves no job of the group unfinished.
+      - A completion check takes the group's row lock first. The last two jobs to finish thus cannot both miss each other.
+    - A loop on `serve` (`serve/group_notify/`) delivers the events after the verdict.
+      - The loop claims a due event with a claim that expires. One group and sink's events go out in order.
+      - A delivery that does not succeed retries with a bounded backoff, then gives the event up. The loop writes nothing back to a job or a group.
+      - The `github-check` adapter mints a GitHub App installation token for the group's repository. The adapter writes one check run per group and takes over an earlier attempt's finished run.
     - A Device Farm worker reuses an upload between the jobs it has in flight at once. It keys the application by compatibility key and the package by group, and drops the upload once no job in flight holds the key.
 - The `serve` local web UI (Tier 1) covers these areas:
   - **Authoring and running.** Author (`record` / `crawl`), edit, and run scenarios.

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 from ._shared import DEFAULT_LEASE_MAX_ATTEMPTS, DEFAULT_RUN_LIMIT
 from .concurrency_caps import ConcurrencyCaps
+from .group_event_claim import GroupEventClaim
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
@@ -241,6 +242,7 @@ class Repository(Protocol):
         compat_key: str | None,
         jobs: Sequence[QueuedJob],
         fail_fast: bool = False,
+        notify: dict[str, Any] | None = None,
     ) -> str | None:
         """Write one `run-set` group and every job of it in one transaction (BE-0484).
 
@@ -253,6 +255,10 @@ class Repository(Protocol):
             compat_key: What a worker may share between the group's jobs: config, binary, platform,
                 and target.
             fail_fast: Whether the group's first failing job cancels its unfinished jobs (BE-0499).
+            notify: The sinks the request selected, its target, and the repository its machine
+                session verified (BE-0500). Each selected sink is owed a `queued` event in the same
+                transaction, then `started` with the group's first lease and `completed` with the
+                change that leaves no job of it unfinished.
 
         Returns:
             The id of the group holding *key*: *group_id* once written, or the existing group's id,
@@ -491,6 +497,48 @@ class Repository(Protocol):
         whole set rather than a row per id: `spec` carries a run's materials (its scenario and config
         text), which a `get_job` per id would ship every time — the same reason `metrics_snapshot`
         selects the columns it needs. An id with no row is simply absent from the answer.
+        """
+
+    def claim_group_events(
+        self, sinks: Collection[str], *, now: datetime, hold: timedelta, limit: int = 20
+    ) -> list[GroupEventClaim]:
+        """Claim the group events of *sinks* due at *now*, each until *hold* from now (BE-0500).
+
+        A row is due once its next attempt time has passed and no live claim holds it. One group
+        and sink's events deliver in order, so a row waits while an earlier event of the same group
+        and sink is pending. A `queued` row also waits while another of the same repository, commit,
+        and sink is claimed, since both may adopt or take over the same check run.
+
+        Returns:
+            The claims, each carrying the reference the latest earlier event of its group and sink
+            returned.
+        """
+
+    def save_group_event_snapshot(
+        self, event_id: str, token: str, snapshot: dict[str, Any]
+    ) -> bool:
+        """Store a `completed` event's *snapshot* on its row; False when the claim *token* lapsed."""
+
+    def settle_group_event(
+        self,
+        event_id: str,
+        token: str,
+        *,
+        state: str,
+        reference: str | None = None,
+        next_attempt_at: datetime | None = None,
+    ) -> bool:
+        """End a claim: ``delivered``, ``abandoned``, or back to ``pending`` at *next_attempt_at*.
+
+        Counts the attempt and keeps *reference* when given. False when the claim *token* lapsed and
+        another process may hold the row, which then decides it.
+        """
+
+    def abandon_orphan_group_events(self, sinks: Collection[str], *, before: datetime) -> list[str]:
+        """Abandon pending rows whose sink is not among *sinks* and that happened before *before*.
+
+        Returns:
+            The sink of each row abandoned, one entry per row.
         """
 
     def metrics_snapshot(self) -> JobMetrics:
