@@ -67,8 +67,9 @@ jobs:
             exit 0
           fi
           echo "$out"
-          # Only GitHub's stacked-PR refusal is tolerated; every other error still fails the job.
-          if grep -q "Auto-merge is not supported for stacked pull requests" <<<"$out"; then
+          # Only GitHub's stacked-PR refusal is tolerated, in either wording it has used; every other
+          # error still fails the job.
+          if grep -qE "Auto-merge is not supported for stacked pull requests|This pull request is part of a stack" <<<"$out"; then
             echo "::notice::Auto-merge is not available while this PR is stacked. It is enabled once the PRs below it merge and this PR is retargeted onto the default branch."
             exit 0
           fi
