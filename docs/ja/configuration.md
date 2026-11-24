@@ -568,7 +568,7 @@ hook がアプリを判定することはありません。hook の失敗が run
 
 | 変数 | 設定される対象 |
 |---|---|
-| `BAJUTSU_RUN_ID`、`BAJUTSU_RUN_DIR`、`BAJUTSU_TARGET` | すべてのエントリ（`sandbox` では `BAJUTSU_RUN_DIR` は未設定です） |
+| `BAJUTSU_RUN_ID`、`BAJUTSU_RUN_DIR`、`BAJUTSU_TARGET` | どのコマンドでも、すべてのエントリ（`sandbox` では run ディレクトリをマウントしないので `BAJUTSU_RUN_DIR` は未設定です） |
 | `BAJUTSU_SCENARIO`、`BAJUTSU_SCENARIO_FILE`、`BAJUTSU_WORKER` | `beforeScenario` と `afterScenario` |
 | `BAJUTSU_VERDICT`（`success` か `failure`） | `afterRun` と `afterScenario` |
 

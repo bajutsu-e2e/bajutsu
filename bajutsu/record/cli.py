@@ -45,6 +45,7 @@ from bajutsu.common.devices.browsers import BROWSER_KINDS
 from bajutsu.common.drivers import base
 from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.platform_lifecycle import environment_for
+from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import dump_scenarios
@@ -254,7 +255,14 @@ def record(
     # Run the target's `beforeRun` hooks if it declares any (BE-0491) — the bring-up that replaced
     # `services.server`, so a web target's own host is serving before the browser opens. The
     # matching `afterRun` runs when this command exits (atexit).
-    _start_hooks_or_exit(eff, run_id=new_run_id("record-"), teardown_at_exit=True)
+    hook_run_id = new_run_id("record-")
+    _start_hooks_or_exit(
+        eff,
+        run_id=hook_run_id,
+        runs_dir=runs_root(),
+        run_dir=runs_root() / hook_run_id,
+        teardown_at_exit=True,
+    )
 
     # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
     # knows what's happening before the agent takes over. Progress goes to stderr, like the

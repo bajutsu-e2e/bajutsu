@@ -488,17 +488,20 @@ class HookRunner:
                 list_name, index, entry, context, result, sandbox, cwd_base, left
             )
             result.records.append(record)
-            if failure is not None:
-                result.failures.append(failure)
-                if not after:
-                    break
-                continue
             if entry.name is not None:
+                # Recorded even for an entry that failed: its paired teardown reads these as
+                # `BAJUTSU_HOOK__<name>__<key>`, and a half-finished `before` script is exactly the
+                # one whose work has to be undone.
                 result.outputs.values[entry.name] = values
                 if entry.mask:
                     # The values themselves were registered with the writer in `_run_entry`, before
                     # this entry's own log was copied; this records which hook asked for it.
                     result.outputs.masked.add(entry.name)
+            if failure is not None:
+                result.failures.append(failure)
+                if not after:
+                    break
+                continue
         return result
 
     def _run_entry(
@@ -582,21 +585,24 @@ class HookRunner:
             cwd=cwd,
         )
         values: dict[str, str] = {}
-        if reason is None and raw_out is not None:
-            # Three causes read the same through `None` — the file is gone, it is no longer the
-            # regular file Bajutsu created, or it could not be opened — and all three mean the
-            # entry's values are lost. Reporting them as an empty file would mark it green.
+        if raw_out is not None:
+            # Read even when the command failed: a script that got halfway through its preparation
+            # has already written what identifies it (a process id, a tenant id), and the teardown
+            # can only undo what it can name. A failure already recorded still wins as the reason.
             text = _read_regular(raw_out)
             if text is None:
-                reason = (
+                # Three causes read the same through `None` — the file is gone, it is no longer the
+                # regular file Bajutsu created, or it could not be opened — and all three mean the
+                # entry's values are lost. Reporting them as an empty file would mark it green.
+                reason = reason or (
                     "its $BAJUTSU_OUTPUT file could not be read: it is gone, or is no longer the "
                     f"regular file Bajutsu created ({raw_out})"
                 )
             else:
                 values, why = parse_outputs(text)
                 if why is not None:
-                    reason = f"wrote a malformed $BAJUTSU_OUTPUT file: {why}"
-        if reason is None and entry.mask:
+                    reason = reason or f"wrote a malformed $BAJUTSU_OUTPUT file: {why}"
+        if entry.mask:
             # Registered before the log is copied, so this entry's *own* log is masked too. The
             # writer masks every artifact written from that call on, and its log comes next.
             self._mask(values.values())

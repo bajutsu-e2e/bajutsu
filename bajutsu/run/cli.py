@@ -6,6 +6,7 @@ import inspect
 import os
 import select
 import sys
+import time
 import typing
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -54,6 +55,8 @@ from bajutsu.common.backends import (
 from bajutsu.common.cancellation import (
     CANCELLED_FAILURE,
     CancelSource,
+    cancelled_teardown_seconds,
+    grace_seconds,
     graceful_sigterm,
     not_cancelled,
 )
@@ -2314,16 +2317,27 @@ class _RunPlan:
 
 
 def _finish_hooks(plan: _RunPlan) -> None:
-    """Run every target's `afterRun` entries, whatever the run did (BE-0491).
+    """Run every target's `afterRun` entries after a run that did not finish (BE-0491).
 
-    A backstop: the pipeline runs the phase before it assembles the report, so the report shows the
-    teardown it recorded. This covers the paths that never reach the pipeline's own call — a device
-    failure, a cancellation — and is a no-op once the phase has run, since a teardown run twice
-    would undo more than its `before` entry created.
+    A backstop, and a no-op once the phase has run: each report path runs `afterRun` before it
+    assembles the report, and a teardown run twice would undo more than its `before` entry created.
+    So the paths that reach here with the phase still pending are the ones where the run never
+    completed — a device failure, an exception, a cancellation — and the verdict handed to teardown
+    is `failure`. Reporting `success` there would skip the `on: failure` entries that exist for a
+    run that blew up, and run the `on: success` ones on a run that did not.
     """
-    if plan.hooks is None:
+    if plan.hooks is None or plan.hooks.finished is not None:
         return
-    plan.hooks.after_run("failure" if plan.cancelled() else "success")
+    plan.hooks.after_run(
+        "failure",
+        # Bounded like the pipeline's own calls: a cancelled run that crashed before the pipeline
+        # ran the phase reaches only this path, and must not be held for one `timeout` per entry.
+        deadline=(
+            time.monotonic() + cancelled_teardown_seconds(grace_seconds())
+            if plan.cancelled()
+            else None
+        ),
+    )
 
 
 def _hook_session_or_exit(
@@ -2782,6 +2796,7 @@ def _dispatch_runs(
         label=plan.label or None,
         worker_failures=plan.worker_failures,
         hooks=plan.hooks,
+        cancelled=plan.cancelled,
     )
     return results, manifest, not_applicable
 

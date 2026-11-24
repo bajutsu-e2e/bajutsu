@@ -733,7 +733,7 @@ Every later command in scope reads earlier outputs as environment variables. Eac
 
 | Variable | Set for |
 |---|---|
-| `BAJUTSU_RUN_ID`, `BAJUTSU_RUN_DIR`, `BAJUTSU_TARGET` | every entry (`BAJUTSU_RUN_DIR` is unset under `sandbox`) |
+| `BAJUTSU_RUN_ID`, `BAJUTSU_RUN_DIR`, `BAJUTSU_TARGET` | every entry, under every command (`BAJUTSU_RUN_DIR` is unset under `sandbox`, where the run directory has no mount) |
 | `BAJUTSU_SCENARIO`, `BAJUTSU_SCENARIO_FILE`, `BAJUTSU_WORKER` | `beforeScenario` and `afterScenario` |
 | `BAJUTSU_VERDICT` (`success` or `failure`) | `afterRun` and `afterScenario` |
 

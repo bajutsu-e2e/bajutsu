@@ -603,3 +603,41 @@ class _AliveProc:
 
     def poll(self) -> int | None:
         return None
+
+
+def test_the_teardown_backstop_tears_down_as_a_failure(tmp_path: Path) -> None:
+    # Every report path runs the phase before it assembles the report, so the backstop only ever
+    # executes it for a run that never finished — a device failure, an exception, a cancellation.
+    # Telling it `success` there skips the `on: failure` entries that exist for exactly that case.
+    from bajutsu.run import cli as run_cli
+
+    seen = tmp_path / "verdict.txt"
+    phases = HookPhases(
+        after_run=[HookCommand(cmd=_script(tmp_path, "v2.sh", f'echo "$BAJUTSU_VERDICT" > {seen}'))]
+    )
+    session, _eff_unused = _session(tmp_path, phases)
+
+    class _Plan:
+        hooks = session
+        cancelled = staticmethod(lambda: False)
+
+    run_cli._finish_hooks(_Plan())  # type: ignore[arg-type]
+    assert seen.read_text().strip() == "failure"
+
+
+def test_the_backstop_does_not_run_a_teardown_the_pipeline_already_ran(tmp_path: Path) -> None:
+    counted = tmp_path / "count2.txt"
+    phases = HookPhases(
+        after_run=[HookCommand(cmd=_script(tmp_path, "once2.sh", f"echo x >> {counted}"))]
+    )
+    session, _eff_unused = _session(tmp_path, phases)
+    session.after_run("success")  # the pipeline's own call, before the report
+
+    from bajutsu.run import cli as run_cli
+
+    class _Plan:
+        hooks = session
+        cancelled = staticmethod(lambda: False)
+
+    run_cli._finish_hooks(_Plan())  # type: ignore[arg-type]
+    assert counted.read_text().split() == ["x"]

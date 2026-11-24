@@ -838,3 +838,56 @@ def test_a_sandboxed_entry_without_a_container_fails_naming_the_block(tmp_path: 
     runner = _runner(tmp_path, gate=gate)
     result = runner.run_list("beforeRun", [HookCommand(cmd="./s.sh")], _ctx())
     assert not result.ok and "hooks.sandbox" in result.reason
+
+
+def test_a_failed_entry_s_outputs_still_reach_its_teardown(tmp_path: Path) -> None:
+    # A `before` script that got halfway through has already written what identifies its work; the
+    # teardown can only undo what it can name.
+    seen = tmp_path / "torn.txt"
+    runner = _runner(tmp_path)
+    half = _script(tmp_path, "half.sh", 'echo "pidFile=/tmp/x.pid" > $BAJUTSU_OUTPUT; exit 1')
+    result = runner.run_list("beforeRun", [HookCommand(name="server", cmd=half)], _ctx())
+    assert not result.ok and "exited 1" in result.reason
+    # The values are kept despite the failure, so the matching `afterRun` can read them.
+    assert result.outputs.values["server"] == {"pidFile": "/tmp/x.pid"}
+    after = runner.run_list(
+        "afterRun",
+        [
+            HookCommand(
+                cmd=_script(tmp_path, "undo.sh", f'echo "$BAJUTSU_HOOK__server__pidFile" > {seen}')
+            )
+        ],
+        _ctx(verdict="failure"),
+        inherited=result.outputs,
+    )
+    assert after.ok, after.reason
+    assert seen.read_text().strip() == "/tmp/x.pid"
+
+
+def test_a_failure_already_recorded_outranks_a_malformed_output_file(tmp_path: Path) -> None:
+    # Reading the file on the failure path must not replace the reason the entry actually failed.
+    runner = _runner(tmp_path)
+    body = 'echo "oops" > $BAJUTSU_OUTPUT; exit 3'
+    result = runner.run_list(
+        "beforeRun", [HookCommand(name="x", cmd=_script(tmp_path, "both.sh", body))], _ctx()
+    )
+    assert "exited 3" in result.reason and "malformed" not in result.reason
+
+
+def test_a_raw_area_that_cannot_be_removed_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # What a failed cleanup leaves behind is the unmasked output of a `mask: true` hook, so the
+    # failure never fails the run but is always said out loud.
+    said: list[str] = []
+    runner = hc.HookRunner(
+        raw_dir=hc.raw_root(tmp_path / "runs", "r1"), base_dir=tmp_path, log=said.append
+    )
+
+    def refuse(*_a: object, **_k: object) -> None:
+        raise OSError("Device or resource busy")
+
+    monkeypatch.setattr("shutil.rmtree", refuse)
+    runner.cleanup()
+    assert any("could not be removed" in line for line in said)
+    assert any("unmasked hook output" in line for line in said)
