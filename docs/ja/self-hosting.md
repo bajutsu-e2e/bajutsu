@@ -255,10 +255,11 @@ worker は起動時に各エントリを確かめ、次の3つの規則のどれ
   `PYTHONPATH` と、`LD_*` や `DYLD_*` で始まる変数が該当します。
 
 named command は、`deny` 以外のどのモードでも worker のホストで実行します。コードが運用者のものだからです。
-今のところ、named command を参照できる config のフィールドはありません。そのフィールドは
-[BE-0491](../../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md) の hook のエントリが加えます。
+hook のエントリは、`cmd` の代わりに `use:` で named command を指定します
+（[BE-0491](../../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)）。
 秘密情報を持つ worker で信頼できない config を実行するなら、運用者はそこで `uploaded: named` と
-`remote: named` を設定できます。この2つのモードは、2つの出所のサーバーコマンドをすべて拒否します。
+`remote: named` を設定できます。この2つのモードは、2つの出所のコマンドラインをすべて拒否し、
+config が名前で指定できる導入済みのスクリプトだけを残します。
 
 ### ポリシーがルーティングと run に届く仕組み
 

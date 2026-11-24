@@ -261,10 +261,11 @@ The worker checks each entry at startup and refuses a file that breaks one of th
   `NODE_OPTIONS`, and `PYTHONPATH`, plus any `LD_*` or `DYLD_*` name.
 
 A named command runs on the worker's host under every mode except `deny`. Its code belongs to the
-operator. No config field can name a named command yet. The hook entries of
-[BE-0491](../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks.md) add that field.
-Suppose a worker holds secrets and runs untrusted configs. Its operator can set `uploaded: named`
-and `remote: named` there today. Those modes refuse every server command from the two sources.
+operator. A hook entry names one with `use:` in place of its `cmd`
+([BE-0491](../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks.md)). Suppose a
+worker holds secrets and runs untrusted configs. Its operator can set `uploaded: named` and
+`remote: named` there. Those modes refuse every command line from the two sources, and leave the
+installed scripts a config may still ask for by name.
 
 ### How the policy reaches routing and the run
 
