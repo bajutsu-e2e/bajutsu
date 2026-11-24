@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0491") |
+| Implementing PR | [#2512](https://github.com/bajutsu-e2e/bajutsu/pull/2512) |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server.md), [BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md) |
 <!-- /BE-METADATA -->
@@ -367,7 +368,7 @@ The removal migrates every in-repo user:
 
 Log:
 
-- 2026-11-24: All nine units shipped together. The four lists, their entry model, and the
+- 2026-11-24 ([#2512](https://github.com/bajutsu-e2e/bajutsu/pull/2512)): All nine units shipped together. The four lists, their entry model, and the
   `hooks.sandbox` block are in the schema, and `services.server` and `services.mockServer` left it
   with a load error naming the replacement. The runner spawns each entry in its own process group
   without a shell, bounded by its own `timeout`, writing output and logs to files rather than a
