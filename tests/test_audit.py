@@ -793,3 +793,38 @@ def test_referenced_ids_uses_only_the_primary_candidate() -> None:
         "  expect:\n    - count: { sel: { idMatches: [stable.row.*, stable_row_*] }, atLeast: 1 }\n"
     )
     assert referenced_ids(scenarios[0]) == {"stable.refresh", "stable.row.*"}
+
+
+def test_a_failed_after_run_of_a_repeat_audit_is_reported_and_exits_2(tmp_path: Path) -> None:
+    # A teardown that did not hold exits 2, as it does for `run` (BE-0491); `audit` reporting it and
+    # exiting 0 would leave whatever a `beforeRun` hook started undone with nobody told.
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: x\n  steps: []\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.demo}\n"
+        "    hooks:\n"
+        "      beforeRun: [{name: seed, cmd: 'true'}]\n"
+        "      afterRun: [{name: teardown, cmd: 'false'}]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "audit",
+            str(scn),
+            "--repeat",
+            "2",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "afterRun failed" in result.output and "teardown" in result.output
