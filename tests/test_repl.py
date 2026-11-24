@@ -972,11 +972,13 @@ def _stub_launch(
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
-    monkeypatch.setattr(
-        repl_cli,
-        "_start_launch_server_or_exit",
-        lambda eff, **kw: lambda: stopped.append("stop"),
-    )
+    class _FakeHooks:
+        """Stands in for the run's hook session; `after_run` is what `repl` registers at exit."""
+
+        def after_run(self, verdict: str) -> None:
+            stopped.append("stop")
+
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: _FakeHooks())
 
     def launch(*_args: object, **_kwargs: object) -> tuple[FakeDriver, None]:
         if error:
@@ -1007,7 +1009,7 @@ def test_repl_never_resolves_a_udid_for_the_web_backend(
     )
     monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "playwright")
-    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: lambda: None)
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: None)
 
     def unexpected(*_a: object, **_k: object) -> str:
         raise AssertionError("resolve_udid must not be called for the web backend")
@@ -1034,7 +1036,7 @@ def test_repl_resolves_a_udid_through_the_selected_environment_for_adb(
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.adb.resolve_serial", lambda u, run=None: "ADB-SERIAL"
     )
-    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: lambda: None)
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: None)
     captured: dict[str, object] = {}
 
     def launch(udid: str, *_a: object, **_k: object) -> tuple[FakeDriver, None]:
@@ -1057,7 +1059,7 @@ def test_repl_defaults_to_no_erase_on_the_live_webdriver_route(
     # (BE-0238); its environment explicitly rejects `ResolvedPreconditions(reinstall="erase")`, so an unset
     # `--erase` must default to off there rather than the local route's on.
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
-    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: lambda: None)
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: None)
     captured: dict[str, object] = {}
 
     def launch(
@@ -1091,7 +1093,7 @@ def test_repl_rejects_explicit_erase_on_the_live_webdriver_route(
     # An operator who explicitly asks for --erase on the live route gets a clean CLI error instead
     # of an UnsupportedAction traceback out of the environment's own `start`.
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "xcuitest")
-    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: lambda: None)
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: None)
 
     def unexpected(*_a: object, **_k: object) -> tuple[FakeDriver, None]:
         raise AssertionError("launch_driver must not be reached for a rejected --erase")
@@ -1172,7 +1174,7 @@ def test_repl_uses_the_tui_front_end_on_a_real_terminal(
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
-    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: lambda: None)
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: None)
 
     def launch(*_args: object, **_kwargs: object) -> tuple[FakeDriver, None]:
         monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
@@ -1322,7 +1324,7 @@ def _stub_attach(
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
-    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", lambda eff, **kw: lambda: None)
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", lambda eff, **kw: None)
     monkeypatch.setattr(repl_cli, "environment_for", lambda *a, **k: env)
     captured: dict[str, object] = {}
 
@@ -1418,7 +1420,7 @@ def _refuse_device_access(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.setattr(name, unexpected)
     monkeypatch.setattr(repl_cli, "launch_driver", unexpected)
-    monkeypatch.setattr(repl_cli, "_start_launch_server_or_exit", unexpected)
+    monkeypatch.setattr(repl_cli, "_start_hooks_or_exit", unexpected)
 
 
 @pytest.mark.parametrize(

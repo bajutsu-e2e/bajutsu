@@ -1,29 +1,24 @@
-"""Tests for the sandboxed server command (BE-0090; the worker's `sandbox` mode, BE-0492).
+"""Tests for the per-run hook container (`hooks.sandbox`, BE-0491; the worker's mode, BE-0492).
 
 The Docker daemon is never touched: the container launch (`run_fn`) and the short docker commands
-(`exec_fn`, for `build` / `rm`) are injected fakes, so the argv construction, the reuse/container
-decision, the exactly-one-of-image enforcement, and the fail-loud paths are all covered here. Only
-the real `docker run` / `docker build` is exercised outside this gate.
+(`exec_fn`, for `build` / `exec` / `rm`) are injected fakes, so the argv construction, the
+exactly-one-of-image enforcement, the readiness wait, and the fail-loud paths are all covered here.
+Only the real `docker run` / `docker build` is exercised outside this gate.
 """
 
 from __future__ import annotations
 
-import time
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from bajutsu.common import config
+from bajutsu.common.config.schema.hook_command import HookSandbox
 from bajutsu.common.runner import sandbox
 
 
-def _eff(ls_body: str, base: str = "http://127.0.0.1:3000/") -> config.Effective:
-    """A resolved web Effective with a `services.server` block and a port-bearing `subject.url`."""
-    cfg = (
-        f"targets: {{ web: {{ platform: web, subject: {{ url: '{base}' }}, "
-        f"services: {{ server: {{ {ls_body} }} }} }} }}"
-    )
-    return config.resolve(config.load_config(cfg), "web")
+def _sb(**kw: Any) -> HookSandbox:
+    return HookSandbox.model_validate({"dockerImage": "node:20-slim", **kw})
 
 
 class _FakeProc:
@@ -41,13 +36,19 @@ class _Recorder:
     """Records the argv of each injected docker call so a test can assert on it."""
 
     def __init__(
-        self, proc: _FakeProc | None = None, build_error: bool = False, rm_error: bool = False
+        self,
+        proc: _FakeProc | None = None,
+        build_error: bool = False,
+        rm_error: bool = False,
+        ready_after: int = 0,
     ) -> None:
         self.run_calls: list[list[str]] = []
         self.exec_calls: list[list[str]] = []
         self._proc = proc or _FakeProc(code=None)
         self._build_error = build_error
         self._rm_error = rm_error
+        self._ready_after = ready_after
+        self._probes = 0
 
     def run_fn(self, argv: list[str]) -> Any:
         self.run_calls.append(argv)
@@ -59,257 +60,211 @@ class _Recorder:
             raise sandbox.SandboxError("docker build failed")
         if self._rm_error and argv[:3] == ["docker", "rm", "-f"]:
             raise sandbox.SandboxError("No such container")
+        if argv[-1] == "true":
+            self._probes += 1
+            if self._probes <= self._ready_after:
+                raise sandbox.SandboxError("not up yet")
 
 
-def _ls(eff: config.Effective) -> config.LaunchServer:
-    assert eff.launch_server is not None
-    return eff.launch_server
+def _runtime(tmp_path: Path, rec: _Recorder, **kw: Any) -> sandbox.SandboxRuntime:
+    return sandbox.SandboxRuntime(
+        sandbox=kw.pop("sandbox", _sb()),
+        bundle_cwd=tmp_path / "bundle",
+        raw_dir=tmp_path / "raw",
+        run_fn=rec.run_fn,
+        exec_fn=rec.exec_fn,
+        **kw,
+    )
 
 
 # --- build_run_argv: the hardened container command ---
 
 
 def test_build_run_argv_has_hardening_flags() -> None:
-    ls = _ls(_eff("cmd: 'node server.js', port: 8080, dockerImage: 'node:20-slim'"))
     argv = sandbox.build_run_argv(
-        ls,
-        image="node:20-slim",
-        container_name="bajutsu-sandbox-abc",
-        host_port=3000,
-        bundle_cwd="/b",
+        _sb(), image="img", container_name="c1", bundle_cwd="/b", raw_dir="/r"
     )
-    for flag in (
-        "--rm",
-        "--cap-drop=ALL",
-        "--security-opt=no-new-privileges",
-        "--read-only",
-        "--user",
-        "--pids-limit",
-    ):
-        assert flag in argv, f"missing hardening flag {flag}"
-    assert argv[:2] == ["docker", "run"]
-    assert argv[-len(["node", "server.js"]) :] == ["node", "server.js"]  # split cmd, last
-    assert "node:20-slim" in argv
+    for flag in ("--cap-drop=ALL", "--security-opt=no-new-privileges", "--read-only", "--rm"):
+        assert flag in argv
+    assert argv[argv.index("--user") + 1] == "65534:65534"  # never root inside the container
+    assert argv[argv.index("--memory") + 1] == "512m"
+    assert argv[argv.index("--pids-limit") + 1] == "256"
 
 
-def test_build_run_argv_publishes_loopback_only() -> None:
-    ls = _ls(_eff("cmd: 'serve', port: 8080, dockerImage: 'img'"))
+def test_build_run_argv_replaces_the_image_default_with_an_idle_command() -> None:
+    # The container exists to be `exec`-ed into for the whole run, not to run the image's entrypoint.
     argv = sandbox.build_run_argv(
-        ls, image="img", container_name="c", host_port=3000, bundle_cwd="/b"
+        _sb(), image="img", container_name="c1", bundle_cwd="/b", raw_dir="/r"
     )
-    pub = argv[argv.index("-p") + 1]
-    assert pub == "127.0.0.1:3000:8080"  # loopback host port → in-container port, never 0.0.0.0
-    assert not any(p.startswith("0.0.0.0") for p in argv)
-    mount = argv[argv.index("-v") + 1]
-    assert mount == "/b:/bundle:ro"  # bundle bind-mounted read-only
+    assert argv[-len(sandbox.IDLE_COMMAND) :] == list(sandbox.IDLE_COMMAND)
+    assert argv[-len(sandbox.IDLE_COMMAND) - 1] == "img"
 
 
-def test_build_run_argv_threads_env() -> None:
-    ls = _ls(_eff("cmd: 'serve', port: 8080, dockerImage: 'img', env: { API: 'k' }"))
+def test_build_run_argv_publishes_every_declared_port_to_loopback_only() -> None:
+    # The browser or the app on the worker reaches the server at 127.0.0.1:<port>, and nothing else
+    # on the network does.
     argv = sandbox.build_run_argv(
-        ls, image="img", container_name="c", host_port=3000, bundle_cwd="/b"
+        _sb(ports=[8787, 9000]), image="img", container_name="c1", bundle_cwd="/b", raw_dir="/r"
     )
-    assert "API=k" in argv
+    published = [argv[i + 1] for i, a in enumerate(argv) if a == "-p"]
+    assert published == ["127.0.0.1:8787:8787", "127.0.0.1:9000:9000"]
 
 
-# --- resolve_image: exactly-one-of dockerImage / dockerfile ---
+def test_build_run_argv_mounts_the_config_read_only_and_the_raw_area_writable() -> None:
+    # The config's directory is the worker's own preparation, read-only; the raw area must be
+    # writable, since that is where $BAJUTSU_OUTPUT and the logs are written.
+    argv = sandbox.build_run_argv(
+        _sb(), image="img", container_name="c1", bundle_cwd="/b", raw_dir="/r"
+    )
+    mounts = [argv[i + 1] for i, a in enumerate(argv) if a == "-v"]
+    assert mounts == [f"/b:{sandbox.WORKDIR}:ro", f"/r:{sandbox.HOOK_DIR}"]
+    assert argv[argv.index("-w") + 1] == sandbox.WORKDIR
 
 
-def test_resolve_image_uses_named_docker_image() -> None:
-    ls = _ls(_eff("cmd: 'serve', port: 8080, dockerImage: 'node:20-slim'"))
+# --- build_exec_argv and the path rewriting ---
+
+
+def test_exec_argv_carries_the_entry_environment_and_container_cwd() -> None:
+    argv = sandbox.build_exec_argv(
+        "c1", ["./seed.sh"], env={"B": "2", "A": "1"}, cwd="/bundle/sub"
+    )
+    assert argv[:2] == ["docker", "exec"]
+    assert argv[argv.index("-w") + 1] == "/bundle/sub"
+    assert ["-e", "A=1"] == argv[2:4] and ["-e", "B=2"] == argv[4:6]  # sorted, so argv is stable
+    assert argv[-2:] == ["c1", "./seed.sh"]
+
+
+def test_wrap_rewrites_the_output_path_and_drops_the_run_directory(tmp_path: Path) -> None:
+    # The run directory is not mounted, so BAJUTSU_RUN_DIR must not point at a path the container
+    # cannot reach; $BAJUTSU_OUTPUT is rewritten to its path inside the mounted raw area.
     rec = _Recorder()
-    image, meta = sandbox.resolve_image(ls, exec_fn=rec.exec_fn, bundle_cwd="/b", tag="t")
-    assert image == "node:20-slim"
-    assert meta == {"source": "dockerImage", "image": "node:20-slim"}
-    assert rec.exec_calls == []  # nothing built
-
-
-def test_resolve_image_builds_dockerfile() -> None:
-    ls = _ls(_eff("cmd: 'serve', port: 8080, dockerfile: 'Dockerfile'"))
-    rec = _Recorder()
-    image, meta = sandbox.resolve_image(
-        ls, exec_fn=rec.exec_fn, bundle_cwd="/b", tag="bajutsu-sandbox:c"
+    runtime = _runtime(tmp_path, rec)
+    out = tmp_path / "raw" / "beforeRun" / "web" / "0.output"
+    argv, _ = runtime.wrap(
+        ["./seed.sh"],
+        {"BAJUTSU_OUTPUT": str(out), "BAJUTSU_RUN_DIR": str(tmp_path / "runs"), "SEED": "1"},
+        None,
     )
-    assert image == "bajutsu-sandbox:c"
-    assert meta == {"source": "dockerfile", "image": "bajutsu-sandbox:c"}
+    passed = dict(
+        argv[i + 1].split("=", 1) for i, a in enumerate(argv) if a == "-e"  # noqa: B905
+    )
+    assert passed["BAJUTSU_OUTPUT"] == f"{sandbox.HOOK_DIR}/beforeRun/web/0.output"
+    assert "BAJUTSU_RUN_DIR" not in passed
+    assert passed["SEED"] == "1"
+
+
+def test_wrap_resolves_a_cwd_inside_the_mounted_config_directory(tmp_path: Path) -> None:
+    rec = _Recorder()
+    runtime = _runtime(tmp_path, rec)
+    (tmp_path / "bundle" / "scripts").mkdir(parents=True)
+    argv, _ = runtime.wrap(["./s.sh"], {}, tmp_path / "bundle" / "scripts")
+    assert argv[argv.index("-w") + 1] == f"{sandbox.WORKDIR}/scripts"
+
+
+def test_wrap_falls_back_to_the_workdir_for_a_cwd_outside_the_mount(tmp_path: Path) -> None:
+    # A host path with no counterpart inside the container would make every command fail to start.
+    rec = _Recorder()
+    runtime = _runtime(tmp_path, rec)
+    (tmp_path / "bundle").mkdir(parents=True)
+    argv, _ = runtime.wrap(["./s.sh"], {}, tmp_path / "elsewhere")
+    assert argv[argv.index("-w") + 1] == sandbox.WORKDIR
+
+
+# --- resolve_image: exactly one of dockerImage / dockerfile ---
+
+
+def test_resolve_image_uses_named_docker_image(tmp_path: Path) -> None:
+    rec = _Recorder()
+    image, record = sandbox.resolve_image(
+        _sb(), exec_fn=rec.exec_fn, bundle_cwd=str(tmp_path), tag="t"
+    )
+    assert image == "node:20-slim" and record["source"] == "dockerImage"
+    assert rec.exec_calls == []  # nothing is built
+
+
+def test_resolve_image_builds_dockerfile(tmp_path: Path) -> None:
+    rec = _Recorder()
+    sb = HookSandbox.model_validate({"dockerfile": "docker/Dockerfile"})
+    image, record = sandbox.resolve_image(
+        sb, exec_fn=rec.exec_fn, bundle_cwd=str(tmp_path), tag="tag1"
+    )
+    assert image == "tag1" and record["source"] == "dockerfile"
     assert rec.exec_calls[0][:2] == ["docker", "build"]
-    assert "bajutsu-sandbox:c" in rec.exec_calls[0]
+    assert str(tmp_path / "docker/Dockerfile") in rec.exec_calls[0]
 
 
-def test_resolve_image_neither_field_fails_loud() -> None:
-    ls = _ls(_eff("cmd: 'serve', port: 8080"))
-    with pytest.raises(sandbox.SandboxError, match="exactly one"):
-        sandbox.resolve_image(ls, exec_fn=_Recorder().exec_fn, bundle_cwd="/b", tag="t")
+@pytest.mark.parametrize(
+    "body", [{}, {"dockerImage": "img", "dockerfile": "Dockerfile"}]
+)
+def test_the_schema_requires_exactly_one_image_source(body: dict[str, str]) -> None:
+    # Caught when the config loads, so a run never reaches the container with an ambiguous image.
+    with pytest.raises(ValueError, match="exactly one of"):
+        HookSandbox.model_validate(body)
 
 
-def test_resolve_image_both_fields_fails_loud() -> None:
-    ls = _ls(_eff("cmd: 'serve', port: 8080, dockerImage: 'img', dockerfile: 'Dockerfile'"))
-    with pytest.raises(sandbox.SandboxError, match="exactly one"):
-        sandbox.resolve_image(ls, exec_fn=_Recorder().exec_fn, bundle_cwd="/b", tag="t")
+def test_resolve_image_rejects_a_dockerfile_escaping_the_config_directory(tmp_path: Path) -> None:
+    rec = _Recorder()
+    sb = HookSandbox.model_construct(docker_image=None, dockerfile="../../etc/Dockerfile", ports=[])
+    with pytest.raises(sandbox.SandboxError, match="without '..'"):
+        sandbox.resolve_image(sb, exec_fn=rec.exec_fn, bundle_cwd=str(tmp_path), tag="t")
 
 
-def test_resolve_image_build_failure_fails_loud() -> None:
-    ls = _ls(_eff("cmd: 'serve', port: 8080, dockerfile: 'Dockerfile'"))
+def test_resolve_image_build_failure_fails_loud(tmp_path: Path) -> None:
     rec = _Recorder(build_error=True)
-    with pytest.raises(sandbox.SandboxError):
-        sandbox.resolve_image(ls, exec_fn=rec.exec_fn, bundle_cwd="/b", tag="t")
-
-
-def test_resolve_image_rejects_dockerfile_escaping_the_bundle() -> None:
-    # The dockerfile is untrusted config; a traversal or absolute path must fail loud, never build
-    # from outside the bundle (host file disclosure).
-    for bad in ("../Dockerfile", "sub/../../etc/Dockerfile", "/etc/Dockerfile"):
-        ls = _ls(_eff(f"cmd: 'serve', port: 8080, dockerfile: '{bad}'"))
-        rec = _Recorder()
-        with pytest.raises(sandbox.SandboxError, match="bundle-relative"):
-            sandbox.resolve_image(ls, exec_fn=rec.exec_fn, bundle_cwd="/b", tag="t")
-        assert rec.exec_calls == []  # never reaches docker build
+    sb = HookSandbox.model_validate({"dockerfile": "Dockerfile"})
+    with pytest.raises(sandbox.SandboxError, match="docker build failed"):
+        sandbox.resolve_image(sb, exec_fn=rec.exec_fn, bundle_cwd=str(tmp_path), tag="t")
 
 
 def test_real_exec_surfaces_docker_stderr() -> None:
-    # A failed docker command carries its own diagnostic into the SandboxError (here a stand-in shell
-    # command, since the gate has no Docker daemon).
-    with pytest.raises(sandbox.SandboxError, match="boom"):
-        sandbox._real_exec(["sh", "-c", "echo boom >&2; exit 1"])
+    # Without docker's own diagnostic a failure is just "docker command failed" with no clue why.
+    with pytest.raises(sandbox.SandboxError, match="No such file|docker command failed"):
+        sandbox._real_exec(["/nonexistent/docker", "ps"])
 
 
-# --- start_sandboxed_server: the full decision + lifecycle ---
+# --- the container lifecycle ---
 
 
-def test_reuse_short_circuits_the_container(monkeypatch: pytest.MonkeyPatch) -> None:
-    # An externally-answering readyUrl reuses it: no container, no build.
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: True)
-    rec = _Recorder()
-    stop = sandbox.start_sandboxed_server(
-        _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
-    )
-    stop()
-    assert rec.run_calls == [] and rec.exec_calls == []
+def test_start_runs_the_container_then_waits_until_it_accepts_a_command(tmp_path: Path) -> None:
+    rec = _Recorder(ready_after=2)
+    runtime = _runtime(tmp_path, rec)
+    runtime.start()
+    assert rec.run_calls and rec.run_calls[0][:2] == ["docker", "run"]
+    probes = [c for c in rec.exec_calls if c[-1] == "true"]
+    assert len(probes) == 3  # two refusals, then up — a condition wait, never a fixed sleep
 
 
-def test_docker_image_runs_hardened_container(monkeypatch: pytest.MonkeyPatch) -> None:
-    probes = iter([False, True])  # reuse-check down, then ready
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    rec = _Recorder(_FakeProc(code=None))
-    stop = sandbox.start_sandboxed_server(
-        _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
-    )
-    assert len(rec.run_calls) == 1 and rec.run_calls[0][:2] == ["docker", "run"]
-    assert rec.exec_calls == []  # nothing built for a named image
-    stop()
-    assert rec.exec_calls[-1][:3] == ["docker", "rm", "-f"]  # torn down
+def test_a_container_that_exits_before_it_is_ready_fails_loud(tmp_path: Path) -> None:
+    rec = _Recorder(proc=_FakeProc(code=1))
+    runtime = _runtime(tmp_path, rec)
+    with pytest.raises(sandbox.SandboxError, match="exited"):
+        runtime.start()
 
 
-def test_sandbox_binds_the_trusted_bundle_root_not_config_cwd(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+def test_a_container_that_never_becomes_ready_fails_loud(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The host bind source is the caller-supplied trusted root (resolved absolute), never the
-    # untrusted config `cwd` — so a hostile `cwd: /` cannot expose the host to the container.
-    probes = iter([False, True])
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    rec = _Recorder(_FakeProc(code=None))
-    sandbox.start_sandboxed_server(
-        _eff("cmd: 'serve', port: 8080, dockerImage: 'img', cwd: '/'"),
-        bundle_root=tmp_path,
-        run_fn=rec.run_fn,
-        exec_fn=rec.exec_fn,
-    )
-    mount = rec.run_calls[0][rec.run_calls[0].index("-v") + 1]
-    assert mount == f"{tmp_path.resolve()}:/bundle:ro"  # trusted root, not the config's `/`
-
-
-def test_dockerfile_builds_then_runs(monkeypatch: pytest.MonkeyPatch) -> None:
-    probes = iter([False, True])
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    rec = _Recorder(_FakeProc(code=None))
-    sandbox.start_sandboxed_server(
-        _eff("cmd: 'serve', port: 8080, dockerfile: 'Dockerfile'"),
-        run_fn=rec.run_fn,
-        exec_fn=rec.exec_fn,
-    )
-    assert rec.exec_calls[0][:2] == ["docker", "build"]  # built before run
-    assert len(rec.run_calls) == 1
-
-
-def test_container_exits_before_ready_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    monkeypatch.setattr(time, "monotonic", iter([0.0, 0.0]).__next__)
-    rec = _Recorder(_FakeProc(code=1))  # container dies immediately
-    with pytest.raises(sandbox.SandboxError, match="exited"):
-        sandbox.start_sandboxed_server(
-            _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"),
-            run_fn=rec.run_fn,
-            exec_fn=rec.exec_fn,
-        )
-    assert rec.exec_calls[-1][:3] == ["docker", "rm", "-f"]  # torn down on failure
-
-
-def test_readiness_timeout_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    times = iter([100.0, 100.0, 200.0])  # deadline ~101; enter once, then past it
-    monkeypatch.setattr(time, "monotonic", lambda: next(times))
-    rec = _Recorder(_FakeProc(code=None))
+    monkeypatch.setattr(sandbox, "_READY_TIMEOUT", 0.05)
+    monkeypatch.setattr(sandbox, "_POLL_INTERVAL", 0.01)
+    rec = _Recorder(ready_after=10_000)
+    runtime = _runtime(tmp_path, rec)
     with pytest.raises(sandbox.SandboxError, match="not ready"):
-        sandbox.start_sandboxed_server(
-            _eff("cmd: 'serve', port: 8080, dockerImage: 'img', readyTimeout: 1"),
-            run_fn=rec.run_fn,
-            exec_fn=rec.exec_fn,
-        )
-    assert rec.exec_calls[-1][:3] == ["docker", "rm", "-f"]
+        runtime.start()
+    assert ["docker", "rm", "-f", runtime.container] in rec.exec_calls  # torn down on the way out
 
 
-def test_teardown_tolerates_an_already_removed_container(monkeypatch: pytest.MonkeyPatch) -> None:
-    # `docker run --rm` auto-removes a self-exited container, so teardown's `docker rm -f` may hit
-    # "No such container" — that is success for teardown and must not raise.
-    probes = iter([False, True])
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    rec = _Recorder(_FakeProc(code=None), rm_error=True)
-    stop = sandbox.start_sandboxed_server(
-        _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
-    )
-    stop()  # must not raise even though `docker rm -f` fails
+def test_stop_tolerates_an_already_removed_container(tmp_path: Path) -> None:
+    rec = _Recorder(rm_error=True)
+    runtime = _runtime(tmp_path, rec)
+    runtime.stop()  # a container that auto-removed itself is success for teardown
 
 
-def test_early_exit_error_is_not_masked_by_teardown(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The container exits early AND teardown's rm fails (already auto-removed): the actionable
-    # "container exited" error must still surface, not the rm failure.
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
-    monkeypatch.setattr(time, "sleep", lambda s: None)
-    monkeypatch.setattr(time, "monotonic", iter([0.0, 0.0]).__next__)
-    rec = _Recorder(_FakeProc(code=1), rm_error=True)
-    with pytest.raises(sandbox.SandboxError, match="exited"):
-        sandbox.start_sandboxed_server(
-            _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"),
-            run_fn=rec.run_fn,
-            exec_fn=rec.exec_fn,
-        )
-
-
-def test_malformed_port_in_ready_url_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
-    # A typo'd port (`:abc`) must fail loud as a SandboxError, not escape as a raw ValueError.
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
+def test_one_container_serves_the_whole_run(tmp_path: Path) -> None:
+    # A server a `beforeRun` script starts must keep serving until `afterRun`, which a per-command
+    # container could not do.
     rec = _Recorder()
-    with pytest.raises(sandbox.SandboxError, match="invalid port"):
-        sandbox.start_sandboxed_server(
-            _eff("cmd: 'serve', port: 8080, dockerImage: 'img'", base="http://127.0.0.1:abc/"),
-            run_fn=rec.run_fn,
-            exec_fn=rec.exec_fn,
-        )
-
-
-def test_no_port_in_ready_url_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The container publishes to the readyUrl's port; without one there is nothing to publish to.
-    monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: False)
-    rec = _Recorder()
-    with pytest.raises(sandbox.SandboxError, match="port"):
-        sandbox.start_sandboxed_server(
-            _eff("cmd: 'serve', port: 8080, dockerImage: 'img'", base="http://127.0.0.1/"),
-            run_fn=rec.run_fn,
-            exec_fn=rec.exec_fn,
-        )
+    runtime = _runtime(tmp_path, rec)
+    runtime.start()
+    for _ in range(3):
+        runtime.wrap(["./s.sh"], {}, None)
+    assert len(rec.run_calls) == 1

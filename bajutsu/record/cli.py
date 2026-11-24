@@ -28,7 +28,7 @@ from bajutsu.cli._shared import (
     _resolve_kind,
     _resolve_language,
     _select_actuator_or_exit,
-    _start_launch_server_or_exit,
+    _start_hooks_or_exit,
     _warn_onscreen_secrets,
     _with_headed,
     _with_worker_device,
@@ -46,6 +46,7 @@ from bajutsu.common.devices.browsers import BROWSER_KINDS
 from bajutsu.common.drivers import base
 from bajutsu.common.handoff import HumanHandoffUnavailable
 from bajutsu.common.platform_lifecycle import environment_for
+from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import launch_driver
 from bajutsu.common.scenario import dump_scenarios
 from bajutsu.record.loop import record as record_loop
@@ -251,10 +252,12 @@ def record(
     # local iOS route, the endpoint as is for an `appium` grid, and no device at all for the web.
     udid = environment_for(actuator, udid).resolve_device(udid)
 
-    # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
-    # if already serving, started otherwise. Stopped when this command exits (atexit).
-    stop_server = _start_launch_server_or_exit(eff)
-    atexit.register(stop_server)
+    # Run the target's `beforeRun` hooks if it declares any (BE-0491) — the bring-up that replaced
+    # `services.server`, so a web target's own host is serving before the browser opens. The
+    # matching `afterRun` runs when this command exits (atexit).
+    hooks = _start_hooks_or_exit(eff, run_id=new_run_id("record-"))
+    if hooks is not None:
+        atexit.register(lambda: hooks.after_run("success"))
 
     # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
     # knows what's happening before the agent takes over. Progress goes to stderr, like the

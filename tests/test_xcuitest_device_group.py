@@ -47,7 +47,6 @@ def _eff(bundle: str, app_path: str | None = None, **xcuitest: Any) -> Effective
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )

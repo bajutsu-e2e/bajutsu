@@ -18,6 +18,10 @@ from bajutsu.common.scenario import (
 )
 
 from ._model import _Model
+from .hook_command import HookCommand, HookSandbox, _reject_outcome_on_before
+
+# The four external-command lists (BE-0491), in the order one run meets them.
+COMMAND_LISTS: tuple[str, ...] = ("beforeRun", "beforeScenario", "afterScenario", "afterRun")
 
 # Where a step nests further steps, as (model attribute path, YAML key path). `_nested_steps` walks
 # the models by the first and a template file's `use` rewrite (BE-0471) walks raw YAML by the second,
@@ -61,6 +65,46 @@ class Hooks(_Model):
     # The three forms a scenario's own `interrupts` takes (BE-0473): a screen, an OS prompt for the
     # reactive guard, and Apple's TipKit popover.
     interrupts: list[InterruptEntry] = Field(default_factory=list)
+    # The four external-command lists (BE-0491). Unlike `setup` / `cleanup`, which hold scenario
+    # steps, these hold commands the machine running the run executes: data a scenario needs seeded,
+    # a file placed, or the app's own server brought up — the bring-up `services.server` once did.
+    before_run: list[HookCommand] = Field(default_factory=list, alias="beforeRun")
+    after_run: list[HookCommand] = Field(default_factory=list, alias="afterRun")
+    before_scenario: list[HookCommand] = Field(default_factory=list, alias="beforeScenario")
+    after_scenario: list[HookCommand] = Field(default_factory=list, alias="afterScenario")
+    # How the container those commands run in is built, for a worker whose policy sandboxes them.
+    sandbox: HookSandbox | None = None
+
+    @property
+    def command_lists(self) -> dict[str, list[HookCommand]]:
+        """The four external-command lists keyed by the name a report and a log path use."""
+        return {
+            "beforeRun": self.before_run,
+            "beforeScenario": self.before_scenario,
+            "afterScenario": self.after_scenario,
+            "afterRun": self.after_run,
+        }
+
+    @model_validator(mode="after")
+    def _check_command_lists(self) -> Self:
+        # A `before` entry has no verdict to answer, and a name shared by two entries of one target
+        # would make `${hooks.<name>.<key>}` ambiguous. Uniqueness *across* targets is checked where
+        # the run knows which targets it drives, since one target cannot see another's config here.
+        _reject_outcome_on_before(self.before_run, "hooks.beforeRun")
+        _reject_outcome_on_before(self.before_scenario, "hooks.beforeScenario")
+        seen: dict[str, str] = {}
+        for list_name, entries in self.command_lists.items():
+            for entry in entries:
+                if entry.name is None:
+                    continue
+                if (first := seen.get(entry.name)) is not None:
+                    raise ValueError(
+                        f"hooks.{list_name}: two entries are named {entry.name!r} (also in "
+                        f"hooks.{first}); a hook name must be unique so ${{hooks.{entry.name}.*}} "
+                        "names one command"
+                    )
+                seen[entry.name] = list_name
+        return self
 
     @property
     def screens(self) -> list[Interrupt]:

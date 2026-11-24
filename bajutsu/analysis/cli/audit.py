@@ -38,7 +38,7 @@ from bajutsu.cli._shared import (
     _refuse_bad_preconditions,
     _resolve_browser,
     _select_actuator_or_exit,
-    _start_launch_server_or_exit,
+    _start_hooks_or_exit,
     _with_worker_device,
     read_manifests,
 )
@@ -241,13 +241,12 @@ def _repeat_audit(
     pools = _RunPools(backends, runs_root() / new_run_id("audit-"))
     shutdown = pools.shutdown
 
-    # Bring up the target's `launchServer` (the web baseUrl host) if declared, like `run` does, so a
-    # web target with a server-backed baseUrl can be audited; reused if already serving, torn down
-    # in the finally below.
+    # Run the target's `beforeRun` hooks if declared, like `run` does, so a web target whose own
+    # host a hook brings up can be audited; the matching `afterRun` runs in the finally below.
     # Audit is a CLI-only longitudinal tool that no worker spawns, so its config is the operator's
-    # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down
-    # any device pool already created before exiting if the server fails to come up.
-    stop_server = _start_launch_server_or_exit(eff, on_error=shutdown)
+    # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down any device
+    # pool already created before exiting if a hook fails.
+    hooks = _start_hooks_or_exit(eff, run_id=new_run_id("audit-"), on_error=shutdown)
     try:
         # One run at a time, K times each (workers=1 keeps the K runs under identical
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not
@@ -280,12 +279,14 @@ def _repeat_audit(
         raise typer.Exit(2) from None
     finally:
         # Nested, like `run`'s own outer/inner split (BE-0342): `shutdown()` can now raise a lease's
-        # stashed end-of-lease wiring defect, and `stop_server()` must still run — or a defect on one
-        # audited scenario leaks the target's `launchServer` process for every audit after it.
+        # stashed end-of-lease wiring defect, and the `afterRun` teardown must still run — or a
+        # defect on one audited scenario leaks whatever a `beforeRun` hook started, for every audit
+        # after it.
         try:
             shutdown()
         finally:
-            stop_server()
+            if hooks is not None:
+                hooks.after_run("failure" if failed else "success")
 
     if as_json:
         typer.echo(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))

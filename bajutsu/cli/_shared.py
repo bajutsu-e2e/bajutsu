@@ -62,7 +62,6 @@ from bajutsu.common.devices.runs import condition_path
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.common.run_meta.files import is_soft_deleted
-from bajutsu.common.runner.launch_server import start_launch_server
 from bajutsu.common.scenario import tip_kit_entry
 
 if TYPE_CHECKING:
@@ -73,6 +72,7 @@ if TYPE_CHECKING:
     from bajutsu.common.devices.facts import DeviceFacts
     from bajutsu.common.drivers import base
     from bajutsu.common.orchestrator import AlertEvent
+    from bajutsu.common.runner.hook_session import HookSession
     from bajutsu.common.scenario import Scenario
 
 
@@ -891,29 +891,53 @@ def _install_command_gate_or_exit(
     )
 
 
-def _start_launch_server_or_exit(
+def _start_hooks_or_exit(
     eff: Effective,
     *,
+    run_id: str,
+    runs_dir: Path | None = None,
+    run_dir: Path | None = None,
+    worker: WorkerCapability | None = None,
     on_error: Callable[[], None] | None = None,
-) -> Callable[[], None]:
-    """Bring up the target's launch server (the web baseUrl host) if declared, or exit 2 (BE-0260).
+) -> HookSession | None:
+    """Run the target's `beforeRun` hooks if it declares any, or exit 2 (BE-0491).
 
-    The launch-server bring-up the commands share: start the server (reused if already serving,
-    waiting on its readiness probe) under the run's installed command gate (BE-0492), and surface a
-    startup failure or a refused command as a clean exit 2. The call-site teardown difference stays
-    at the call site (`run`'s `finally`, `crawl` / `record`'s `atexit`); `on_error` runs before the
-    exit for the one caller (`audit`) that must first tear down an already-created device-pool lease.
+    The run-level bring-up the scenario-less commands share (`record`, `crawl`, `repl`) and that
+    `audit` reuses: start every `beforeRun` entry under the run's installed command gate (BE-0492),
+    and surface a failed or refused command as a clean exit 2. The caller runs `afterRun` through
+    the returned session's own `after_run`, keeping the teardown difference at the call site
+    (`atexit` for `record` / `crawl` / `repl`, an explicit call for `audit`); `on_error` runs before
+    the exit for the one caller that must first tear down an already-created device-pool lease.
 
     Returns:
-        The server teardown callable.
+        The session, or None when the target declares no hook command at all.
     """
+    from bajutsu.common.runner.hook_session import start_session
+
     try:
-        return start_launch_server(eff)
-    except RuntimeError as e:
+        session = start_session(
+            {eff.target: eff},
+            run_id=run_id,
+            runs_dir=runs_dir,
+            run_dir=run_dir,
+            named_commands=worker.named_commands if worker is not None else None,
+            base_dir=eff.base_dir,
+        )
+    except ValueError as e:  # two targets sharing a hook name
         typer.echo(str(e))
         if on_error is not None:
             on_error()
         raise typer.Exit(2) from None
+    if session is None:
+        return None
+    result = session.before_run()
+    if result.ok:
+        return session
+    session.after_run("failure")
+    typer.echo(f"beforeRun failed: {result.reason}")
+    if on_error is not None:
+        on_error()
+    raise typer.Exit(2) from None
 
 
 def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocator | None:

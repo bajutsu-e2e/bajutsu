@@ -23,7 +23,14 @@ from bajutsu.common.capability.worker_capability import (
     WorkerCapabilityError,
     parse_worker_capability,
 )
-from bajutsu.common.config import DeviceProvider, Effective, load_config, resolve
+from bajutsu.common.config import (
+    DeviceProvider,
+    Effective,
+    HookCommand,
+    HookPhases,
+    load_config,
+    resolve,
+)
 from bajutsu.common.config.schema._merge import merge_defaults, merge_layer
 from bajutsu.common.scenario import Scenario
 
@@ -232,18 +239,23 @@ def test_the_default_language_clears_the_override(monkeypatch: pytest.MonkeyPatc
     assert eff.ai is not None and eff.ai.language == ai_config.DEFAULT_LANGUAGE
 
 
-def test_a_launch_server_failure_exits_2_after_its_cleanup(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_a_before_run_hook_failure_exits_2_after_its_cleanup(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    def failing(*_a: Any, **_k: Any) -> Any:
-        raise RuntimeError("server never became ready")
-
-    monkeypatch.setattr(_shared, "start_launch_server", failing)
+    # The one caller that must tear down an already-created device pool before exiting runs its
+    # `on_error` first, and the run still exits 2 (BE-0491).
+    eff = replace(
+        _eff(_IOS),
+        hooks=HookPhases(before_run=[HookCommand(cmd="false")]),
+        base_dir=tmp_path,
+    )
     cleaned: list[bool] = []
     with pytest.raises(typer.Exit):
-        _shared._start_launch_server_or_exit(_eff(_IOS), on_error=lambda: cleaned.append(True))
+        _shared._start_hooks_or_exit(
+            eff, run_id="r1", runs_dir=tmp_path / "runs", on_error=lambda: cleaned.append(True)
+        )
     assert cleaned == [True]
-    assert "never became ready" in capsys.readouterr().out
+    assert "beforeRun failed" in capsys.readouterr().out
 
 
 # --- the scenario's inheritSetup --------------------------------------------------------------
