@@ -8,6 +8,11 @@
 # exactly the process this one started and nothing else.
 set -eu
 
+# A hook entry runs in the config file's own directory, while the paths below are the repository's.
+# The script knows where it lives — <root>/demos/serve-ui/scripts — so it moves to the root itself
+# rather than asking the config for a `cwd`.
+cd "$(dirname "$0")/../../.."
+
 URL="${INNER_URL:-http://127.0.0.1:8799/}"
 PORT="${INNER_PORT:-8799}"
 PID_FILE="${TMPDIR:-/tmp}/bajutsu-dogfood-serve-${PORT}.pid"

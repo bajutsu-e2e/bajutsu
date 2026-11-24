@@ -11,6 +11,7 @@ import shutil
 import tempfile
 import uuid
 import zipfile
+import zlib
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
@@ -404,24 +405,20 @@ _MAX_ROUTED_SCENARIO = 1_000_000
 
 
 def _zip_text(archive: zipfile.ZipFile, entry: str) -> str | None:
-    """The text of one zip entry, or None when it is too large or is not text."""
+    """The text of one zip entry, or None when it is too large, unreadable, or not text."""
     if archive.getinfo(entry).file_size > _MAX_ROUTED_SCENARIO:
         return None
     try:
         return archive.read(entry).decode("utf-8")
-    except UnicodeDecodeError:
+    except (UnicodeDecodeError, RuntimeError, OSError, zipfile.BadZipFile, zlib.error):
+        # An encrypted or oddly compressed member (`NotImplementedError` is a `RuntimeError`), or
+        # corrupt data: read for routing alone, so it degrades to "unread" and the worker judges it.
         return None
 
 
 def _scenario_source(runnable: Runnable) -> ConfigSource | None:
     """Where *runnable*'s text came from when that is not the config's own source (BE-0501)."""
     return "uploaded" if runnable.client_written else None
-
-
-def _named_scenario_source(scope: ScenarioScope, name: str) -> ConfigSource | None:
-    """`_scenario_source` of the scenario *scope* names *name*."""
-    runnable = scope.runnable(name)
-    return _scenario_source(runnable) if runnable is not None else None
 
 
 def _override_runnable(
@@ -700,35 +697,50 @@ def _run_intents(
     config_arg: str,
     platform: str,
     app_path: str,
-) -> tuple[list[tuple[RunIntent, dict[str, str]]], tuple[Any, int] | None]:
-    """Resolve every named scenario to a `RunIntent` and the materials it ships, or the refusal.
+) -> tuple[
+    list[tuple[RunIntent, dict[str, str]]],
+    dict[str, ConfigSource | None],
+    tuple[Any, int] | None,
+]:
+    """Resolve every named scenario to a `RunIntent`, the materials it ships, and its own source.
 
     Paths are relative to the job's bundle directory (BE-0448): a scenario that travels as materials
     already names its place in the worker's workspace, and one on disk is made relative to
-    *bundle_dir*, the config's own directory. All-or-nothing, so `start_run_set` never dispatches a
-    partial fan-out for a set that names one bad scenario.
+    *bundle_dir*, the config's own directory. The source (BE-0501) comes off the one resolution that
+    also gave the materials, so a scenario's label and the text it ships never disagree. All-or-nothing,
+    so `start_run_set` never dispatches a partial fan-out for a set that names one bad scenario.
     """
     requests: list[tuple[RunIntent, dict[str, str]]] = []
+    sources: dict[str, ConfigSource | None] = {}
     for name in names:
         runnable = scope.runnable(name)
         if runnable is None:
-            return [], (
-                {
-                    "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
-                },
-                400,
+            return (
+                [],
+                {},
+                (
+                    {
+                        "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
+                    },
+                    400,
+                ),
             )
         scenario_arg = (
             runnable.arg if runnable.materials else os.path.relpath(runnable.arg, bundle_dir)
         )
         if _escapes(scenario_arg):
-            return [], (
-                {"error": f"scenario '{name}' is not under the config's directory"},
-                400,
+            return (
+                [],
+                {},
+                (
+                    {"error": f"scenario '{name}' is not under the config's directory"},
+                    400,
+                ),
             )
         # Judged on the resolved path, since a scope may resolve two spellings to one file (BE-0484).
         if any(r.scenario == scenario_arg for r, _ in requests):
-            return [], ({"error": f"scenario '{name}' is named more than once"}, 400)
+            return [], {}, ({"error": f"scenario '{name}' is named more than once"}, 400)
+        sources[name] = _scenario_source(runnable)
         requests.append(
             (
                 RunIntent(
@@ -741,7 +753,7 @@ def _run_intents(
                 dict(runnable.materials),
             )
         )
-    return requests, None
+    return requests, sources, None
 
 
 def _batch_application(
@@ -1175,7 +1187,7 @@ def start_run_set(  # noqa: C901, PLR0911
     config_arg = os.path.relpath(cfg, binding.cwd)
     if _escapes(config_arg):
         return {"error": f"config is not under its bundle directory {binding.cwd}"}, 400
-    requests, requests_err = _run_intents(
+    requests, sources, requests_err = _run_intents(
         scope,
         names,
         bundle_dir=binding.cwd,
@@ -1186,7 +1198,6 @@ def start_run_set(  # noqa: C901, PLR0911
     )
     if requests_err:
         return requests_err
-    sources = {name: _named_scenario_source(scope, name) for name in names}
     routes, route_err = _group_routes(
         state,
         cfg,
