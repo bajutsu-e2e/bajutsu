@@ -161,7 +161,7 @@ def test_screen_probe_failure_is_reported_not_raised(tmp_path: Path) -> None:
     )
 
     def screen_query(actuator: str, udid: str, eff: object) -> list[base.Element]:
-        raise simctl.DeviceError("web browser fault (recoverable wedge): ERR_CONNECTION_REFUSED")
+        raise simctl.DeviceError("web browser fault: ERR_CONNECTION_REFUSED")
 
     payload, status = ops.doctor_check(
         state, {"target": "demo", "backend": "fake"}, screen_query=screen_query
