@@ -666,6 +666,7 @@ A scenario then reads the seeded value with no preparation step of its own:
 | `timeout` | all | Seconds the command may take. Default 300 |
 | `on` | `afterRun`, `afterScenario` | `always`, `success`, or `failure`. Default `always`. The same words a scenario's `cleanup` rule uses |
 | `mask` | all | When true, this entry's output values are masked in evidence, as a `${secrets.*}` value is. Default false |
+| `when` | all | The scenario tags the entry runs for, `{ tags, exclude }` ([below](#running-an-entry-for-some-scenarios-when-be-0497)). Absent, the entry runs for every scenario |
 
 #### Lifecycle and order
 
@@ -701,6 +702,73 @@ A scenario may declare commands of its own, which run inside the target's
 ([scenarios](scenarios.md#hooks-external-commands-around-one-scenario),
 [BE-0501](../roadmaps/BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md)). Keep a
 command here when every scenario of the target needs it.
+
+#### Running an entry for some scenarios (`when`, BE-0497)
+
+Preparation in a real suite often concerns a subset of the scenarios. A `when` block on an entry
+names the scenario tags the entry runs for. Bajutsu skips the entry when the tags do not match.
+
+```yaml
+hooks:
+  beforeRun:
+    - name: mock
+      cmd: "./scripts/start-mock.sh"
+      when: { tags: [offline] }            # starts when the run selected an offline scenario
+  afterRun:
+    - cmd: "./scripts/stop-mock.sh"
+      when: { tags: [offline] }
+  beforeScenario:
+    - name: account
+      cmd: "./scripts/create-payment-account.sh"
+      when: { tags: [payments], exclude: [readonly] }
+  afterScenario:
+    - cmd: "./scripts/delete-payment-account.sh"
+      when: { tags: [payments], exclude: [readonly] }
+```
+
+| Field | Meaning |
+|---|---|
+| `when.tags` | The entry matches a scenario that carries at least one of these tags. Absent or empty, it places no constraint |
+| `when.exclude` | The entry does not match a scenario that carries any of these tags. `exclude` wins over `tags` |
+
+The rule is the one `bajutsu run --tag` and `--exclude` apply to select scenarios. A tag matches as
+a whole string, case included. A `when` block with both lists empty fails to load.
+
+The condition reads a scenario's tags after component and data expansion. A `${row.*}` token in
+`tags` then gives each data row its own tags.
+
+Which scenarios an entry reads depends on its list:
+
+- **`beforeScenario` and `afterScenario`** read the scenario they wrap. An `afterScenario` entry
+  needs both `when` and `on` to hold.
+- **`beforeRun` and `afterRun`** read the run's scenario set and run when any scenario in the set
+  matches. Their `when` needs a non-empty `tags`, or the config fails to load.
+
+The scenario set holds the scenarios that drive the entry's target:
+
+| Command | Scenario set |
+|---|---|
+| `run` (and the jobs `serve` hands to workers) | the scenarios left after `--tag` and `--exclude`, across all workers |
+| `audit` | the scenarios `audit` replays |
+| `record`, `crawl`, `repl` | empty, since these commands run no scenario file |
+
+An empty set matches no condition. Leave `when` off a server that `record`, `crawl`, or `repl` also
+needs. Bajutsu fixes the set before the first `beforeRun` entry. Each `afterRun` entry then decides
+on the same set, after a cancellation too.
+
+Bajutsu does not link a `beforeScenario` entry to the `afterScenario` entry that cleans up after it.
+Copy the same `when` to both. A cleanup entry with a broader condition still runs. It finds the
+`BAJUTSU_HOOK__<name>__<key>` variables of the skipped entry unset.
+
+A scenario that reads `${hooks.<name>.<key>}` must match the `when` of the entry it reads. The `run`
+and `audit` commands check every expanded scenario, whatever `--tag` and `--exclude` select. A
+mismatch exits 2. The message names the entry, its condition, and the scenario's tags.
+A deselected scenario that names no `targets` fails only when no target of the config lets it run.
+The check covers the tokens in a target's own `setup` and `cleanup` steps too.
+
+A skipped entry writes no log and no output file. The report shows it as `skipped (when)` with its
+condition. The [`commandExecutions`](self-hosting.md#the-command-record) list records the decision
+`skipped`. The worker's command policy still checks an entry whose condition does not match.
 
 #### Failures and the verdict
 

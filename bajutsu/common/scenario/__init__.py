@@ -153,6 +153,7 @@ from bajutsu.common.scenario.system_alerts import (
     system_alert_role,
     system_alert_shapes,
 )
+from bajutsu.common.scenario.tags import tags_match
 
 __all__ = [
     "ASSERTION_KINDS",
@@ -282,5 +283,6 @@ __all__ = [
     "system_alert_label",
     "system_alert_role",
     "system_alert_shapes",
+    "tags_match",
     "tip_kit_entry",
 ]

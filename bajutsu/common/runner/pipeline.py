@@ -556,6 +556,8 @@ class _ScenarioRunner:
             worker=self.worker_index.current(),
             scenario_index=index,
             log_prefix=self.evidence_prefix,
+            # A scenario-level `when` reads this scenario alone, never the run's set (BE-0497).
+            scenario_tags=(tuple(s.tags),),
             **extra,
         )
 

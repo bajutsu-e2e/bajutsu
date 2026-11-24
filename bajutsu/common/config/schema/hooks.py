@@ -18,7 +18,12 @@ from bajutsu.common.scenario import (
 )
 
 from ._model import _Model
-from .hook_command import HookCommand, HookSandbox, reject_outcome_on_before
+from .hook_command import (
+    HookCommand,
+    HookSandbox,
+    reject_outcome_on_before,
+    reject_run_level_exclude_only,
+)
 
 # The four external-command lists (BE-0491), in the order one run meets them.
 COMMAND_LISTS: tuple[str, ...] = ("beforeRun", "beforeScenario", "afterScenario", "afterRun")
@@ -92,6 +97,8 @@ class Hooks(_Model):
         # the run knows which targets it drives, since one target cannot see another's config here.
         reject_outcome_on_before(self.before_run, "hooks.beforeRun")
         reject_outcome_on_before(self.before_scenario, "hooks.beforeScenario")
+        reject_run_level_exclude_only(self.before_run, "hooks.beforeRun")
+        reject_run_level_exclude_only(self.after_run, "hooks.afterRun")
         seen: dict[str, str] = {}
         for list_name, entries in self.command_lists.items():
             for entry in entries:

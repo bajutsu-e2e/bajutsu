@@ -15,6 +15,7 @@ from typing import Literal, Self
 from pydantic import Field, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
+from bajutsu.common.scenario.tags import tags_match
 
 # An entry's `name`, and every key it writes to `$BAJUTSU_OUTPUT`. `__` separates the two halves of
 # the `BAJUTSU_HOOK__<name>__<key>` variable a later command reads, so neither half may contain it.
@@ -45,6 +46,38 @@ def invalid_hook_name(value: str) -> str | None:
     return None
 
 
+class HookWhen(_Model):
+    """`when`: the scenario tags a hook entry runs for (BE-0497).
+
+    The rule is the one `--tag` and `--exclude` apply to selection, through the same predicate.
+    """
+
+    tags: list[str] = Field(default_factory=list)
+    exclude: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _constrains_something(self) -> Self:
+        if not self.tags and not self.exclude:
+            raise ValueError(
+                "a hook entry's `when` needs a non-empty `tags` or `exclude`; leave `when` out for "
+                "an entry that always runs"
+            )
+        return self
+
+    def matches(self, tags: Iterable[str]) -> bool:
+        """Whether a scenario carrying *tags* meets this condition."""
+        return tags_match(tags, self.tags, self.exclude)
+
+    def __str__(self) -> str:
+        """The condition as reports and errors word it, listing only the fields that constrain."""
+        parts = [
+            f"{field}: [{', '.join(values)}]"
+            for field, values in (("tags", self.tags), ("exclude", self.exclude))
+            if values
+        ]
+        return ", ".join(parts)
+
+
 class HookCommand(_Model):
     """One entry of a `hooks.beforeRun` / `afterRun` / `beforeScenario` / `afterScenario` list.
 
@@ -70,6 +103,8 @@ class HookCommand(_Model):
     on: HookOutcome = "always"
     # Masks this entry's output values in evidence, as a `${secrets.*}` value already is.
     mask: bool = False
+    # Runs the entry only for a scenario whose tags match; absent, it runs for every scenario.
+    when: HookWhen | None = None
 
     @model_validator(mode="after")
     def _one_command(self) -> Self:
@@ -78,6 +113,9 @@ class HookCommand(_Model):
                 "a hook entry needs exactly one of `cmd` (a command line) or `use` (a command the "
                 f"worker lists in namedCommands), got {'both' if self.cmd else 'neither'}"
             )
+        if "when" in self.model_fields_set and self.when is None:
+            # `when:` with its body commented out would otherwise widen the entry to every scenario.
+            raise ValueError("a hook entry's `when` needs a non-empty `tags` or `exclude`")
         if self.cmd is not None and not self.cmd.strip():
             raise ValueError("a hook entry's `cmd` cannot be empty")
         if self.name is not None and (why := invalid_hook_name(self.name)) is not None:

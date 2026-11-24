@@ -164,6 +164,10 @@ class HookContext:
     # Stands in for the target in the log path and the command record, for a scenario's own entries
     # (BE-0501): `BAJUTSU_TARGET` still names the target the scenario drives first.
     level: str | None = None
+    # The tags an entry's `when` reads, one collection per scenario (BE-0497): the run's scenarios
+    # that drive this target for a run-level list, the scenario's own for a scenario-level one.
+    # Empty, the case of a command that runs no scenario file, matches no condition.
+    scenario_tags: Sequence[Sequence[str]] = ()
 
     def env(self) -> dict[str, str]:
         """The context variables a command of this phase receives."""
@@ -248,6 +252,8 @@ class HookRecord:
     # workers append to one list, so the report sorts on this rather than on arrival order.
     scenario: int | None = None
     skipped: bool = False
+    # The entry's `when`, as a reader reads it, when that condition is what skipped it (BE-0497).
+    when: str | None = None
     failure: str | None = None
     # Why it was skipped, when the reason is not simply its `on` (a spent teardown budget).
     reason: str | None = None
@@ -462,6 +468,26 @@ class HookRunner:
         )
         after = list_name.startswith("after")
         for index, entry in enumerate(entries):
+            if entry.when is not None and not any(
+                entry.when.matches(tags) for tags in context.scenario_tags
+            ):
+                result.records.append(
+                    HookRecord(
+                        list_name,
+                        entry.label,
+                        context.target,
+                        None,
+                        scenario=context.scenario_index,
+                        skipped=True,
+                        when=str(entry.when),
+                    )
+                )
+                self._gate_for(context).record_skip(
+                    self._record_field(list_name, entry.name or str(index), context),
+                    entry.cmd if entry.cmd is not None else f"use:{entry.use}",
+                    cwd=self._cwd(entry.cwd, cwd_base) if entry.cmd is not None else None,
+                )
+                continue
             if after and entry.on != "always" and entry.on != context.verdict:
                 # The report shows a bare skip otherwise, and a caller that forgot the verdict
                 # would silently skip every conditional entry of the list.
@@ -889,6 +915,8 @@ def hook_record_dicts(records: Iterable[HookRecord]) -> list[dict[str, object]]:
             entry["log"] = record.log
         if record.skipped:
             entry["skipped"] = True
+        if record.when is not None:
+            entry["when"] = record.when
         if record.reason is not None:
             entry["reason"] = record.reason
         if record.failure is not None:
@@ -1067,5 +1095,59 @@ def unknown_hook_tokens(
             return (
                 f"${{{token}}} names no hook this scenario can read; a token reads a `beforeRun` or "
                 f"`beforeScenario` entry of a target it drives (known: {known})"
+            )
+    return None
+
+
+def unmet_hook_condition(
+    referenced: Iterable[str],
+    phases: Mapping[str, HookPhases],
+    driven: Sequence[str],
+    tags: Sequence[str],
+    own: HookPhases | None = None,
+) -> str | None:
+    """Why a `${hooks.*}` token reads an entry whose `when` this scenario fails, or None (BE-0497).
+
+    Tags are static once a scenario is expanded, so a value that would be missing surfaces at load
+    rather than mid-run.
+
+    Args:
+        referenced: The tokens the scenario uses.
+        phases: Every target of the config, so a run-level entry of a target this scenario does not
+            drive is named as such.
+        driven: The targets the scenario drives.
+        tags: The expanded scenario's own tags.
+        own: The scenario's own lists (BE-0501), when it declares any.
+    """
+    mine = {
+        e.name: (list_name, e)
+        for phase in [*(phases[t] for t in driven if t in phases), *([own] if own else [])]
+        for list_name in ("beforeRun", "beforeScenario")
+        for e in phase.lists[list_name]
+        if e.name is not None
+    }
+    elsewhere = {
+        e.name: target
+        for target, phase in phases.items()
+        if target not in driven
+        for e in phase.before_run
+        if e.name is not None and e.when is not None
+    }
+    carried = ", ".join(tags) or "none"
+    for token in sorted(referenced):
+        if not token.startswith("hooks."):
+            continue
+        name = token.removeprefix("hooks.").partition(".")[0]
+        if name in mine:
+            list_name, entry = mine[name]
+            if entry.when is not None and not entry.when.matches(tags):
+                return (
+                    f"${{{token}}} reads the {list_name} hook {name!r}, which runs only when "
+                    f"{{{entry.when}}} matches; this scenario's tags are: {carried}"
+                )
+        elif name in elsewhere:
+            return (
+                f"${{{token}}} reads the conditional beforeRun hook {name!r} of target "
+                f"{elsewhere[name]!r}, which this scenario does not drive"
             )
     return None

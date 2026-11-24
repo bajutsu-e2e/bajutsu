@@ -104,6 +104,8 @@ def report_hook_phases(records: object) -> list[dict[str, object]]:
                 "owner": str(record.get("target", "") if scenario is None else scenario),
                 "log": record.get("log"),
                 "skipped": bool(record.get("skipped")),
+                # A condition's own label, apart from a verdict (`on`) or budget skip (BE-0497).
+                "when": record.get("when") or "",
                 "reason": record.get("reason") or failure or "",
                 "ok": failure is None,
             }

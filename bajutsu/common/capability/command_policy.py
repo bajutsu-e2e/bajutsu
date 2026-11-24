@@ -311,6 +311,7 @@ _DECISION_WORDS = {
     "ran": "ran on the host",
     "sandboxed": "ran in a container",
     "refused": "refused",
+    "skipped": "skipped (when)",
 }
 
 

@@ -30,6 +30,7 @@ from bajutsu.cli._shared import (
     _log_subsystem_default,
     _precondition_checks,
     _refuse_bad_preconditions,
+    _reject_unmet_hook_conditions,
     _reject_url_udid,
     _resolve_browser,
     _resolve_kind,
@@ -95,7 +96,7 @@ from bajutsu.common.runner import (
 )
 from bajutsu.common.runner.build import BuildError, build_app
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
-from bajutsu.common.runner.hook_session import HookSession, phases_of, start_session
+from bajutsu.common.runner.hook_session import HookSession, phases_of, run_tags, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
@@ -1242,9 +1243,11 @@ def _filter_scenarios(
     ios_tipkit_handling: bool | None = None,
     target_ios_tipkit_handling: bool = False,
     check: Callable[[list[Scenario]], None] | None = None,
+    check_all: Callable[[list[Scenario], list[Scenario]], None] | None = None,
 ) -> list[Scenario]:
     """Apply `--tag`/`--exclude` selection and apply `--erase` / `--no-erase` to each scenario.
 
+    *check_all* sees every scenario and the selected ones, for a defect in the files themselves.
     Selection runs over the combined set; an empty result is a usage error (exit 2). *check* then
     sees the selected scenarios as written, before any run default is filled in, so a field the
     scenario never wrote cannot trip it (BE-0452). The flag moves `preconditions.subject.reinstall` along
@@ -1255,6 +1258,7 @@ def _filter_scenarios(
     scenario's own entry, then the target's `dismiss` — and is written only when it ends on or the
     flag names it, so a scenario that drives no iOS target never gains the iOS-only entry.
     """
+    everything = scenarios
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
     if include or excluded:
@@ -1262,6 +1266,8 @@ def _filter_scenarios(
         if not scenarios:
             typer.echo("no scenarios match --tag/--exclude")
             raise typer.Exit(2)
+    if check_all is not None:
+        check_all(everything, scenarios)
     if check is not None:
         check(scenarios)
     for s in scenarios:
@@ -2321,6 +2327,7 @@ def _hook_session_or_exit(
     secret_values: list[str],
     base_dir: Path | None,
     scenario_targets: set[str],
+    tags: Mapping[str, Sequence[Sequence[str]]],
 ) -> HookSession | None:
     """The run's hook session, or None when nothing in this run declares a hook command (BE-0491).
 
@@ -2349,6 +2356,7 @@ def _hook_session_or_exit(
             named_commands=worker.named_commands if worker is not None else None,
             base_dir=base_dir,
             scenario_targets=scenario_targets,
+            tags=tags,
         )
     except ValueError as e:
         typer.echo(str(e))
@@ -3290,6 +3298,9 @@ def run_body(
             check=lambda selected: _check_preconditions_or_exit(
                 loaded, selected, primary, eff, erase=erase
             ),
+            check_all=lambda everything, selected: _reject_unmet_hook_conditions(
+                loaded, everything, primary, selected=selected
+            ),
         )
         return (
             loaded,
@@ -3528,6 +3539,9 @@ def run_body(
             secret_values=secret_values,
             base_dir=loaded.root or eff.base_dir,
             scenario_targets=sandbox_targets(scenarios, target_name),
+            # The whole selection, a scenario the worker's capability check failed included: what a
+            # run-level `when` sees depends on the files and the flags, never on the worker.
+            tags=run_tags(all_scenarios, target_name),
         )
         # Answer a `SIGTERM` by asking the run to stop at its next safe boundary instead of dying
         # where it stands, leaving no manifest, no report, and no history row (BE-0370). The window

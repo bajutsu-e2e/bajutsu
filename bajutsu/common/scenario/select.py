@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bajutsu.common.scenario.models import Scenario
+from bajutsu.common.scenario.tags import tags_match
 
 
 def select_scenarios(
@@ -21,13 +22,4 @@ def select_scenarios(
     Returns:
         The kept scenarios, in their original order.
     """
-    inc, exc = set(include), set(exclude)
-    out: list[Scenario] = []
-    for s in scenarios:
-        tags = set(s.tags)
-        if exc & tags:
-            continue
-        if inc and not (inc & tags):
-            continue
-        out.append(s)
-    return out
+    return [s for s in scenarios if tags_match(s.tags, include, exclude)]
