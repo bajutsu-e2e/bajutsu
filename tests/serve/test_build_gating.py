@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sys
 import zipfile
+import zlib
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -345,6 +346,25 @@ def test_a_scenario_in_an_artifact_is_read_for_routing(
         assert _zip_text(archive, "b.yaml") is None
         monkeypatch.setattr(dispatch, "_MAX_ROUTED_SCENARIO", 3)
         assert _zip_text(archive, "a.yaml") is None  # left to the worker's own check
+
+
+@pytest.mark.parametrize(
+    "error", [RuntimeError("encrypted"), NotImplementedError("method"), OSError(), zlib.error()]
+)
+def test_an_unreadable_artifact_entry_adds_no_routing_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+) -> None:
+    # A client posts the zip, so a member that cannot be read must not fail the request.
+    path = tmp_path / "s.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("a.yaml", "text")
+
+    def refuse(*_a: object) -> bytes:
+        raise error
+
+    with zipfile.ZipFile(path) as archive:
+        monkeypatch.setattr(archive, "read", refuse)
+        assert _zip_text(archive, "a.yaml") is None
 
 
 @pytest.mark.parametrize("text", [None, "- name: [", "- nonsense: 1\n"])
