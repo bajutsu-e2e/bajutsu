@@ -12,7 +12,7 @@ Linux 上で動きます。Web UI の決定的なリグレッション網であ�
 
 | パス | 役割 |
 |---|---|
-| `dogfood.config.yaml` | `targets.webui`（`platform: web` ＋ `subject.url`（起動中の serve）＋ `services.server`、`subject.id` なし） |
+| `dogfood.config.yaml` | `targets.webui`（`platform: web` ＋ `subject.url`（起動中の serve）＋ `hooks.beforeRun` / `hooks.afterRun`、`subject.id` なし） |
 | `inner.config.yaml` | 内側の serve が読む config。web デモの `web` target に加え、fan-out 専用の Android target `zz-fanout-android` を持つ（BE-0465） |
 | `fanout/scenarios/` | `zz-fanout-android` が dispatch する 2 つのプレースホルダーシナリオ。実行はされない |
 | `web-scenarios/` | `demos/web/scenarios` のコピー（gitignore 済み）。実行のたびに `make web-scenarios` が作り直す。fan-out はこのディレクトリを zip にするので、`../web/scenarios` のようなパスは運べない |

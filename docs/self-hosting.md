@@ -149,7 +149,8 @@ enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
 
 A config can declare commands that Bajutsu runs on the machine that carries out a run:
 
-- `services.server.cmd` starts the server that hosts the app under test.
+- A `hooks.*` entry's `cmd` prepares what a scenario needs. Starting the server that hosts the app
+  under test is one such preparation.
 - `subject.build` builds the app when its binary is missing.
 - `driver.runner.build` builds the XCUITest runner when its `.xctestrun` file is missing.
 
@@ -193,7 +194,8 @@ The mode decides what happens to each governed command:
 
 | Command | `allow` | `sandbox` | `named` | `deny` |
 |---|---|---|---|---|
-| `services.server.cmd` | runs on the worker's host | runs in a Docker container | refused | refused |
+| a `hooks.*` entry's `cmd` | runs on the worker's host | runs in one container per run | refused | refused |
+| a `hooks.*` entry's `use` | runs on the worker's host | runs on the worker's host | runs on the worker's host | refused |
 | `subject.build` | runs on the host when the binary is missing | does not run | does not run | does not run |
 | `driver.runner.build` | runs on the host when the runner is missing | does not run | does not run | does not run |
 | a named command | runs on the host | runs on the host | runs on the host | refused |
@@ -208,25 +210,27 @@ ships its runner prebuilt at `driver.runner.testRunner` too. A run that finds ei
 fails. Its error names the mode that kept the build from running. An uploaded bundle already ships
 its binary this way.
 
-Under `allow` and `sandbox`, the run reuses a server that already answers the readiness URL. No
-command runs then. Under `named` and `deny`, the run refuses a declared `services.server.cmd`. It
-does so even when a server already answers. The policy decides before any probe, so the run never probes the readiness
-URL of a refused config.
+Under `named` and `deny`, the run refuses every command line a config spells out. The policy
+decides before any device work. A run whose command will never run therefore fails before it
+reserves a device. An entry that names a worker-installed script with `use` runs under every mode
+but `deny`: that script is the operator's own code.
 
-### Running a server command in a container
+### Running a config's commands in a container
 
-Under `sandbox`, the server command runs in a throwaway Docker container on the worker's host. The
-config declares the runtime under `services.server` with **exactly one** of two fields, plus a
-port:
+Under `sandbox`, a target's hook commands run in a throwaway Docker container on the worker's host.
+One container serves the whole run. A server a `beforeRun` script starts therefore keeps serving
+until `afterRun`. The config declares the runtime under `hooks.sandbox` with **exactly one** of two
+fields, plus the ports to publish:
 
 - `dockerImage` names a published base image, such as `node:20-slim`.
 - `dockerfile` names a path inside the config's directory. The worker builds it with
   `docker build`.
-- `port` names the port the server listens on inside the container.
+- `ports` lists the ports the commands listen on inside the container.
 
-The container drops all capabilities and forbids new privileges. It runs as a non-root user on a
-read-only root filesystem, with a `tmpfs` scratch. CPU, memory, and process caps bound it. It
-publishes its one port to a loopback port on the host, and the worker removes it after the run.
+The container drops all capabilities and forbids new privileges. It runs as the worker's own
+non-root user on a read-only root filesystem, with a `tmpfs` scratch. CPU, memory, and process caps
+bound it. It publishes each declared port to the same loopback port on the host, and the worker
+removes it after the run.
 
 The worker's host needs Docker. Suppose a worker's file sets a source to `sandbox` explicitly. The
 worker then checks for `docker` on its `PATH` at startup. When `docker` is missing, the worker exits
@@ -272,9 +276,10 @@ The worker advertises its policy as routing tokens
 - `named-execution:<source>` for each source whose mode is not `deny`.
 - `named-command:<name>` for each entry of `namedCommands`.
 
-A job whose config declares `services.server.cmd` requires `command-execution:<source>` for its
-source. A build adds no token, because `serve` cannot know whether a worker already holds the
-binary. A job keeps waiting while no connected worker matches it. Workers older than BE-0492
+A job whose config declares a `hooks.*` command line requires `command-execution:<source>` for its
+source. One that uses a named command requires `named-execution:<source>` and that script's own
+`named-command:<name>`. A build adds no token, because `serve` cannot know whether a worker already
+holds the binary. A job keeps waiting while no connected worker matches it. Workers older than BE-0492
 advertise none of these tokens, and they never lease such a job.
 
 The run checks the policy again before any device work, against the `worker.yaml` it reads. This
@@ -289,7 +294,7 @@ provenance of `manifest.json`. Each entry holds these fields:
 
 | Field | Meaning |
 |---|---|
-| `field` | where the config declared the command, such as `services.server.cmd` |
+| `field` | where the config declared the command, such as `hooks.beforeRun[server].cmd` |
 | `cmd` | the command line, with `${secrets.*}` values masked |
 | `source`, `mode` | the config source and the mode that applied |
 | `decision` | `ran`, `sandboxed`, or `refused` |
@@ -1417,9 +1422,9 @@ deterministic `run` verdict.
   `setting:`, `job:`, `platform:`, `kind:`, `command-execution:`, `named-execution:`, or
   `named-command:` prefix, which the worker fills itself. A worker rejects such a token at startup.
   An override thus cannot claim a config source that the worker's `commandExecution` block refuses.
-- **A job with a server command needs a worker that runs it.** A job whose config declares
-  `services.server.cmd` requires `command-execution:<source>`, where the source is `uploaded`, `remote`, or
-  `operator`. A worker advertises that token for a source whose mode is `allow`, or `sandbox` with
+- **A job with a config-declared command needs a worker that runs it.** A job whose config
+  declares a `hooks.*` command line requires `command-execution:<source>`, where the source is
+  `uploaded`, `remote`, or `operator`. A worker advertises that token for a source whose mode is `allow`, or `sandbox` with
   Docker present. It also advertises `named-execution:<source>` for each source not set to `deny`,
   and `named-command:<name>` for each named command. A build adds no token. The worker decides the
   build at run time

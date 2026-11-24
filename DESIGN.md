@@ -106,7 +106,7 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 - **居場所**：外部プロセスではなくプロトコル層のスタブです。アプリの発する各リクエストを、シナリオの `mocks` に宣言した `match` で照合し、一致すれば `respond` の定型応答をアプリ内で返します（§6.1）。ライブサーバに触れないため、テストはオフラインで安定します
 - **2 つの役割**：(a) **決定性** = 一致したリクエストへ事前定義のスタブ応答を返します。(b) **証跡** = 発受信したリクエストを in-protocol の network collector が記録します。記録は、`network` アーティファクト（`network.json`）の取得元になります（§9）
 - **証跡源**：XCUITest はネイティブのネットワーク監視を持たないため、`network` は **in-protocol の collector から取得**します。取得できないときは `manifest` に skip 理由を明示します
-- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。`bajutsu.config.yaml` の `services.mockServer`（起動コマンド / ポート）は、当初の外部サーバ向けスキーマが残るのみで、実装されていません。`mocks` に置き換わっています（[BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)）
+- **設定**：`mocks` はシナリオ単位に書きます（§6.1）。外部のモックサーバー向けだった `services.mockServer` は、1 つのプロセスも起動したことがないまま削除しました。`mocks` に置き換わっています（[BE-0027](roadmaps/BE-0027-mock-server-external/BE-0027-mock-server-external-ja.md)、[BE-0491](roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)）。モックサーバーの起動そのものは、ほかのサーバーと同じく `hooks.beforeRun` のスクリプトで行えます
 
 ### 3.3 並列実行とアイソレーション
 
@@ -115,7 +115,7 @@ Reporter (manifest.json + JUnit/CTRF/HTML + スクショ/録画)
 - **アイソレーション単位 = ワーカー**：各ワーカーは固有の `udid`（`simctl clone` 等）を借り受けます。証跡の書き込み先は、run 全体で 1 つの `runs/<runId>` の下にある固有のサブディレクトリ `runs/<runId>/<scenarioId>` です。run ディレクトリは run に 1 つ、書き込み先はワーカーごとに別、という組み合わせが成果物の混線を防ぎます。`mocks` は in-protocol でアプリ内に閉じるため（§3.2）、ワーカー間で共有ポートを取り合いません
 - **ヘッドレス前提**：iOS Simulator はヘッドレスで動くため、N 台へ水平スケールできます（CI 向き）
 - **ワーカーへの fan-out**：serve の `run-set` は、シナリオごとに 1 つのジョブを積みます。実行場所はリースしたワーカーで決まり、ローカルの Simulator や実機のこともあれば Device Farm のこともあります。実行場所が変わりうることは決定性の例外ではなく、記録の対象です。ワーカーは実行した場所を run の provenance に `workerEnvironment` として残し、レポートはそれを notices に載せます（[BE-0484](roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）
-- **config のコマンドの実行可否**：config は、run のためのコマンドを宣言できます。サーバーの起動（`services.server.cmd`）、アプリのビルド（`subject.build`）、XCUITest runner のビルド（`driver.runner.build`）です。実行するかどうかは、ワーカーの `worker.yaml` の `commandExecution` が config の出所（`uploaded`、`remote`、`operator`）ごとに決めます。モードは `allow`、`sandbox`、`named`、`deny` の4つです。判定は表の参照なので、同じファイルと出所とコマンドからは常に同じ結果になります。serve は出所のラベルを付けるだけです。ワーカーは受け付ける出所を `command-execution:<source>` として広告します。run は実行の前にもう一度判定し、出会ったコマンドを `manifest.json` の `commandExecutions` に記録します（[BE-0492](roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）
+- **config のコマンドの実行可否**：config は、run のためのコマンドを宣言できます。ターゲットの hook コマンド（`hooks.beforeRun` とその 3 つの兄弟リスト）、アプリのビルド（`subject.build`）、XCUITest runner のビルド（`driver.runner.build`）です。実行するかどうかは、ワーカーの `worker.yaml` の `commandExecution` が config の出所（`uploaded`、`remote`、`operator`）ごとに決めます。モードは `allow`、`sandbox`、`named`、`deny` の4つです。判定は表の参照なので、同じファイルと出所とコマンドからは常に同じ結果になります。serve は出所のラベルを付けるだけです。ワーカーは受け付ける出所を `command-execution:<source>` として広告します。run は実行の前にもう一度判定し、出会ったコマンドを `manifest.json` の `commandExecutions` に記録します（[BE-0492](roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）
 - **CLI**：`bajutsu run ... --workers N` です。既定は 1 です。`--udid` はデバイスのカンマ区切りリストを受け取り、`--workers` はそのリストの台数を上限として丸められます
 - **デバイスの条件と run の組み合わせ**：ターゲットの `runsOn` には、宛先ごとのブロック（`ios`、`android`、`browser`）にデバイスの条件を書けます。iOS の `model` と `os`、Android の `avd` と `apiLevel`、web の `browser` です。シナリオは条件を宣言せず、必要な条件を持つターゲットを指定します（BE-0469）。run の前に、プールの各デバイスから読んだ事実とこれらの条件を照合します。リストは値ごとに、範囲はメジャーバージョンごとに run を作ります。各 run が使うデバイスの集合は、どれも同じモデルとリリースにそろえます。そのため、どのデバイスが run を受け持っても、観測する画面は変わりません。リストや両側が閉じた範囲で合うデバイスがなければ、その run は失敗します。片側が開いた範囲で合うデバイスがなければ、対象外（not applicable）の記録を残します。すべての記録が対象外なら、呼び出しは終了コード 1 で終わります。照合も run の数も決定的で、AI は関与しません（[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）
 - **不変条件**：並列でもシナリオ間で simulator / 索引 / モック状態を共有しません。共有が要る前提は `preconditions` で各テストが自前で構築します（§2）。この不変条件は、デバイスを実際に 2 台同時に起動する CI レーンが検証します（[BE-0298](roadmaps/BE-0298-device-pool-concurrent-real-verification/BE-0298-device-pool-concurrent-real-verification-ja.md)）。fake driver に架空の udid を渡すユニットテストが示せるのは、プール自身の記帳の整合性までです。OS レベルの競合は、実際に 2 台のデバイスを同時に動かしたときにしか表面化しません
@@ -319,7 +319,7 @@ class Driver(Protocol):
 per-target に必要なものを示します。汎用化の単位は「アプリ」です。新しいアプリを対象にするとき変えるのは **ツールではなくアプリ側の準備 + config 1 エントリ** です。
 
 1. **§7 規約を適用**：主要要素に `accessibilityIdentifier`（アプリ固有の名前空間で。例 `settings.*`）を付けます。状態を label / traits / value に露出し、launch hook、anim off、ネットワークの mock 化を行います
-2. **config に `targets.<name>` を追加**（§8）：次のキーを書きます。`platform` / `subject.id` / 既定の `subject.launch.env` / `services.mockServer` / `evidence.redact`
+2. **config に `targets.<name>` を追加**（§8）：次のキーを書きます。`platform` / `subject.id` / 既定の `subject.launch.env` / `evidence.redact`
 3. **再利用セットアップを用意**（任意）：複数シナリオ共通の前段（ログインなど）をコンポーネントへ切り出し、シナリオの `setup` か `hooks.setup` から `use:` で呼びます（§6.1）
 4. **`bajutsu doctor --target <name>` で検証**：実行可能ゲートと §7 充足度スコアを出します（測り方は §7.2）
 5. **シナリオを `scenarios/<name>/` に配置**：識別子はそのアプリの名前空間で書きます
@@ -445,7 +445,7 @@ targets:
       id: com.bajutsu.showcase.ios.swiftui
       launch: { env: { SHOWCASE_UITEST: "1" } }        # このアプリ既定のフック（§7）
       idNamespaces: [stable, horse, search, log]       # 識別子の名前空間（§7 命名規約）
-    # 決定的ネットワークは scenario 単位の mocks で宣言する（§3.2 / §6.1）。外部 services.mockServer は BE-0027 で見送り
+    # 決定的ネットワークは scenario 単位の mocks で宣言する（§3.2 / §6.1）。外部のモックサーバーは BE-0027 で見送り
     hooks:
       setup:
         - use: { component: ./scenarios/showcase/_setup.yaml }   # 再利用する前段等（§6.1）
