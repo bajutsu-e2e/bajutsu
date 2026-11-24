@@ -31,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,7 +48,11 @@ from bajutsu.common.config.effective.hook_phases import HookPhases
 from bajutsu.common.config.schema.hook_command import HookCommand, invalid_hook_name
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.run_meta.artifact_perms import make_run_dir
-from bajutsu.common.runner.sandbox import SandboxError, SandboxRuntime
+from bajutsu.common.runner.sandbox import (
+    SandboxError,
+    SandboxRuntime,
+    grant_container_access,
+)
 
 # The process seam `HookRunner` spawns through: argv, environment, working directory, the timeout it
 # is bounded by, and the raw log file its output is appended to. Injected in tests, so every
@@ -152,6 +157,9 @@ class HookContext:
     verdict: str | None = None
     # The scenario's run-order index, which separates one scenario's logs from another's.
     scenario_index: int | None = None
+    # The evidence subdirectory this pass writes under (`<engine>` in a cross-browser matrix), so
+    # one pass's logs never overwrite another's. Empty for a run that writes at the top level.
+    log_prefix: str = ""
 
     def env(self) -> dict[str, str]:
         """The context variables a command of this phase receives."""
@@ -237,6 +245,8 @@ class HookRecord:
     log: str | None
     skipped: bool = False
     failure: str | None = None
+    # Why it was skipped, when the reason is not simply its `on` (a spent teardown budget).
+    reason: str | None = None
 
 
 @dataclass
@@ -394,6 +404,7 @@ class HookRunner:
         inherited: HookOutputs | None = None,
         sandbox: SandboxRuntime | None = None,
         cwd_base: Path | None = None,
+        deadline: float | None = None,
     ) -> HookPhaseResult:
         """Run one list's entries in declaration order and return what they produced.
 
@@ -415,17 +426,33 @@ class HookRunner:
                 base directory. For entries declared in another file — a scenario's own (BE-0501) —
                 that is the directory of the file that declared them. It does not move the
                 directory a named command may not live inside, which stays the config's own.
+            deadline: A monotonic instant the whole list must finish by, which a cancelled run's
+                teardown sets from the slice of the grace window `cleanup` already uses. Each
+                entry's own `timeout` is capped by what is left of it, and once it is spent the
+                remaining entries are recorded as skipped rather than run — the designed bound, not
+                a failure.
         """
         # Copied, never shared: a scenario's own lists start from the run-level outputs, and two
         # workers writing into that one object would leak one scenario's values into another's.
-        result = HookPhaseResult(outputs=inherited.copy() if inherited is not None else HookOutputs())
+        result = HookPhaseResult(
+            outputs=inherited.copy() if inherited is not None else HookOutputs()
+        )
         after = list_name.startswith("after")
         for index, entry in enumerate(entries):
             if after and entry.on != "always" and entry.on != context.verdict:
                 result.records.append(HookRecord(list_name, entry.label, None, skipped=True))
                 continue
+            left = None if deadline is None else deadline - time.monotonic()
+            if left is not None and left <= 0:
+                self._say(f"{list_name}: {entry.label} — teardown budget spent; not run")
+                result.records.append(
+                    HookRecord(
+                        list_name, entry.label, None, skipped=True, reason="teardown budget spent"
+                    )
+                )
+                continue
             record, failure, values = self._run_entry(
-                list_name, index, entry, context, result, sandbox, cwd_base
+                list_name, index, entry, context, result, sandbox, cwd_base, left
             )
             result.records.append(record)
             if failure is not None:
@@ -449,10 +476,19 @@ class HookRunner:
         so_far: HookPhaseResult,
         sandbox: SandboxRuntime | None = None,
         cwd_base: Path | None = None,
+        budget: float | None = None,
     ) -> tuple[HookRecord, HookFailure | None, dict[str, str]]:
         slot = entry.name or str(index)
         try:
-            segments = [safe_segment(list_name, "a hook list"), safe_segment(context.target, "a target name")]
+            segments = [
+                *(
+                    [safe_segment(context.log_prefix, "an evidence prefix")]
+                    if context.log_prefix
+                    else []
+                ),
+                safe_segment(list_name, "a hook list"),
+                safe_segment(context.target, "a target name"),
+            ]
             if context.scenario_index is not None:
                 segments.append(f"{context.scenario_index:02d}")
             raw_log, raw_out = self._raw_paths(segments, slot)
@@ -462,6 +498,9 @@ class HookRunner:
                 HookFailure(list_name, entry.label, str(e)),
                 {},
             )
+        if sandbox is not None and raw_out is not None:
+            # Created after the container started, so the hand-over is per entry, not once at start.
+            grant_container_access(raw_out)
         log_name = "/".join([HOOK_FIELD, *segments, f"{slot}.log"])
         try:
             argv, env, cwd, sandboxed = self._resolve(
@@ -475,10 +514,11 @@ class HookRunner:
             )
         self._say(f"{list_name}: {entry.label} — running")
         reason: str | None = None
+        timeout = entry.timeout if budget is None else min(entry.timeout, budget)
         try:
-            code = self._run(argv, env, cwd, entry.timeout, raw_log)
+            code = self._run(argv, env, cwd, timeout, raw_log)
         except subprocess.TimeoutExpired:
-            code, reason = -1, f"timed out after {entry.timeout:g}s"
+            code, reason = -1, f"timed out after {timeout:g}s"
         except OSError as e:  # the executable is missing / not executable
             code, reason = -1, f"could not start: {e}"
         if reason is None and code != 0:
@@ -701,6 +741,7 @@ def run_phase(
     inherited: HookOutputs | None = None,
     sandboxes: Mapping[str, SandboxRuntime] | None = None,
     cwd_base: Path | None = None,
+    deadline: float | None = None,
 ) -> HookPhaseResult:
     """Run one list across every target a run or a scenario drives, and merge the outcome.
 
@@ -733,6 +774,7 @@ def run_phase(
             inherited=merged.outputs,
             sandbox=(sandboxes or {}).get(target),
             cwd_base=cwd_base,
+            deadline=deadline,
         )
         merged.outputs = one.outputs
         merged.failures += one.failures

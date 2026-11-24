@@ -267,6 +267,10 @@ def _repeat_audit(
                         # an `appium` grid's endpoint audits against the live capability set,
                         # keeping preflight in lockstep with routing.
                         lease_udid_spec=udid,
+                        # Audit replays scenarios through `run_all`, so each repeat runs their own
+                        # `beforeScenario` / `afterScenario` and reads `${hooks.*}` (BE-0491) —
+                        # otherwise a scenario that depends on seeded data could not be audited.
+                        hooks=hooks,
                     )
                 ),
                 label,

@@ -11,9 +11,9 @@ import pytest
 from bajutsu.common.capability.command_gate import CommandGate
 from bajutsu.common.capability.command_policy import CommandExecution, CommandPolicy, NamedCommand
 from bajutsu.common.config.schema.hook_command import HookCommand
+from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.runner import hook_commands as hc
-from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.scenario import Redact
 
 
@@ -56,8 +56,12 @@ def test_output_file_values_reach_later_commands_and_the_scenario(tmp_path: Path
     result = runner.run_list(
         "beforeRun",
         [
-            HookCommand(name="user", cmd=_script(tmp_path, "mk.sh", 'echo "userId=u-42" > $BAJUTSU_OUTPUT')),
-            HookCommand(cmd=_script(tmp_path, "rd.sh", f'echo "$BAJUTSU_HOOK__user__userId" > {seen}')),
+            HookCommand(
+                name="user", cmd=_script(tmp_path, "mk.sh", 'echo "userId=u-42" > $BAJUTSU_OUTPUT')
+            ),
+            HookCommand(
+                cmd=_script(tmp_path, "rd.sh", f'echo "$BAJUTSU_HOOK__user__userId" > {seen}')
+            ),
         ],
         _ctx(),
     )
@@ -72,7 +76,11 @@ def test_a_malformed_output_line_fails_the_entry(tmp_path: Path) -> None:
     runner = _runner(tmp_path)
     result = runner.run_list(
         "beforeRun",
-        [HookCommand(name="seed", cmd=_script(tmp_path, "bad.sh", 'echo "oops" > $BAJUTSU_OUTPUT'))],
+        [
+            HookCommand(
+                name="seed", cmd=_script(tmp_path, "bad.sh", 'echo "oops" > $BAJUTSU_OUTPUT')
+            )
+        ],
         _ctx(),
     )
     assert not result.ok
@@ -85,7 +93,11 @@ def test_an_invalid_output_key_fails_the_entry(tmp_path: Path, key: str) -> None
     runner = _runner(tmp_path)
     result = runner.run_list(
         "beforeRun",
-        [HookCommand(name="seed", cmd=_script(tmp_path, "k.sh", f'echo "{key}=v" > $BAJUTSU_OUTPUT'))],
+        [
+            HookCommand(
+                name="seed", cmd=_script(tmp_path, "k.sh", f'echo "{key}=v" > $BAJUTSU_OUTPUT')
+            )
+        ],
         _ctx(),
     )
     assert not result.ok and "output key" in result.reason
@@ -160,9 +172,7 @@ def test_a_timeout_fails_the_entry_and_stops_the_process_group(tmp_path: Path) -
 
 def test_a_missing_executable_fails_the_entry(tmp_path: Path) -> None:
     runner = _runner(tmp_path)
-    result = runner.run_list(
-        "beforeRun", [HookCommand(cmd=str(tmp_path / "nope.sh"))], _ctx()
-    )
+    result = runner.run_list("beforeRun", [HookCommand(cmd=str(tmp_path / "nope.sh"))], _ctx())
     assert not result.ok and "could not start" in result.reason
 
 
@@ -323,9 +333,7 @@ def test_a_named_command_runs_the_worker_s_own_script(tmp_path: Path) -> None:
         gate=gate,
         named_commands={"seed": NamedCommand(path=script, env=("SEED",))},
     )
-    result = runner.run_list(
-        "beforeRun", [HookCommand(use="seed", env={"SEED": "ok"})], _ctx()
-    )
+    result = runner.run_list("beforeRun", [HookCommand(use="seed", env={"SEED": "ok"})], _ctx())
     assert result.ok, result.reason
     assert ran.read_text().strip() == "ok"
 
@@ -424,7 +432,11 @@ def test_the_log_half_of_the_raw_area_is_separate_from_the_mounted_half(tmp_path
     runner = hc.HookRunner(raw_dir=raw, base_dir=tmp_path)
     runner.run_list(
         "beforeRun",
-        [HookCommand(name="x", cmd=_script(tmp_path, "s.sh", 'echo hi; echo "k=v" > $BAJUTSU_OUTPUT'))],
+        [
+            HookCommand(
+                name="x", cmd=_script(tmp_path, "s.sh", 'echo hi; echo "k=v" > $BAJUTSU_OUTPUT')
+            )
+        ],
         _ctx(),
     )
     assert (raw / hc.LOGS_SUBDIR / "beforeRun" / "web" / "x.log").read_text().strip() == "hi"
@@ -451,7 +463,11 @@ def test_inherited_outputs_are_copied_not_written_into(tmp_path: Path) -> None:
     run_level = hc.HookOutputs(values={"server": {"port": "8787"}})
     result = runner.run_list(
         "beforeScenario",
-        [HookCommand(name="user", cmd=_script(tmp_path, "mku.sh", 'echo "id=7" > $BAJUTSU_OUTPUT'))],
+        [
+            HookCommand(
+                name="user", cmd=_script(tmp_path, "mku.sh", 'echo "id=7" > $BAJUTSU_OUTPUT')
+            )
+        ],
         _ctx(scenario_index=0),
         inherited=run_level,
     )
@@ -539,3 +555,40 @@ def test_worker_indexes_are_stable_per_thread() -> None:
     t.start()
     t.join()
     assert seen == [1]
+
+
+def test_a_cancelled_teardown_is_bounded_by_its_budget(tmp_path: Path) -> None:
+    # A SIGTERM must not be held off for one more `timeout` per entry: each is capped by what is
+    # left of the slice of the grace window a scenario's own `cleanup` already uses.
+    import time
+
+    runner = _runner(tmp_path)
+    ran = tmp_path / "late.txt"
+    result = runner.run_list(
+        "afterRun",
+        [
+            HookCommand(cmd=_script(tmp_path, "slow.sh", "sleep 10"), timeout=300),
+            HookCommand(cmd=_script(tmp_path, "late2.sh", f"touch {ran}")),
+        ],
+        _ctx(verdict="failure"),
+        deadline=time.monotonic() + 0.4,
+    )
+    # The cap is what is left of the budget, not the entry's own 300s.
+    assert not result.ok and "timed out after 0." in result.reason
+    # The budget is spent, so the entry behind it is recorded as skipped rather than run.
+    assert not ran.exists()
+    assert result.records[-1].skipped and result.records[-1].reason == "teardown budget spent"
+
+
+def test_an_evidence_prefix_separates_one_matrix_pass_from_another(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "r1"
+    writer = RunArtifactWriter(run_dir, Redactor(Redact(), []))
+    runner = _runner(tmp_path, writer=writer)
+    result = runner.run_list(
+        "beforeScenario",
+        [HookCommand(name="user", cmd=_script(tmp_path, "pfx.sh", "true"))],
+        hc.HookContext(
+            run_id="r1", target="web", run_dir=run_dir, scenario_index=0, log_prefix="firefox"
+        ),
+    )
+    assert result.records[0].log == "hooks/firefox/beforeScenario/web/00/user.log"

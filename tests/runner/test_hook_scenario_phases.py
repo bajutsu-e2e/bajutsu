@@ -91,14 +91,10 @@ def test_after_scenario_sees_the_verdict_and_folds_its_failure_in(tmp_path: Path
 
 
 def test_a_failed_scenario_keeps_its_own_failure_ahead_of_the_teardown_s(tmp_path: Path) -> None:
-    phases = HookPhases(
-        after_scenario=[HookCommand(cmd=_script(tmp_path, "boom2.sh", "exit 3"))]
-    )
+    phases = HookPhases(after_scenario=[HookCommand(cmd=_script(tmp_path, "boom2.sh", "exit 3"))])
     session, eff = _session(tmp_path, phases)
     # A step that cannot pass on the fake screen, so the scenario fails on its own first.
-    scenario = Scenario.model_validate(
-        {"name": "demo", "steps": [{"tap": {"id": "missing"}}]}
-    )
+    scenario = Scenario.model_validate({"name": "demo", "steps": [{"tap": {"id": "missing"}}]})
     [result] = run_all(eff, [scenario], _lease, hooks=session)
     assert not result.ok and result.failure is not None
     assert "exited 3" in result.failure  # appended behind the step's own failure
@@ -152,7 +148,9 @@ def test_a_scenario_reads_a_hook_output_through_the_token(tmp_path: Path) -> Non
 def test_a_key_the_command_never_wrote_fails_the_scenario_naming_both(tmp_path: Path) -> None:
     phases = HookPhases(
         before_scenario=[
-            HookCommand(name="user", cmd=_script(tmp_path, "u2.sh", 'echo "id=1" > $BAJUTSU_OUTPUT'))
+            HookCommand(
+                name="user", cmd=_script(tmp_path, "u2.sh", 'echo "id=1" > $BAJUTSU_OUTPUT')
+            )
         ]
     )
     session, eff = _session(tmp_path, phases)
@@ -187,3 +185,80 @@ def test_one_scenario_s_outputs_do_not_leak_into_the_next(tmp_path: Path) -> Non
     session, eff = _session(tmp_path, phases)
     run_all(eff, [_scenario(), _scenario()], _lease, hooks=session)
     assert seen.read_text().split() == ["prev=[]", "prev=[]"]
+
+
+def test_after_scenario_reads_what_before_scenario_wrote(tmp_path: Path) -> None:
+    # The pair's whole point: a teardown script deletes the record its own counterpart created.
+    seen = tmp_path / "torn.txt"
+    phases = HookPhases(
+        before_scenario=[
+            HookCommand(
+                name="user", cmd=_script(tmp_path, "mk2.sh", 'echo "userId=u-9" > $BAJUTSU_OUTPUT')
+            )
+        ],
+        after_scenario=[
+            HookCommand(
+                cmd=_script(tmp_path, "rm.sh", f'echo "$BAJUTSU_HOOK__user__userId" > {seen}')
+            )
+        ],
+    )
+    session, eff = _session(tmp_path, phases)
+    [result] = run_all(eff, [_scenario()], _lease, hooks=session)
+    assert result.ok, result.failure
+    assert seen.read_text().strip() == "u-9"
+
+
+def test_a_before_scenario_failure_is_not_prefixed_twice(tmp_path: Path) -> None:
+    phases = HookPhases(
+        before_scenario=[HookCommand(name="seed", cmd=_script(tmp_path, "b2.sh", "exit 1"))]
+    )
+    session, eff = _session(tmp_path, phases)
+    [result] = run_all(eff, [_scenario()], _lease, hooks=session)
+    assert result.failure == "beforeScenario: seed: exited 1"
+
+
+def test_a_scenario_the_worker_cannot_run_seeds_nothing(tmp_path: Path) -> None:
+    # It never runs, so it must not seed data and then tear it down.
+    ran = tmp_path / "seeded.txt"
+    phases = HookPhases(
+        before_scenario=[HookCommand(cmd=_script(tmp_path, "b3.sh", f"touch {ran}"))],
+        after_scenario=[HookCommand(cmd=_script(tmp_path, "a3.sh", f"touch {ran}"))],
+    )
+    session, eff = _session(tmp_path, phases)
+    [result] = run_all(
+        eff, [_scenario()], _lease, hooks=session, worker_failures={0: "unsupported here"}
+    )
+    assert not result.ok and result.failure == "unsupported here"
+    assert not ran.exists()
+
+
+def test_a_cancelled_run_seeds_nothing_either(tmp_path: Path) -> None:
+    ran = tmp_path / "seeded2.txt"
+    phases = HookPhases(
+        before_scenario=[HookCommand(cmd=_script(tmp_path, "b4.sh", f"touch {ran}"))]
+    )
+    session, eff = _session(tmp_path, phases)
+    [result] = run_all(eff, [_scenario()], _lease, hooks=session, cancelled=lambda: True)
+    assert not result.ok
+    assert not ran.exists()
+
+
+def test_a_masked_hook_value_is_masked_in_the_scenario_s_own_result(tmp_path: Path) -> None:
+    # `mask: true` is a secret of this scenario's evidence too, not only of the hook's own log.
+    phases = HookPhases(
+        before_scenario=[
+            HookCommand(
+                name="cred",
+                mask=True,
+                cmd=_script(tmp_path, "c.sh", 'echo "pw=sekret99" > $BAJUTSU_OUTPUT'),
+            )
+        ]
+    )
+    session, eff = _session(tmp_path, phases)
+    # A step that fails and quotes the value back, so the masking is observable in the result.
+    scenario = Scenario.model_validate(
+        {"name": "demo", "steps": [{"tap": {"id": "sekret99"}}]}
+    )
+    [result] = run_all(eff, [scenario], _lease, hooks=session)
+    assert not result.ok and result.failure is not None
+    assert "sekret99" not in result.failure

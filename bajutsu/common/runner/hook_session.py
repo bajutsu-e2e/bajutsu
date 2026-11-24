@@ -100,12 +100,14 @@ class HookSession:
         self.records += result.records
         return result
 
-    def after_run(self, verdict: str) -> HookPhaseResult:
+    def after_run(self, verdict: str, *, deadline: float | None = None) -> HookPhaseResult:
         """Run every target's `afterRun` in reverse declared order, then clear the raw area.
 
         Runs on every path out of the run, a cancelled one included, and keeps each scenario's
         verdict whatever it finds: a teardown failure is recorded and fails the run's own exit code,
-        never a scenario's result.
+        never a scenario's result. *deadline* bounds it after a cancel, from the slice of the grace
+        window a scenario's own `cleanup` is bounded by, so a `SIGTERM` is not held off for one more
+        `timeout` per entry.
         """
         if self.finished is not None:
             return self.finished
@@ -116,6 +118,7 @@ class HookSession:
             lambda target: self.context(target, verdict=verdict),
             inherited=self.outputs,
             sandboxes=self.sandboxes,
+            deadline=deadline,
         )
         self.records += result.records
         for runtime in self.sandboxes.values():

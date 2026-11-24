@@ -972,6 +972,7 @@ def _stub_launch(
     monkeypatch.setattr(
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
+
     class _FakeHooks:
         """Stands in for the run's hook session; `after_run` is what `repl` registers at exit."""
 
