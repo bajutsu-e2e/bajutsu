@@ -55,9 +55,17 @@ def test_the_flag_is_inserted_into_a_leased_run(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.parametrize("subcommand", ["record", "crawl", "triage"])
-def test_other_commands_are_left_alone(tmp_path: Path, subcommand: str) -> None:
+@pytest.mark.parametrize("subcommand", ["record", "crawl"])
+def test_record_and_crawl_take_the_workers_file(tmp_path: Path, subcommand: str) -> None:
+    # Both run the config's server and runner build, so the worker's command policy reaches them
+    # through the same file (BE-0492).
     cmd = [sys.executable, "-m", "bajutsu", subcommand, "--target", "demo"]
+    out = _with_worker_config(cmd, tmp_path / "w.yaml")
+    assert out == [*cmd[:4], "--worker-config", str((tmp_path / "w.yaml").resolve()), *cmd[4:]]
+
+
+def test_other_commands_are_left_alone(tmp_path: Path) -> None:
+    cmd = [sys.executable, "-m", "bajutsu", "triage", "--target", "demo"]
     assert _with_worker_config(cmd, tmp_path / "w.yaml") == cmd
 
 
@@ -192,3 +200,21 @@ def test_a_device_cloud_worker_without_a_provider_stops_at_startup(
     monkeypatch.delenv("DEVICEFARM_PROJECT_ARN", raising=False)
     with pytest.raises(typer.BadParameter, match="registered no provider"):
         worker_mod._register_environment_or_exit("devicefarm")
+
+
+def test_the_worker_stamps_the_specs_source_over_the_argvs() -> None:
+    # The label comes from the spec's own field, never from a `--config-source` the argv carries
+    # (BE-0492): an argv from an older server carries none, and one claiming `operator` must not win.
+    from bajutsu.serve.server.worker_job import _with_config_source
+
+    cmd = [sys.executable, "-m", "bajutsu", "record", "--config-source", "operator", "--goal", "g"]
+    assert _with_config_source(cmd, "uploaded") == [
+        *cmd[:4],
+        "--config-source",
+        "uploaded",
+        "--goal",
+        "g",
+    ]
+    assert _with_config_source(cmd, "operator") == [*cmd[:4], "--goal", "g"]
+    triage = [sys.executable, "-m", "bajutsu", "triage", "--x"]
+    assert _with_config_source(triage, "uploaded") == triage

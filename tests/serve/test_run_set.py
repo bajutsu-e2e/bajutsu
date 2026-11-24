@@ -125,7 +125,7 @@ def test_fan_out_registers_one_batch_job_per_scenario(tmp_path: Path) -> None:
         assert job.intent.app_path == "app.apk"
 
 
-def test_a_local_binding_copies_the_stored_baselines_and_names_no_upload_policy(
+def test_a_local_binding_copies_the_stored_baselines_and_names_no_config_source(
     tmp_path: Path,
 ) -> None:
     # The values the server alone decides travel with the intent, as for a plain run (BE-0484).
@@ -136,12 +136,12 @@ def test_a_local_binding_copies_the_stored_baselines_and_names_no_upload_policy(
 
     assert status == 200
     (job,) = executor.jobs
-    assert job.intent is not None and job.intent.upload_exec == ""
+    assert job.intent is not None and job.intent.config_source == ""
     assert job.materialize_baselines is True
     assert job.provenance is None
 
 
-def test_an_uploaded_binding_carries_its_launch_policy_and_provenance_but_no_baselines(
+def test_an_uploaded_binding_carries_its_source_and_provenance_but_no_baselines(
     tmp_path: Path,
 ) -> None:
     upload = SimpleNamespace(
@@ -150,13 +150,12 @@ def test_an_uploaded_binding_carries_its_launch_policy_and_provenance_but_no_bas
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml"])
     state, executor = _state(tmp_path, cfg, scn_dir)
     state.binding = replace(state.binding, upload=upload)  # type: ignore[arg-type]
-    state.upload_exec = "deny"
 
     _payload, status = start_run_set(state, _DF)
 
     assert status == 200
     (job,) = executor.jobs
-    assert job.intent is not None and job.intent.upload_exec == "deny"
+    assert job.intent is not None and job.intent.config_source == "uploaded"
     assert job.materialize_baselines is False
     assert job.provenance == {"bundle": "a" * 64}
 

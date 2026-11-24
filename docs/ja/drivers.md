@@ -224,6 +224,8 @@ runner は各シナリオを actuator の能力と照合します（`bajutsu/com
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
 | `realDevices` | `xcuitest` を提供する `local` の worker が、接続した実機の iPhone も動かすかどうかです。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |
 | `build` | target の `subject.build` を実行してアプリをビルドできるプラットフォームを、`ios` と `android` から選んで並べます。省くと両方とみなします。このキーができる前から、worker はどのアプリもビルドしていたからです。`[]` にすると何もビルドしません。run がビルドを必要とするとき（`subject.path` のアプリが存在しないとき、または `--rebuild` を指定したとき）にリストが target のプラットフォームを含まなければ、`run` はツールチェーンのないマシンでビルドを始めずに、プラットフォーム名を示して終了コード 2 で終わります。worker は、リストにあり自身が動かすプラットフォームごとに `build:<platform>` を広告し、serve は強制ビルドのジョブをその worker に振り分けます（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。 |
+| `commandExecution` | config が宣言したコマンドをこの worker で実行するかどうかを、config の出所（`uploaded`、`remote`、`operator`）ごとに1つのモードで決めます。モードは `allow`、`sandbox`、`named`、`deny` のどれかです。省いたキーは `uploaded: sandbox`、`remote: sandbox`、`operator: allow` になります（[BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）。 |
+| `namedCommands` | worker の運用者が責任を持つスクリプトを、`[A-Za-z][A-Za-z0-9_-]*` に合う名前で並べます。各エントリは、絶対パスの `path` と、config が設定してよい変数を並べた `env` を持ちます。`env` には、`PATH` や `LD_PRELOAD` のような、プロセスがコードを読み込む方法を変える変数を含められません。 |
 
 パッケージは既定のファイルを `bajutsu/common/capability/worker.yaml` に同梱しています。
 既定は、すべてのドライバを提供し、iOS と Android のどちらのアプリもビルドし、target の数に上限を設けないローカルの worker を記述します。
@@ -250,6 +252,27 @@ drivers: [xcuitest, adb, playwright, fake]
 
 グリッドのプラットフォームに属する target はエンドポイントをデバイスとして使い、シナリオのほかの target は
 このホストにとどまります。グリッドの target を 2 つ持つシナリオは拒否します。
+
+信頼できない config を実行し、秘密情報も持つ worker では、そうした config のサーバーコマンドを拒否できます。
+
+```yaml
+version: 1
+environment: local
+drivers: [playwright]
+commandExecution:
+  uploaded: named
+  remote: named
+  operator: allow
+namedCommands:
+  seed-users:
+    path: /opt/bajutsu/hooks/seed-users.sh
+    env: [SEED_COUNT]
+```
+
+`named` では、アップロードされたバンドルと Web UI から bind した Git の config のサーバーコマンドを実行しません。
+運用者自身の config は、引き続きホスト上でコマンドを実行します。
+各モード、このブロックが加えるルーティングトークン、各 run が残す記録は
+[セルフホスティング](self-hosting.md#worker-が実行する-config-のコマンドbe-0492)で説明しています。
 
 `bajutsu worker`、`run`、`record`、`crawl`、`repl`、`audit`、`doctor`、`bajutsu mcp` は
 `--worker-config <path>` を受け付けます。

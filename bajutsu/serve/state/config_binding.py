@@ -29,8 +29,8 @@ class ConfigBinding:
         upload: The bound uploaded bundle, or None when the configuration came from the file browser,
             Git, or startup.
         git_from_api: Whether this is a Git source bound at runtime through the API rather than
-            pre-configured by the operator. Such a source is untrusted: its `build:` is nulled unless
-            `allow_remote_build` opts in (BE-0121).
+            pre-configured by the operator. Such a source is untrusted, so its jobs carry the
+            `remote` config source the worker's command policy reads (BE-0121, BE-0492).
         org: The org that bound this configuration through the API — an uploaded bundle, a composed
             triple, or a Git source (BE-0375). None for the launch configuration, whose own `orgs:`
             block then partitions targets as the operator wrote it.

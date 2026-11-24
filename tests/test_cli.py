@@ -490,9 +490,7 @@ def test_record_writes_the_authored_scenario(
     )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
-    monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
-    )
+    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
     monkeypatch.setattr(rec, "record_loop", lambda *a, **k: authored)
 
     cfg = tmp_path / "bajutsu.config.yaml"
@@ -551,9 +549,7 @@ def test_record_needs_human_handoff_exits_3(
     )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
-    monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
-    )
+    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
 
     def _needs_human(*_a: object, **_k: object) -> object:
         raise HumanHandoffUnavailable("solve the CAPTCHA")
@@ -612,9 +608,7 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
-    monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: (lambda: None, None)
-    )
+    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
     monkeypatch.setattr(rec, "launch_driver", no_device)
     r = invoke(
         runner,
@@ -2259,20 +2253,39 @@ def test_serve_rejects_invalid_upload_exec() -> None:
     assert "upload-exec" in r.output
 
 
-def test_serve_upload_exec_env_mirror_and_flag_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
-    # The flag wins; absent a flag the BAJUTSU_UPLOAD_EXEC env var is honoured (hosted backend).
-    import bajutsu.serve as srv
+@pytest.mark.parametrize(
+    ("args", "env"),
+    [
+        (["--upload-exec", "reuse"], {}),
+        (["--allow-remote-build"], {}),
+        ([], {"BAJUTSU_UPLOAD_EXEC": "deny"}),
+        ([], {"BAJUTSU_ALLOW_REMOTE_BUILD": "1"}),
+    ],
+)
+def test_serve_refuses_the_removed_command_policy_options(
+    monkeypatch: pytest.MonkeyPatch, args: list[str], env: dict[str, str]
+) -> None:
+    # The worker's worker.yaml decides now (BE-0492); a server-side value would decide nothing, so
+    # serve stops and names the new home rather than starting with it silently ignored.
+    started: list[object] = []
+    monkeypatch.setattr("bajutsu.serve.serve", lambda **kw: started.append(kw))
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    r = invoke(runner, app, ["serve", *args, "--config", "bajutsu.config.yaml"])
+    assert r.exit_code == 2
+    assert "commandExecution" in r.output and "BE-0492" in r.output
+    assert started == []
 
-    captured: dict[str, object] = {}
-    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))
-    monkeypatch.setenv("BAJUTSU_UPLOAD_EXEC", "deny")
+
+def test_serve_ignores_an_allow_remote_build_env_that_read_as_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `false` never asked for a remote build, so it does not stop the server (BE-0492).
+    started: list[object] = []
+    monkeypatch.setattr("bajutsu.serve.serve", lambda **kw: started.append(kw))
+    monkeypatch.setenv("BAJUTSU_ALLOW_REMOTE_BUILD", "false")
     r = invoke(runner, app, ["serve", "--config", "bajutsu.config.yaml"])
-    from_env = captured["upload_exec"]
-    assert r.exit_code == 0 and from_env == "deny"  # env honoured when no flag
-    captured.clear()
-    r = invoke(runner, app, ["serve", "--upload-exec", "reuse", "--config", "bajutsu.config.yaml"])
-    from_flag = captured["upload_exec"]
-    assert r.exit_code == 0 and from_flag == "reuse"  # flag wins over env
+    assert r.exit_code == 0 and len(started) == 1
 
 
 def test_serve_themes_flag_and_default_theme(
@@ -2465,9 +2478,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate (guide is lazy)
     monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "playwright")
-    monkeypatch.setattr(
-        "bajutsu.cli._shared.start_launch_server", lambda *a, **k: ((lambda: None), None)
-    )
+    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
 
     launched = {"n": 0}
 

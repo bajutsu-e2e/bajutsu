@@ -1,7 +1,7 @@
-"""Tests for the sandboxed launchServer execution (BE-0090, `serve --upload-exec=sandbox`).
+"""Tests for the sandboxed server command (BE-0090; the worker's `sandbox` mode, BE-0492).
 
 The Docker daemon is never touched: the container launch (`run_fn`) and the short docker commands
-(`exec_fn`, for `build` / `rm`) are injected fakes, so the argv construction, the deny/reuse/sandbox
+(`exec_fn`, for `build` / `rm`) are injected fakes, so the argv construction, the reuse/container
 decision, the exactly-one-of-image enforcement, and the fail-loud paths are all covered here. Only
 the real `docker run` / `docker build` is exercised outside this gate.
 """
@@ -180,17 +180,11 @@ def test_reuse_short_circuits_the_container(monkeypatch: pytest.MonkeyPatch) -> 
     # An externally-answering readyUrl reuses it: no container, no build.
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: True)
     rec = _Recorder()
-    stop, decision = sandbox.start_sandboxed_server(
+    stop = sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
     )
     stop()
     assert rec.run_calls == [] and rec.exec_calls == []
-    assert decision == {
-        "decision": "reused",
-        "field": "launchServer",
-        "source": None,
-        "image": None,
-    }
 
 
 def test_docker_image_runs_hardened_container(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -198,12 +192,11 @@ def test_docker_image_runs_hardened_container(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
     monkeypatch.setattr(time, "sleep", lambda s: None)
     rec = _Recorder(_FakeProc(code=None))
-    stop, decision = sandbox.start_sandboxed_server(
+    stop = sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
     )
     assert len(rec.run_calls) == 1 and rec.run_calls[0][:2] == ["docker", "run"]
     assert rec.exec_calls == []  # nothing built for a named image
-    assert decision["decision"] == "sandboxed" and decision["source"] == "dockerImage"
     stop()
     assert rec.exec_calls[-1][:3] == ["docker", "rm", "-f"]  # torn down
 
@@ -232,14 +225,13 @@ def test_dockerfile_builds_then_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
     monkeypatch.setattr(time, "sleep", lambda s: None)
     rec = _Recorder(_FakeProc(code=None))
-    _stop, decision = sandbox.start_sandboxed_server(
+    sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerfile: 'Dockerfile'"),
         run_fn=rec.run_fn,
         exec_fn=rec.exec_fn,
     )
     assert rec.exec_calls[0][:2] == ["docker", "build"]  # built before run
     assert len(rec.run_calls) == 1
-    assert decision["source"] == "dockerfile"
 
 
 def test_container_exits_before_ready_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -278,7 +270,7 @@ def test_teardown_tolerates_an_already_removed_container(monkeypatch: pytest.Mon
     monkeypatch.setattr(sandbox, "_probe", lambda url, timeout=2.0: next(probes))
     monkeypatch.setattr(time, "sleep", lambda s: None)
     rec = _Recorder(_FakeProc(code=None), rm_error=True)
-    stop, _decision = sandbox.start_sandboxed_server(
+    stop = sandbox.start_sandboxed_server(
         _eff("cmd: 'serve', port: 8080, dockerImage: 'img'"), run_fn=rec.run_fn, exec_fn=rec.exec_fn
     )
     stop()  # must not raise even though `docker rm -f` fails

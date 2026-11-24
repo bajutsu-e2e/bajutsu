@@ -1,8 +1,8 @@
-"""Run an uploaded bundle's `launchServer.cmd` inside a throwaway, hardened Docker container.
+"""Run a config's `services.server.cmd` inside a throwaway, hardened Docker container.
 
-`serve --upload-exec=sandbox` (BE-0090) routes an *uploaded* bundle's server command here instead of
-spawning it on the bare host (`launch_server.py`'s `Popen`), so a hostile `cmd` reaches nothing but a
-disposable container. The lifecycle mirrors `start_launch_server` — probe `readyUrl`, reuse if it
+A worker whose `commandExecution` policy sets `sandbox` for the config's source (BE-0492) routes the
+server command here instead of spawning it on the bare host (`launch_server.py`'s `Popen`), so a
+hostile `cmd` reaches nothing but a disposable container. The lifecycle mirrors `start_launch_server` — probe `readyUrl`, reuse if it
 already answers, else bring the command up and wait on the same readiness condition (never a fixed
 sleep) — but the bring-up is a container, torn down with `docker rm -f` rather than a process-group
 kill. Docker is reached through two injected seams (`run_fn` for the long-running container, `exec_fn`
@@ -154,8 +154,8 @@ def start_sandboxed_server(
     run_fn: RunFn = _real_run,
     exec_fn: ExecFn = _real_exec,
     log: Callable[[str], None] | None = None,
-) -> tuple[Callable[[], None], dict[str, str | None]]:
-    """Bring up `eff.launch_server` in a container, returning `(teardown, decision)`.
+) -> Callable[[], None]:
+    """Bring up `eff.launch_server` in a container, returning its teardown.
 
     Reuses an externally-answering `readyUrl` (no container), else resolves the image, publishes the
     in-container `port` to `readyUrl`'s loopback host port, runs the hardened container, and waits on
@@ -164,14 +164,13 @@ def start_sandboxed_server(
     that declares one).
 
     `bundle_root` is the **trusted** host directory bind-mounted read-only into the container and used
-    as the `docker build` context — the run's confined working directory (the extracted bundle), which
-    `serve` controls. It defaults to the process cwd. It is deliberately *not* taken from the
+    as the `docker build` context — the run's working directory, which the worker prepared (an
+    extracted bundle or a checkout). It defaults to the process cwd. It is deliberately *not* taken from the
     (untrusted) config `launchServer.cwd`, so a hostile config cannot bind or build from an arbitrary
     host path.
 
     Returns:
-        A teardown callable (a no-op when an externally-started server is reused), and a provenance
-        record of the decision (`reused` / `sandboxed`).
+        A teardown callable (a no-op when an externally-started server is reused).
     """
     ls = eff.launch_server
     say = log or _default_log
@@ -182,12 +181,7 @@ def start_sandboxed_server(
 
     if _probe(ready_url):
         say(f"launchServer(sandbox): {ready_url} already serving — reusing it (no container)")
-        return (lambda: None), {
-            "decision": "reused",
-            "field": "launchServer",
-            "source": None,
-            "image": None,
-        }
+        return lambda: None
 
     if ls.port is None:
         raise SandboxError("sandbox launchServer needs `port` (the in-container listen port)")
@@ -204,7 +198,7 @@ def start_sandboxed_server(
     # The trusted, caller-supplied bundle root (never the untrusted config `cwd`), absolute so Docker
     # gets an unambiguous bind source / build context.
     bundle_cwd = str(Path(bundle_root or Path.cwd()).resolve())
-    image, meta = resolve_image(
+    image, _ = resolve_image(
         ls, exec_fn=exec_fn, bundle_cwd=bundle_cwd, tag=f"bajutsu-sandbox:{container}"
     )
 
@@ -232,7 +226,7 @@ def start_sandboxed_server(
             )
         if _probe(ready_url):
             say(f"launchServer(sandbox): {ready_url} ready")
-            return teardown, {"decision": "sandboxed", "field": "launchServer", **meta}
+            return teardown
         time.sleep(_POLL_INTERVAL)
     teardown()
     raise SandboxError(

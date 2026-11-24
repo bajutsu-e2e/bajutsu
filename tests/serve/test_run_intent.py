@@ -35,7 +35,7 @@ def test_the_spec_carries_the_intent_and_no_batch_or_command() -> None:
         "config": "bajutsu.config.yaml",
         "platform": "android",
         "app_path": "app.apk",
-        "upload_exec": "",
+        "config_source": "",
     }
     assert spec["batch"] is None and spec["cmd"] == []
 
@@ -57,7 +57,7 @@ def test_a_device_cloud_worker_submits_the_intent_as_its_own_providers_batch() -
 def test_any_other_worker_runs_the_intent_as_the_command_a_plain_run_carries(
     environment: str,
 ) -> None:
-    intent = replace(_INTENT, upload_exec="deny")
+    intent = replace(_INTENT, config_source="uploaded")
     resolved = resolve_run_intent(
         job_spec(Job(intent=intent, label="nightly", materialize_baselines=True)), environment
     )
@@ -66,7 +66,7 @@ def test_any_other_worker_runs_the_intent_as_the_command_a_plain_run_carries(
         "demo",
         config="bajutsu.config.yaml",
         baselines="baselines",
-        upload_exec="deny",
+        config_source="uploaded",
         label="nightly",
     )
     assert resolved["batch"] is None

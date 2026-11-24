@@ -23,7 +23,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from bajutsu.common.config import RUNNER_BUILD_WITHHELD_ENV
+from bajutsu.common.capability import command_gate
+from bajutsu.common.capability.command_gate import CommandRefused
+from bajutsu.common.capability.command_policy import SUBJECT_BUILD_FIELD
 
 
 class BuildError(RuntimeError):
@@ -44,11 +46,9 @@ def build_app(build: str | None, app_path: str | None, *, cwd: Path, force: bool
     A no-op when there is nothing to build: no `build` command, or — without *force* — no
     `app_path` or a binary that already exists, so an existing build is reused untouched.
 
-    A run `serve` spawned for a config it does not trust to run host commands carries
-    `RUNNER_BUILD_WITHHELD_ENV` (an uploaded bundle, or an API-bound Git config without
-    `--allow-remote-build`). There an on-demand build is skipped, leaving the missing binary to fail
-    the run as before, and a forced one raises: the spawned run must not execute a command `serve`
-    itself refused to run.
+    The worker's command policy decides whether a needed build runs at all (BE-0492): a mode that
+    does not run builds for the config's source refuses it, naming the mode, so the run never starts
+    against a missing or stale binary and never runs a command the worker's operator ruled out.
 
     Args:
         build: The config's `subject.build` shell command, or None.
@@ -59,19 +59,19 @@ def build_app(build: str | None, app_path: str | None, *, cwd: Path, force: bool
         force: Build even when the binary already exists (`run --rebuild`).
 
     Raises:
-        BuildError: The build command is withheld from a forced build, unparseable, exited
-            non-zero, or could not be spawned.
+        BuildError: The worker's command policy does not run the build, or the command is
+            unparseable, exited non-zero, or could not be spawned.
     """
     if not build:
         return
     if not force and (not app_path or Path(app_path).exists()):
         return
-    if os.environ.get(RUNNER_BUILD_WITHHELD_ENV) == "1":
-        if force:
-            raise BuildError(
-                "subject.build withheld: serve does not run the build command of an untrusted config"
-            )
-        return
+    gate = command_gate.current()
+    if gate.check("build", SUBJECT_BUILD_FIELD, build) != "host":
+        try:
+            gate.refuse(SUBJECT_BUILD_FIELD, build)
+        except CommandRefused as e:
+            raise BuildError(str(e)) from None
     if force:
         sys.stderr.write(f"rebuilding the app: {build}\n")
     else:
@@ -84,5 +84,6 @@ def build_app(build: str | None, app_path: str | None, *, cwd: Path, force: bool
         code = subprocess.run(argv, cwd=cwd, check=False, env=_build_env()).returncode
     except OSError as e:
         raise BuildError(f"build failed: {e}") from e
+    gate.record(SUBJECT_BUILD_FIELD, build, exit_code=code, cwd=cwd)
     if code != 0:
         raise BuildError(f"build failed (exit {code}): {build}")

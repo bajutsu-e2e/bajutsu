@@ -405,17 +405,18 @@ def test_run_command_parallel_pool() -> None:
     assert "--workers" not in srv.run_command("s.yaml", "demo", workers=1)  # single-device omits it
 
 
-def test_command_builders_pass_upload_exec_only_when_set() -> None:
-    # The flag is set by serve only for an upload-sourced config (BE-0090); empty omits it.
+def test_command_builders_pass_the_config_source_only_when_set() -> None:
+    # serve labels a config that is not the operator's own (BE-0492); empty omits the flag, so the
+    # spawned command reads its config as the operator's.
     builders: tuple[Callable[..., list[str]], ...] = (
         lambda **k: srv.run_command("s.yaml", "demo", **k),
         lambda **k: srv.record_command("o.yaml", "demo", "goal", **k),
         lambda **k: srv.crawl_command("demo", out="o", **k),
     )
     for build in builders:
-        assert "--upload-exec" not in build()  # default empty: ungoverned
-        sandboxed = build(upload_exec="sandbox")
-        assert sandboxed[sandboxed.index("--upload-exec") + 1] == "sandbox"
+        assert "--config-source" not in build()
+        labelled = build(config_source="uploaded")
+        assert labelled[labelled.index("--config-source") + 1] == "uploaded"
 
 
 def test_run_command_includes_baselines() -> None:

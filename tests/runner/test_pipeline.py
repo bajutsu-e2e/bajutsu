@@ -2333,27 +2333,33 @@ def test_run_and_report_records_git_config_source(tmp_path: Path) -> None:
     assert data["provenance"]["configSource"] == src
 
 
-def test_run_and_report_records_upload_exec_decision(tmp_path: Path) -> None:
-    # BE-0090: an upload-governed run stamps the launchServer policy decision into the manifest.
+def test_run_and_report_records_command_executions(tmp_path: Path) -> None:
+    # BE-0492: every governed command the run met lands in the manifest's provenance.
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
-    decision: dict[str, str | None] = {
-        "decision": "sandboxed",
-        "field": "launchServer",
-        "source": "dockerImage",
-        "image": "img",
-    }
+    records = [
+        {
+            "field": "services.server.cmd",
+            "cmd": "./start.sh",
+            "source": "uploaded",
+            "mode": "sandbox",
+            "decision": "sandboxed",
+            "sha256": {"cmd": "abc"},
+        }
+    ]
     _, manifest = run_and_report(
-        _eff(), scenarios, _lease, tmp_path / "runs", "run1", exec_provenance=decision
+        _eff(), scenarios, _lease, tmp_path / "runs", "run1", command_executions=records
     )
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert data["provenance"]["uploadExec"] == decision
+    assert data["provenance"]["commandExecutions"] == records
 
 
-def test_run_and_report_omits_upload_exec_for_ungoverned_run(tmp_path: Path) -> None:
+def test_run_and_report_omits_command_executions_when_none_ran(tmp_path: Path) -> None:
     scenarios = [Scenario.model_validate({"name": "a", "steps": [{"tap": {"id": "ok"}}]})]
-    _, manifest = run_and_report(_eff(), scenarios, _lease, tmp_path / "runs", "run1")
+    _, manifest = run_and_report(
+        _eff(), scenarios, _lease, tmp_path / "runs", "run1", command_executions=[]
+    )
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert "uploadExec" not in data["provenance"]  # None decision → no key
+    assert "commandExecutions" not in data["provenance"]
 
 
 def test_git_revision_maps_failure_and_blank_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
