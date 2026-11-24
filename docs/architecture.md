@@ -628,6 +628,7 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - The URL goes to the app the driver addresses, which an enclosing `app:` block may name. The step then waits for that app in front.
   - It rides on a new `Driver.open_url(url)` method and the `openUrl` capability. The XCUITest and adb backends declare it, so preflight stops the step on the web backend.
   - iOS: the runner's `POST /app/openUrl` calls `XCUIApplication.open(_:)` (iOS 16.4 or later). A raised exception or a recorded XCTest issue comes back as `not-opened`, with its message.
+  - iOS: `open(_:)` delivers a URL whatever scheme the app declares. The driver first checks the scheme against the app's `CFBundleURLTypes`. An environment that cannot read the build skips the check.
   - Android: the adb driver sends a `VIEW` intent for the package with `am start -W --activity-single-top`. It quotes the line with `shlex`.
   - The adb driver reads the verdict from `am start`'s output. The exit status reports an unresolved intent as success, so it cannot serve. The launch deep link reads the same output, so a deep link that never opened now stops the launch.
 - DSL `attribute` assertion (BE-0466, web only) checks one HTML attribute of one element (`href`, `alt`, a `data-*` or `aria-*` state). It uses `equals` / `contains` / `matches` or `absent: true`.

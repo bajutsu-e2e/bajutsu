@@ -184,6 +184,20 @@ class Env:
             raise
         return True
 
+    def app_container(self, bundle_id: str) -> str | None:
+        """The installed bundle's path on this host, or None when the device does not name one.
+
+        Lenient, as `is_installed` is: the caller reads the bundle as optional evidence, so an absent
+        app and a device that cannot answer both read as no path.
+        """
+        try:
+            return self._run(get_app_container_cmd(self.udid, bundle_id), None).strip() or None
+        except DeviceTimeout as exc:
+            _probe_timed_out(exc, "an unknown bundle path")
+            return None
+        except subprocess.CalledProcessError:
+            return None
+
     def is_app_running(self, bundle_id: str) -> bool:
         """Whether `bundle_id` has a live process on this device, read from the guest `launchd` (BE-0455).
 

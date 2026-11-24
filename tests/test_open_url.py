@@ -8,9 +8,11 @@ and foreground wait, and the XCUITest driver's mapping of the runner's replies.
 
 from __future__ import annotations
 
+import plistlib
 import shlex
 import subprocess
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
@@ -24,9 +26,21 @@ from bajutsu.common.drivers.adb import AdbDriver
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.drivers.playwright import PlaywrightDriver
 from bajutsu.common.drivers.webview.web_context_driver import WebContextDriver
-from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestDriver, _decode, _Reply
+from bajutsu.common.drivers.xcuitest import (
+    RunnerTarget,
+    XcuitestChannelError,
+    XcuitestDriver,
+    _decode,
+    _Reply,
+)
 from bajutsu.common.drivers.xcuitest_live.xcuitest_live_driver import XcuitestLiveDriver
 from bajutsu.common.orchestrator import _action_of, run_scenario
+from bajutsu.common.platform_lifecycle.environments.xcuitest._functions import (
+    _declared_url_schemes,
+)
+from bajutsu.common.platform_lifecycle.environments.xcuitest.xcuitest_environment import (
+    XcuitestEnvironment,
+)
 from bajutsu.common.scenario import (
     OpenUrl,
     Scenario,
@@ -547,3 +561,169 @@ def test_a_component_cannot_splice_open_url_under_a_web_block() -> None:
     )
     with pytest.raises(ValueError, match="not allowed inside a web: block"):
         expand_components(scenarios, lambda _ref: component)
+
+
+# --- iOS: the declared-scheme check ahead of the runner's route ---
+
+
+def _schemes(
+    declared: Mapping[str | None, frozenset[str] | None], sent: list[str]
+) -> XcuitestDriver:
+    def transport(method: str, path: str, body: Mapping[str, Any] | None) -> _Reply:
+        sent.append(path)
+        return _Reply(status="ok")
+
+    return XcuitestDriver(transport=transport, url_schemes=lambda b: declared[b])
+
+
+def test_an_undeclared_scheme_fails_before_the_url_is_sent() -> None:
+    # `XCUIApplication.open(_:)` delivers it regardless, so the refusal has to come first.
+    sent: list[str] = []
+    driver = _schemes({None: frozenset({"myapp", "alt"})}, sent)
+    with pytest.raises(
+        base.SelectorError, match=r"the app under test .*'other'.*declared: alt, myapp"
+    ):
+        driver.open_url("other://x")
+    assert sent == []
+    assert not driver.drain_actuations().records
+
+
+def test_a_build_that_declares_no_scheme_refuses_any_custom_one() -> None:
+    with pytest.raises(base.SelectorError, match="declared: none"):
+        _schemes({None: frozenset()}, []).open_url("myapp://x")
+
+
+@pytest.mark.parametrize("url", ["myapp://x", "MyApp://x", "https://a.example/b", "HTTP://a.b"])
+def test_a_declared_scheme_or_a_web_url_is_sent(url: str) -> None:
+    sent: list[str] = []
+    _schemes({None: frozenset({"myapp"})}, sent).open_url(url)
+    assert sent == ["/app/openUrl"]
+
+
+def test_an_unreadable_build_leaves_the_verdict_to_the_runner() -> None:
+    sent: list[str] = []
+    _schemes({None: None}, sent).open_url("anything://x")
+    assert sent == ["/app/openUrl"]
+
+
+def test_the_innermost_entered_app_is_the_one_checked() -> None:
+    driver = _schemes(
+        {None: frozenset({"base"}), "b.outer": frozenset({"outer"}), "b.inner": frozenset({"in"})},
+        [],
+    )
+    driver.enter_app("b.outer")
+    driver.enter_app("b.inner")
+    driver.open_url("in://x")
+    with pytest.raises(base.SelectorError, match=r"b\.inner does not declare"):
+        driver.open_url("outer://x")
+    driver.leave_app()
+    driver.open_url("outer://x")
+    driver.leave_app()
+    driver.open_url("base://x")
+
+
+def test_a_group_member_checks_its_own_app() -> None:
+    driver = _schemes({"com.example.auth": frozenset({"auth"})}, [])
+    driver.bind_to_member("com.example.auth", RunnerTarget(current="com.example.auth"))
+    driver.open_url("auth://x")
+    with pytest.raises(base.SelectorError, match=r"com\.example\.auth does not declare"):
+        driver.open_url("other://x")
+
+
+# --- iOS: reading the declared schemes out of a build ---
+
+
+def _bundle(tmp_path: Path, plist: Mapping[str, Any], name: str = "A.app") -> str:
+    app = tmp_path / name
+    app.mkdir()
+    (app / "Info.plist").write_bytes(plistlib.dumps(dict(plist)))
+    return str(app)
+
+
+def test_declared_url_schemes_merges_every_url_type(tmp_path: Path) -> None:
+    path = _bundle(
+        tmp_path,
+        {
+            "CFBundleIdentifier": "com.example.a",
+            "CFBundleURLTypes": [
+                {"CFBundleURLSchemes": ["MyApp", "alt"]},
+                {"CFBundleURLName": "no schemes"},
+            ],
+        },
+    )
+    assert _declared_url_schemes(path, "com.example.a") == frozenset({"myapp", "alt"})
+    # Another app's build says nothing about this one.
+    assert _declared_url_schemes(path, "com.example.b") is None
+
+
+def test_declared_url_schemes_without_url_types_is_the_empty_set(tmp_path: Path) -> None:
+    path = _bundle(tmp_path, {"CFBundleIdentifier": "com.example.a"})
+    assert _declared_url_schemes(path, "com.example.a") == frozenset()
+
+
+@pytest.mark.parametrize(
+    "types", ["myapp", ["myapp"], [{"CFBundleURLSchemes": "myapp"}]], ids=["str", "item", "schemes"]
+)
+def test_declared_url_schemes_of_an_unexpected_shape_is_unknown(
+    tmp_path: Path, types: object
+) -> None:
+    path = _bundle(tmp_path, {"CFBundleIdentifier": "com.example.a", "CFBundleURLTypes": types})
+    assert _declared_url_schemes(path, "com.example.a") is None
+
+
+@pytest.mark.parametrize("raw", [None, b"garbage", b"<?xml version='1.0'?><plist><dict>"])
+def test_declared_url_schemes_of_an_unreadable_build_is_unknown(
+    tmp_path: Path, raw: bytes | None
+) -> None:
+    app = tmp_path / "A.app"
+    app.mkdir()
+    if raw is not None:
+        (app / "Info.plist").write_bytes(raw)
+    assert _declared_url_schemes(str(app), "com.example.a") is None
+
+
+def _env_with(
+    own: tuple[str, str | None] | None, installed: Mapping[str, str], *, device: bool = False
+) -> XcuitestEnvironment:
+    def run(args: list[str], _env: Mapping[str, str] | None = None) -> str:
+        assert args[:3] == ["xcrun", "simctl", "get_app_container"]
+        assert not device  # simctl cannot reach a real device
+        if args[4] not in installed:
+            raise subprocess.CalledProcessError(2, args)
+        return installed[args[4]] + "\n"
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env._own_app = own
+    env._is_real_device = device
+    return env
+
+
+def test_the_simulator_reads_any_installed_build(tmp_path: Path) -> None:
+    def build(name: str, bundle_id: str) -> str:
+        types = [{"CFBundleURLSchemes": [name]}]
+        return _bundle(
+            tmp_path, {"CFBundleIdentifier": bundle_id, "CFBundleURLTypes": types}, f"{name}.app"
+        )
+
+    env = _env_with(
+        ("com.a", "/configured/elsewhere.app"),
+        {"com.a": build("a", "com.a"), "com.b": build("b", "com.b")},
+    )
+    assert env._url_schemes(None) == frozenset(
+        {"a"}
+    )  # the installed build, not the configured path
+    assert env._url_schemes("com.b") == frozenset({"b"})
+    assert env._url_schemes("com.absent") is None
+    assert _env_with(None, {})._url_schemes(None) is None  # nothing started yet
+
+
+def test_a_real_device_reads_the_configured_build_of_its_own_app_alone(tmp_path: Path) -> None:
+    path = _bundle(
+        tmp_path,
+        {"CFBundleIdentifier": "com.a", "CFBundleURLTypes": [{"CFBundleURLSchemes": ["a"]}]},
+    )
+    env = _env_with(("com.a", path), {}, device=True)
+    assert env._url_schemes(None) == frozenset({"a"})
+    assert env._url_schemes("com.a") == frozenset({"a"})
+    assert env._url_schemes("com.b") is None
+    assert _env_with(("com.a", None), {}, device=True)._url_schemes(None) is None

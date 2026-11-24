@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base, tracing
@@ -29,7 +30,7 @@ from ._functions import (
 )
 from ._health_wait import _HealthWait
 from ._reply import _Reply
-from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn
+from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn, UrlSchemeSource
 from .paste_menu import COPY_MENU_LABELS, PASTE_MENU_LABELS, SELECT_ALL_MENU_LABELS
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
@@ -143,6 +144,7 @@ class XcuitestDriver:
         device_os: DeviceOS | None = None,
         is_real_device: bool = False,
         zorder: ZOrderSource | None = None,
+        url_schemes: UrlSchemeSource | None = None,
     ) -> None:
         # Whether this drives a real iPhone rather than a Simulator (`runsOn.ios.kind: device`).
         # Read only by `app_crash_signal`, which scopes itself out on one: a real device jetsam-kills
@@ -268,12 +270,16 @@ class XcuitestDriver:
         # The in-app responder that measures `nativeZ` (BE-0355). None when the run allocated no
         # port, or when the app never links BajutsuKit — either way every element keeps `None`.
         self._zorder = zorder
-        # How many `app:` blocks are open (`enter_app` not yet matched by `leave_app`). The z-order
-        # responder lives in the test target, so while another app is in front its positions
+        # The apps of the open `app:` blocks, innermost last (`enter_app` not yet matched by
+        # `leave_app`): the app an `openUrl` goes to (BE-0487). While any is open, the z-order
+        # responder, which lives in the test target, goes unasked: its positions
         # describe the wrong tree — and asking them hits a suspended process: the queued requests,
         # answered on resume, killed a backgrounded showcase app with SIGPIPE
         # (docs/specs/ios-home-screen-widget-feasibility.md).
-        self._entered_apps = 0
+        self._entered_apps: list[str] = []
+        # What the receiving app's build declares as its URL schemes (BE-0487); None when the
+        # environment wired no source, which leaves `open_url` with the runner's verdict alone.
+        self._url_schemes = url_schemes
         # The app this driver addresses on a runner a device group shares (BE-0447), None while it
         # drives the runner alone. Set by `bind_to_member`, which also turns on the front check.
         self._member_bundle: str | None = None
@@ -1127,16 +1133,20 @@ class XcuitestDriver:
         The runner calls `XCUIApplication.open(_:)` on the top of its app stack — the innermost
         `enter_app`'s, else the app under test — so the URL never goes to whichever app iOS would
         pick. A system dialog the URL raises is left up, for an `interrupts` entry or a
-        `handleSystemAlert` step to answer. The refusal signal is whatever `open(_:)` raises or
-        records; should it report nothing for a URL no app handles, the step passes, and the
-        assertion that follows catches the wrong screen.
+        `handleSystemAlert` step to answer.
+
+        `open(_:)` delivers the URL straight to that app, whether or not the app declares the
+        scheme, so a URL no tap on a link could bring there would pass. The declared schemes of the
+        app's own build refuse such a URL before it is sent, where the environment can read them.
 
         Raises:
-            SelectorError: The system refused the URL; the reason is the runner's own message.
+            SelectorError: The receiving app's build does not declare the URL's scheme, or the
+                system refused the URL; the reason is then the runner's own message.
             ElementNotFound: The app never reached the foreground.
             UnsupportedAction: The device runs an iOS before 16.4, which has no `open(_:)`.
             XcuitestChannelError: Any other reply, a runner fault rather than a test outcome.
         """
+        self._require_declared_scheme(url)
         self._actuations.record(Actuation(gesture="openUrl", via="url", unit=_UNIT))
         reply = self._transport("POST", "/app/openUrl", {"url": url})
         if reply.status == _OK:
@@ -1149,6 +1159,22 @@ class XcuitestDriver:
         if reply.status == _UNSUPPORTED:
             raise base.UnsupportedAction("openUrl needs iOS 16.4 or later on the device")
         raise XcuitestChannelError(f"runner error opening a URL (status={reply.status})")
+
+    def _require_declared_scheme(self, url: str) -> None:
+        # `http` and `https` reach an app through its associated domains, which no `Info.plist`
+        # lists, so their absence from the declared schemes proves nothing.
+        scheme = urlsplit(url).scheme.lower()
+        if self._url_schemes is None or scheme in ("http", "https"):
+            return
+        bundle_id = self._entered_apps[-1] if self._entered_apps else self._member_bundle
+        declared = self._url_schemes(bundle_id)
+        if declared is None or scheme in declared:
+            return
+        raise base.SelectorError(
+            f"openUrl: {bundle_id or 'the app under test'} does not declare the URL scheme "
+            f"{scheme!r}, so the system would not route the URL to it "
+            f"(declared: {', '.join(sorted(declared)) or 'none'})"
+        )
 
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
@@ -1313,7 +1339,7 @@ class XcuitestDriver:
         """
         reply = self._transport("POST", "/app/enter", {"bundleId": bundle_id})
         if reply.status == _OK:
-            self._entered_apps += 1
+            self._entered_apps.append(bundle_id)
             return
         if reply.status == _NOT_FOREGROUND:
             raise base.ElementNotFound(f"app did not reach the foreground: {bundle_id!r}")
@@ -1328,9 +1354,10 @@ class XcuitestDriver:
         finally:
             # The runner pops its stack before re-activating what is beneath, so the block is closed
             # whether or not that app then reaches the foreground. A channel fault closes it too: the
-            # run loop only logs a failed leave and carries on, and a stuck count would silence
+            # run loop only logs a failed leave and carries on, and a stuck entry would silence
             # `nativeZ` for the rest of the lease.
-            self._entered_apps = max(0, self._entered_apps - 1)
+            if self._entered_apps:
+                self._entered_apps.pop()
         if reply.status == _OK:
             return
         if reply.status == _NOT_FOREGROUND:

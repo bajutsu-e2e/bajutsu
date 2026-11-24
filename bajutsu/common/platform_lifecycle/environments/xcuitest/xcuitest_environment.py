@@ -42,6 +42,7 @@ from ._functions import (
     _allocate_port,
     _app_crash_reports,
     _bundle_executable,
+    _declared_url_schemes,
     _destination,
     _diagnostic_reports_dir,
     _forwarded_launch,
@@ -217,6 +218,10 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # branch and read only by the driver's BE-0424 app-crash signal, which scopes itself out on
         # one. False until the first `start`.
         self._is_real_device = False
+        # The lease's own app and its configured build, on either route, for the URL schemes an
+        # `openUrl` checks (BE-0487). Kept apart from `_bundle_id` / `_app_path` above, which are
+        # None on a real device because what they feed runs through simctl.
+        self._own_app: tuple[str, str | None] | None = None
         # The device-clock instant the app under test was last launched at, the lower bound the
         # `.ips` sweep matches reports against (BE-0424). Stamped immediately *before* each of the
         # four launch sites — the cold spawn, a `relaunch` step, a crawl's frontier reset, and a warm
@@ -343,6 +348,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         # real device: `notRunning` there can be an OS memory-pressure kill, and its crash reports
         # never land in this host's own `DiagnosticReports` to be attached.
         self._is_real_device = device_type == "device"
+        self._own_app = (ios.bundle_id, ios.app_path)
         # The app answers `nativeZ` on the port this run injected, so the client is built from the
         # same launch env the app will read (BE-0355). Held on the environment rather than threaded
         # through the spawn path, so a warm resume reuses the responder its own launch set up.
@@ -1012,6 +1018,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             device_os=self._device_os(),
             is_real_device=self._is_real_device,
             zorder=self._zorder,
+            url_schemes=self._url_schemes,
         )
         # `log_tail` / `discard` reach live environment state (`self._runner_log` / `self._runner_proc`);
         # they are valid only until the next `spawn()` overwrites it, which the strictly sequential
@@ -1317,6 +1324,24 @@ class XcuitestEnvironment(_DeviceEnvironment):
             return None
         return device_os.parse(simctl.runtime_label(self._device_runtime_id))
 
+    def _url_schemes(self, bundle_id: str | None) -> frozenset[str] | None:
+        """The URL schemes *bundle_id*'s build declares, or None when no build can be read (BE-0487).
+
+        None for *bundle_id* means the lease's own app. The Simulator answers for any installed app,
+        from the bundle that is on the device now, so an `installApp` step is followed. A real device
+        exposes no bundle to this host: there the configured build stands in, for the lease's own app
+        alone.
+        """
+        if self._own_app is None:
+            return None
+        own_id, own_path = self._own_app
+        target = bundle_id or own_id
+        if not self._is_real_device:
+            path = simctl.Env(self._udid, run=self._run).app_container(target)
+        else:
+            path = own_path if target == own_id else None
+        return _declared_url_schemes(path, target) if path else None
+
     def _healthy_resident_driver(self) -> base.Driver | None:
         """The driver for the warm runner if it is up and answering `/health`, else None (BE-0291 Unit 4).
 
@@ -1338,6 +1363,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             device_os=self._device_os(),
             is_real_device=self._is_real_device,
             zorder=self._zorder,
+            url_schemes=self._url_schemes,
         )
         try:
             cast(base.BackendLifecycle, driver).await_ready(timeout=_WARM_HEALTH_TIMEOUT)
@@ -1580,6 +1606,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
             device_os=self._device_os(),
             # The `nativeZ` responder lives in the lease's own app, never in a member's.
             zorder=None,
+            url_schemes=self._url_schemes,
         )
         _bind_member(driver, ios.bundle_id, group)
         self._member_drivers[ios.bundle_id] = driver

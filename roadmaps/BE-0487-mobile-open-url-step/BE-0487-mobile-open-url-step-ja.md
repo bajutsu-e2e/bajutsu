@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0487](BE-0487-mobile-open-url-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0487") |
-| 実装 PR | [#2470](https://github.com/bajutsu-e2e/bajutsu/pull/2470)（単位 1、2、4、7。単位 3、5、6 はコードまで） |
+| 実装 PR | [#2470](https://github.com/bajutsu-e2e/bajutsu/pull/2470)（単位 1、2、4、7。単位 3、5、6 はコードまで）、PRLINK（単位 3、5、6） |
 | トピック | シナリオ作成機能 |
 <!-- /BE-METADATA -->
 
@@ -277,10 +277,10 @@ preflight からは分かりません。
 
 - [x] シナリオのモデル
 - [x] ドライバーの受け口と preflight
-- [ ] Android の経路
+- [x] Android の経路
 - [x] 起動時 deeplink の修正
-- [ ] iOS の経路
-- [ ] showcase のシナリオ
+- [x] iOS の経路
+- [x] showcase のシナリオ
 - [x] ドキュメント
 
 ログ：
@@ -291,6 +291,10 @@ preflight からは分かりません。
   - 読み込み時の検査は、BE-0464 と同じ理由で、モデルではなく `Scenario` のバリデーター（`_open_urls.py`）で行います。`web:` の中に置けない規則は入れ子のステップをすべてたどり、`${...}` を含む値も例外にしません。`expand_components` はコンポーネントを展開した後にこの規則をもう一度適用するので、`web:` の中の `use:` から `openUrl` がすり抜けることはありません。
   - `XCUIApplication.open(_:)` が XCTest の issue として記録した失敗は、`continueAfterFailure` のもとでは通常どおり戻ります。そこで `RunnerUITest.record(_:)` から受け取る収集器（`RecordedIssues`）で捕まえ、`ActuationReply` にメッセージを運ぶ `reason` フィールドを加えました。
   - codegen は、XCUITest では `#available(iOS 16.4, *)` で囲んだ `app.open(URL(string:)!)` を、UI Automator と Playwright ではラベル付きの `// TODO` を出力します。この点は設計で扱っていませんでした。
+- PRLINK：端末での結果にもとづいて単位 3、5、6 を完了し、単位 5 にスキームの照合を加えました。
+  - 単位 3 と 6：[Android](https://github.com/bajutsu-e2e/bajutsu/actions/runs/45323704367) と [iOS](https://github.com/bajutsu-e2e/bajutsu/actions/runs/45323704265) の E2E の実行で、`open_url_android.yaml` と `open_url.yaml` が成功しました。Android のシナリオは、起動時の deeplink と同じ URL を `openUrl` で開き直します。
+  - 単位 5：iOS 18.6 と 27.0 の Simulator で、どのアプリも宣言していないスキームを `/app/openUrl` に渡しました。`open(_:)` は例外も失敗の記録も残しませんでした。しかも URL はアプリに届き、showcase は URL が指すタブへ切り替わりました。associated domains のない `https` でも結果は同じでした。
+  - どのリンクからも届かない URL でステップが成功すると、壊れたリンクを見逃します。そこで、設計が求めた「制限を文書に書く」対応にとどめず、ドライバーがランナーを呼ぶ前に、受け取るアプリの `CFBundleURLTypes` とスキームを照合するようにしました。Simulator ではインストール済みのバンドルを読みます。実機では、テスト対象のアプリに限って `subject.path` の `.app` を読みます。`http` と `https`、読めないビルドは照合しません。Simulator での照合は、iOS 27.0 の showcase とシステムのブラウザで確認しました。実機は用意できなかったので、実機での照合は未確認です。
 
 ## 参考
 
