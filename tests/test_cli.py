@@ -2083,7 +2083,7 @@ def test_doctor_reports_unreachable_screen_instead_of_crashing(
     # `_current_screen` is replaced wholesale below, so the real udid resolution it would do never
     # runs — no `resolve_udid` stub needed.
     def boom(actuator: str, udid: str, eff: object) -> list[object]:
-        raise simctl.DeviceError("web browser fault (recoverable wedge): ERR_CONNECTION_REFUSED")
+        raise simctl.DeviceError("web browser fault: ERR_CONNECTION_REFUSED")
 
     monkeypatch.setattr("bajutsu.cli.commands.doctor._current_screen", boom)
     cfg, _ = _write(tmp_path)

@@ -1401,7 +1401,7 @@ def test_screenshot_timeout_on_every_attempt_still_wedges(monkeypatch: pytest.Mo
 
 
 def test_screenshot_does_not_retry_a_closed_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Only a timeout is the navigation race; a closed target is a real wedge, reported at once."""
+    """A timeout or a refused capture is the navigation race; a closed target is a real wedge."""
     from bajutsu.common.backend_cli import simctl
 
     _stub_playwright_errors(monkeypatch)
@@ -1410,6 +1410,58 @@ def test_screenshot_does_not_retry_a_closed_page(monkeypatch: pytest.MonkeyPatch
         PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
     assert page.shot_timeouts == [5_000]
     assert page.load_waits == []
+
+
+_CAPTURE_REFUSED = (
+    "Page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot"
+)
+
+
+def test_screenshot_retries_a_refused_capture_after_the_new_document_paints(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chromium refuses a capture that lands just after a script-initiated navigation commits; the
+    recapture once the new document has painted succeeds (issue #2509)."""
+    from bajutsu.common.drivers.playwright.playwright_driver import _SETTLE_JS
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError(_CAPTURE_REFUSED)])
+    PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+
+    assert page.shot == "after.png"
+    assert page.shot_timeouts == [5_000, None]
+    assert page.load_waits == ["domcontentloaded"]
+    assert page.evaluated == [_SETTLE_JS]
+
+
+def test_screenshot_refused_on_every_attempt_still_wedges(monkeypatch: pytest.MonkeyPatch) -> None:
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [])
+
+    def refuse(*, path: str, timeout: float | None = None) -> object:
+        page.shot_timeouts.append(timeout)
+        raise _NavPwError(_CAPTURE_REFUSED)
+
+    page.screenshot = refuse  # type: ignore[method-assign]
+    with pytest.raises(simctl.DeviceError, match="Unable to capture screenshot"):
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert page.shot_timeouts == [5_000, None]
+
+
+def test_wedge_message_does_not_call_a_run_fault_recoverable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the crawl recovers from a wedge, so the message a `run` sees must not promise recovery
+    (issue #2509)."""
+    from bajutsu.common.backend_cli import simctl
+
+    _stub_playwright_errors(monkeypatch)
+    page = _NavigatingPage([], [_NavPwError("Target crashed")])
+    with pytest.raises(simctl.DeviceError) as info:
+        PlaywrightDriver("http://app.test/", page=page).screenshot("after.png")
+    assert str(info.value) == "web browser fault: Target crashed"
 
 
 def test_query_reruns_on_the_new_document_when_navigation_destroys_its_context(

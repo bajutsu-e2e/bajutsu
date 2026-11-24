@@ -29,6 +29,7 @@ from ._functions import (
     _iframe_elements,
     _iframe_records,
     _is_browser_fault,
+    _is_capture_failure,
     _is_context_destroyed,
     _is_main_frame,
     _is_playwright_timeout,
@@ -869,9 +870,7 @@ class PlaywrightDriver:
             if _is_browser_fault(exc, target):
                 # Raised here rather than left to `_wedge_guard`, which embeds `{exc}` whole: the
                 # wedge reason has to leave the URL out as the step failure below does.
-                raise simctl.DeviceError(
-                    f"web browser fault (recoverable wedge): {_nav_reason(exc, target)}"
-                ) from exc
+                raise simctl.DeviceError(f"web browser fault: {_nav_reason(exc, target)}") from exc
             raise base.SelectorError(
                 f"navigate could not load the URL: {_nav_reason(exc, target)}"
             ) from exc
@@ -1077,17 +1076,23 @@ class PlaywrightDriver:
 
     @_wedge_guard
     def screenshot(self, path: str) -> None:
-        # Retried on a timeout only (issue #2432): a closed page or crashed renderer is a real wedge
-        # and is reported on the first attempt. The retry is the net for a navigation the settle
-        # step cannot see, such as one a timer starts later.
+        # Retried on a timeout (issue #2432) or a refused capture (issue #2509) only: a closed page or
+        # crashed renderer is a real wedge and is reported on the first attempt. The retry is the net
+        # for a navigation the settle step cannot see, such as one a timer or a page script starts.
         self._settle_navigation()
         for timeout in _SHOT_ATTEMPT_TIMEOUTS_MS[:-1]:
             try:
                 self._page.screenshot(path=path, timeout=timeout)
             except Exception as exc:
-                if not _is_playwright_timeout(exc):
+                if _is_playwright_timeout(exc):
+                    self._await_document()
+                elif _is_capture_failure(exc):
+                    # The capture fails just after the commit, so also let the new document paint.
+                    self._await_document()
+                    with contextlib.suppress(*_playwright_error_types()):
+                        self._page.evaluate(_SETTLE_JS)
+                else:
                     raise
-                self._await_document()
             else:
                 return
         self._page.screenshot(path=path, timeout=_SHOT_ATTEMPT_TIMEOUTS_MS[-1])

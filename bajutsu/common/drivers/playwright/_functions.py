@@ -270,13 +270,15 @@ def _iframe_records(
 
 
 def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
-    """Turn a browser-side failure into the crawl's recoverable "lane wedged" signal (BE-0077).
+    """Turn a browser-side failure into the "lane wedged" `simctl.DeviceError` signal (BE-0077).
 
     A renderer crash, a hung page, a navigation timeout — any Playwright error from a page operation —
-    re-raises as `simctl.DeviceError`, which a pool worker isolates (handing its frontier entry back and
-    relaunching the browser) instead of sinking the crawl. Selection failures (`base.SelectorError`)
-    and an obstructed-target failure (`base.ElementNotTappable`) are not wedges and pass through
-    unchanged, as do real bugs (any non-Playwright exception).
+    re-raises as `simctl.DeviceError`. Only the crawl recovers from it: a pool worker isolates the
+    wedge (handing its frontier entry back and relaunching the browser) instead of sinking the crawl.
+    On the `run` path it is a device fault that ends the run, so the message does not call it
+    recoverable (issue #2509). Selection failures (`base.SelectorError`) and an obstructed-target
+    failure (`base.ElementNotTappable`) are not wedges and pass through unchanged, as do real bugs
+    (any non-Playwright exception).
     """
 
     @functools.wraps(method)
@@ -287,7 +289,7 @@ def _wedge_guard[F: Callable[..., Any]](method: F) -> F:
             raise
         except Exception as exc:
             if isinstance(exc, _playwright_error_types()):
-                raise simctl.DeviceError(f"web browser fault (recoverable wedge): {exc}") from exc
+                raise simctl.DeviceError(f"web browser fault: {exc}") from exc
             raise
 
     return cast(F, wrapper)
@@ -315,6 +317,19 @@ def _is_context_destroyed(exc: BaseException) -> bool:
     """
     return isinstance(exc, _playwright_error_types()) and (
         "execution context was destroyed" in str(exc).lower()
+    )
+
+
+def _is_capture_failure(exc: BaseException) -> bool:
+    """Whether *exc* is Chromium refusing a screenshot while a navigation swaps the page (issue #2509).
+
+    A capture issued a few milliseconds around a script-initiated navigation's commit fails with this
+    protocol error even though the browser is healthy, and a recapture once the new document has
+    painted succeeds. Playwright gives the failure no class of its own, so the message is the only
+    signal.
+    """
+    return isinstance(exc, _playwright_error_types()) and (
+        "unable to capture screenshot" in str(exc).lower()
     )
 
 
