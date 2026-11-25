@@ -58,7 +58,7 @@ The worker already has the right boundary: the `on_event` callback that rewrites
 
 - **No UI change and no GET-route change.** Local mode is unaffected and still serves the live file from disk. Server mode finds the same file in the object store. One code path serves both modes.
 - **Throttled, not per-event.** A chatty crawl fires many events. The worker coalesces uploads to at most one per short interval (about 1–2 s, matching the browser's poll cadence). It adds a final authoritative write at job end. This bounds object-store PUTs without a perceptible UX loss, because the graph already updates about once per second.
-- **Consistency is not a worry.** S3 and R2 overwrites are strongly read-after-write consistent. A poll issued after an upload returns the fresh snapshot, so no stale-read window needs a design.
+- **Consistency is not a worry.** S3 and R2 overwrites are strongly read-after-write consistent. A poll issued after an upload returns the fresh snapshot, so the design has no stale-read window to work around.
 - **Terminal upload still wins.** The end-of-job `_upload_runs` remains the authority for the complete `runs/<id>/` tree. Incremental upload makes the *live* artifact visible earlier and changes nothing else.
 
 ### The contract: machine-checkable invariants
