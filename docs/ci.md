@@ -207,7 +207,7 @@ The lane needs **no Mac / Simulator**. The lane is the third backend's Linux twi
 
 #### Android emulator packages
 
-Every job that boots an AVD installs the Android Emulator and the system image before its first emulator step. It uses the [`install-android-emulator-sdk`](../.github/actions/install-android-emulator-sdk/action.yml) composite action. `sdkmanager` exits 0 with a warning when it cannot unpack a downloaded archive. A damaged download thus used to surface as a later `adb` `Connection refused` error. The `scripts/install_android_sdk_packages.sh` script retries the install once. A second unsuccessful attempt stops the step and names the package.
+Every job that boots an AVD installs two packages before its first emulator step. They are the Android Emulator and the system image. It uses the [`install-android-emulator-sdk`](../.github/actions/install-android-emulator-sdk/action.yml) composite action. The `sdkmanager` command exits 0 with a warning when it cannot unpack a downloaded archive. A damaged download thus used to surface as a later `adb` `Connection refused` error. The `scripts/install_android_sdk_packages.sh` script retries the install once. A second unsuccessful attempt stops the step and names the package.
 
 #### Android Gradle warm-up
 
