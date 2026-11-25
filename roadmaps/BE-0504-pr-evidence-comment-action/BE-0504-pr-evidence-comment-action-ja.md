@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0504](BE-0504-pr-evidence-comment-action-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
+| 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位） |
 | トピック | Integration with external services |
 | 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -129,14 +130,18 @@ artifact のリンクは、サインインを必要とする URL なので、コ
 > ともに記録します。
 
 - [ ] スパイク：スクリーンショットと動画を `archive: false` でアップロードし、サインイン済みの読み手に表示されるかダウンロードになるかを記録する。あわせて、ジョブを再実行したとき、前回の試行の artifact 名と衝突するかを記録し、衝突するなら `overwrite` の入力を足す。
-- [ ] 描画処理：`manifest.json` から Markdown を作る。エスケープ、切り詰め、`<sid>/result.json` を読むマニフェストがない場合を含み、標準ライブラリのスクリプトと、`make test` で動く単体テストにする。フィクスチャーは Bajutsu 自身のマニフェストの書き出し処理で生成し、スキーマの変更が、それを行う PR のテストを壊すようにする。
-- [ ] コメントのクライアント：ページをたどる固定コメントの検索と更新、ジョブサマリーへの書き込み、警告を出して終了コード0で終わる経路。
-- [ ] サイズの制御：ログを切り詰めるステージ済みのコピー、`size-warn-mb` の保護、`retention-days`、`compression-level`。切り詰め、保護、マニフェストなしでの切り詰めの単体テストを含む。
-- [ ] 既存 Action の出力：`bajutsu-e2e` に、`actions/upload-artifact` 自身の `artifact-url` を転送する出力を足す。ジョブがそれを、`upload: false` の `post-evidence` へ渡せるようにする。
-- [ ] composite action：`env:` を通す入力の配線、実行全体の zip のアップロード、zip にしない6つのアップロードのスロット、`upload` と `artifact-url` の入力、任意の `evidence-base-url`。
-- [ ] ゲートの対象化：スクリプトが `make check` の `ruff` と `mypy --strict` を通ること。`make typecheck` の対象に `.github/actions/post-evidence` を加え、単体テストがそのパスからスクリプトを読み込み、`make test` が（`--cov` で）それを計測します。BE-0385 のファイル単位の下限を `coverage-floors.json` で適用し、`bajutsu/` と同じ水準に保ちます。
-- [ ] ドキュメント：`docs/reporting.md` の節と、`docs/ja/` のミラー。
-- [ ] 導入：このリポジトリの web E2E ワークフローから Action を呼ぶこと。
+- [x] 描画処理：`manifest.json` から Markdown を作る。エスケープ、切り詰め、`<sid>/result.json` を読むマニフェストがない場合を含み、標準ライブラリのスクリプトと、`make test` で動く単体テストにする。フィクスチャーは Bajutsu 自身のマニフェストの書き出し処理で生成し、スキーマの変更が、それを行う PR のテストを壊すようにする。
+- [x] コメントのクライアント：ページをたどる固定コメントの検索と更新、ジョブサマリーへの書き込み、警告を出して終了コード0で終わる経路。
+- [x] サイズの制御：ログを切り詰めるステージ済みのコピー、`size-warn-mb` の保護、`retention-days`、`compression-level`。切り詰め、保護、マニフェストなしでの切り詰めの単体テストを含む。
+- [x] 既存 Action の出力：`bajutsu-e2e` に、`actions/upload-artifact` 自身の `artifact-url` を転送する出力を足す。ジョブがそれを、`upload: false` の `post-evidence` へ渡せるようにする。
+- [x] composite action：`env:` を通す入力の配線、実行全体の zip のアップロード、zip にしない6つのアップロードのスロット、`upload` と `artifact-url` の入力、任意の `evidence-base-url`。
+- [x] ゲートの対象化：スクリプトが `make check` の `ruff` と `mypy --strict` を通ること。`make typecheck` の対象に `.github/actions/post-evidence` を加え、単体テストがそのパスからスクリプトを読み込み、`make test` が（`--cov` で）それを計測します。BE-0385 のファイル単位の下限を `coverage-floors.json` で適用し、`bajutsu/` と同じ水準に保ちます。
+- [x] ドキュメント：`docs/reporting.md` の節と、`docs/ja/` のミラー。
+- [x] 導入：このリポジトリの web E2E ワークフローから Action を呼ぶこと。
+
+ログ：
+
+- [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)：コンポジット action の `post-evidence` を追加しました。標準ライブラリだけの描画処理と固定コメントのクライアント、ログの切り詰めとサイズの保護、zip と zip にしない 6 つのアップロードのスロット、`bajutsu-e2e` の `artifact-url` 出力、ゲートの対象化、ドキュメント、web E2E ジョブへの導入を含みます。スパイクは実際の GitHub 上での実行が必要なため、未完了のままです。
 
 ## 参考
 
