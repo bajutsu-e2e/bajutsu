@@ -1,42 +1,47 @@
 # Running on AWS Device Farm
 
 [AWS Device Farm](https://docs.aws.amazon.com/devicefarm/latest/developerguide/welcome.html) is a
-device cloud where you run tests against real and virtual devices Amazon hosts. Bajutsu runs there
-through Device Farm's **custom test environment**, driving its Android (adb) backend against the
-reserved device — with no change to the deterministic core.
+device cloud: you run tests there against real and virtual devices that Amazon hosts. Bajutsu runs
+there through Device Farm's **custom test environment**. It drives the Android (adb) backend against
+the reserved device. The deterministic core does not change.
 
 ## The batch model, and why this is a submitter, not a driver
 
 Device Farm is a **batch** service, not a live-device provider. It does not lend you a device to
-drive over the network; it runs *your commands on its host*, and that host already has `adb`
-connected to the reserved device. So the deliverable is not a runtime driver (there is no device to
-acquire) — it is a **CI-side submitter**: package Bajutsu plus your scenarios, upload them with a
-test-spec that runs `bajutsu run --backend adb`, let Device Farm execute it on the host, and collect
-the artifacts.
+drive over the network. It runs *your commands on its host*, and that host already has `adb`
+connected to the reserved device. The deliverable is thus a **CI-side submitter**, not a runtime
+driver. No device exists to acquire. The submitter takes four actions:
+
+- It packages Bajutsu plus your scenarios.
+- It uploads them with a test spec that runs `bajutsu run --backend adb`.
+- It lets Device Farm execute the spec on the host.
+- It collects the artifacts.
 
 The submitter core lives entirely outside the deterministic core, at
 [`bajutsu/common/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/cloud/devicefarm.py)
 (`render_test_spec` / `build_package` / `submit_and_collect` and the `DeviceFarmClient` / `Transfer`
-seams, BE-0336), reusable by any caller; the CLI at
+seams, BE-0336). Any caller can reuse it. The CLI at
 [`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py)
-is now a thin wrapper holding only argument parsing and the real boto3 / urllib adapters.
-Nothing in the upload / poll / download machinery touches the `run`/CI verdict path: Bajutsu runs
-inside Device Farm exactly as it does locally — the same deterministic core, the same pass/fail from
-machine-checkable assertions — so the verdict the submitter reports comes from **Bajutsu's own
-`manifest.json`**, never from Device Farm's own PASSED/FAILED classification.
+is now a thin wrapper that holds only argument parsing and the real boto3 / urllib adapters.
+
+Nothing in the upload / poll / download machinery touches the `run`/CI verdict path. Bajutsu runs
+inside Device Farm exactly as it does locally, with the same deterministic core and the same
+pass/fail from machine-checkable assertions. The verdict the submitter reports thus comes from
+**Bajutsu's own `manifest.json`**. It never comes from Device Farm's own PASSED/FAILED
+classification.
 
 ## Batch-topology caveats
 
-These are properties of Device Farm itself; the submitter documents and handles them so a future
-Device Farm change does not silently break the flow.
+These are properties of Device Farm itself. The submitter documents and handles them so that a
+future Device Farm change does not silently break the flow.
 
 - **Raw adb is a by-product, not a guarantee.** Device Farm's first-class custom-environment path is
-  Appium. `adb` against the reserved device is available because it is part of the host toolchain,
-  not a contract Amazon promises — Bajutsu's Android backend needs only "a host with `adb` connected
-  to a device", which the custom environment provides, but treat it as a by-product that a future
+  Appium. `adb` against the reserved device is available because it is part of the host toolchain.
+  Amazon does not promise it. Bajutsu's Android backend needs only "a host with `adb` connected
+  to a device". The custom environment provides one. Treat that as a by-product that a future
   platform change could remove.
 - **150-minute hard cap.** A single custom-environment execution is capped at 150 minutes. The
-  submitter polls no longer than that and then fails loudly rather than blocking a CI job forever.
+  submitter polls for no longer than that, then fails loudly instead of blocking a CI job forever.
 - **APK only.** Device Farm's Android app upload accepts an `.apk`; it does not accept an `.aab`.
   Build a debug APK for the run.
 - **Per-Appium-command timeout.** Device Farm's per-command Appium timeout does not apply to the
@@ -47,26 +52,26 @@ iOS on Device Farm runs on real devices, which adds the two constraints in
 
 ## iOS: re-signing and real-device capabilities
 
-This shift to a real device changes two things Bajutsu accounts for up front (BE-0238). Both are
-properties of a physical device rather than of Device Farm's classification, so they hold for any
-real iOS device the XCUITest backend drives (`runsOn.ios.kind: device`) — Device Farm or a
-locally attached device.
+Moving to a real device changes two things that Bajutsu accounts for up front (BE-0238). Both are
+properties of a physical device rather than of Device Farm's classification. They hold for any
+real iOS device the XCUITest backend drives (`runsOn.ios.kind: device`), whether the device is on
+Device Farm or attached locally.
 
 - **Re-signing strips entitlements.** Device Farm re-signs the uploaded `.ipa` with its own
-  provisioning profile so it installs on the reserved device, and the re-sign drops the entitlements
-  the new profile does not carry — commonly Push (`aps-environment`) and App Groups
+  provisioning profile so that it installs on the reserved device. The re-sign drops the
+  entitlements the new profile does not carry, commonly Push (`aps-environment`) and App Groups
   (`com.apple.security.application-groups`). An app feature that depends on a dropped entitlement
-  (remote-push registration, an App-Group shared container) does not work under the re-signed build,
-  so a scenario that asserts on such a feature should expect the re-signed behavior, not the App
-  Store one.
+  (remote-push registration, an App-Group shared container) does not work under the re-signed
+  build. A scenario that asserts on such a feature should thus expect the re-signed behavior, not
+  the App Store one.
 - **simctl device control and permissions do not apply.** Bajutsu's iOS device control
   (`setLocation`, the clipboard steps, `push`, `clearKeychain`, `background` / `foreground`, and the
   status-bar overrides) and its permission grants are all backed by `simctl`, which reaches only the
-  Simulator — never a physical device. On a real device the XCUITest backend therefore advertises
-  neither, and a scenario that uses one is **skipped by the preflight** (BE-0082) before any device
-  work, with a clear reason, rather than failing late with a `simctl` error mid-run. The on-device
-  capabilities the XCTest runner drives itself — query, elements, screenshots, taps, and two-finger
-  gestures — are unaffected.
+  Simulator, never a physical device. On a real device the XCUITest backend thus advertises
+  neither. The preflight (BE-0082) **skips** a scenario that uses one before any device work, with
+  a clear reason, rather than letting it fail late with a `simctl` error mid-run. The on-device
+  capabilities the XCTest runner drives itself (query, elements, screenshots, taps, and two-finger
+  gestures) are unaffected.
 - **Two routes join the host and the app.** A physical device has its own loopback. Bajutsu bridges the runner and the in-app responders over usbmuxd. The app
   reports network exchanges to a host address that each run offers it, or to the one that
   `BAJUTSU_HOST_ADDRESS` names. Run `bajutsu doctor --udid "$DEVICEFARM_DEVICE_UDID" --environment-only` on the Device Farm host
@@ -78,24 +83,26 @@ locally attached device.
 ## The test spec
 
 Device Farm drives the run from a
-[custom-environment test spec](https://docs.aws.amazon.com/devicefarm/latest/developerguide/custom-test-environment-test-spec.html)
-— a YAML file with `install` / `pre_test` / `test` / `post_test` phases of shell commands. The
-submitter renders one that:
+[custom-environment test spec](https://docs.aws.amazon.com/devicefarm/latest/developerguide/custom-test-environment-test-spec.html):
+a YAML file with `install` / `pre_test` / `test` / `post_test` phases of shell commands. The
+submitter renders a spec with these phases:
 
 1. **install** — bootstraps Python 3.13 with uv and installs Bajutsu from the uploaded test package
    into a venv on it. Device Farm's host tops out at Python 3.12 (`devicefarm-cli use python` only
-   offers the runtimes Amazon preinstalls) while Bajutsu requires 3.13, so the phase installs uv with
-   the host's base pip, has uv fetch a standalone 3.13, and installs into that venv. This is a
-   temporary workaround, removed once Device Farm ships 3.13 (see `_python_bootstrap_commands` in the
-   submitter). The adb backend is pure subprocess, so the base install (no extras) is enough.
+   offers the runtimes Amazon preinstalls), while Bajutsu requires 3.13. The phase thus installs uv
+   with the host's base pip, has uv fetch a standalone 3.13, and installs into that venv. This
+   workaround is temporary and goes away once Device Farm ships 3.13 (see
+   `_python_bootstrap_commands` in the submitter). The adb backend is pure subprocess, so the base
+   install (no extras) is enough.
 2. **pre_test** — runs `adb devices` to prove the reserved device is visible (the serial-resolution
    check). A caller may append its own device-side setup here through `render_test_spec`'s
-   `pre_test_commands` parameter — commands spliced in verbatim, in order, after the probe, for
-   whatever one deployment's backend needs before the run (a network relay, a VPN client). Paired
-   with `build_package`'s `extra_texts` (which ships the setup script into the package), it keeps
-   that per-deployment setup entirely outside `bajutsu/`. It is a Python-API-only hook: no `serve`
-   endpoint, config field, or batch-request field wires to it, so no client-supplied value reaches a
-   shell on the host holding the run's AWS role.
+   `pre_test_commands` parameter. The submitter splices the commands in verbatim, in order, after the
+   probe. They cover whatever one deployment's backend needs before the run (a network relay, a
+   VPN client).
+   Paired with `build_package`'s `extra_texts` (which ships the setup script into the package),
+   `pre_test_commands` keeps that per-deployment setup entirely outside `bajutsu/`. It is a Python-API-only hook:
+   no `serve` endpoint, config field, or batch-request field wires to it, so no client-supplied
+   value reaches a shell on the host holding the run's AWS role.
 3. **test** — one `bajutsu run --backend adb --udid booted` per scenario, so a scenario that fails
    still leaves a manifest for the others.
 4. **post_test** — copies the whole `runs/` tree into `$DEVICEFARM_LOG_DIR` so the artifacts come
@@ -126,21 +133,21 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-The run uses `showcase.devicefarm.config.yaml`, a Device-Farm variant of the `showcase-compose`
-target that carries **no `subject.path`**: Device Farm installs the uploaded APK on the reserved device
-itself, so the adb backend launches the pre-installed app rather than `adb install`ing a local file
-(a None `app_path` is the runner's "run against the already-installed app" path). This is a
-per-environment difference, so it lives in config, not in the tool.
+The run uses `showcase.devicefarm.config.yaml`, a Device Farm variant of the `showcase-compose`
+target that carries **no `subject.path`**. Device Farm installs the uploaded APK on the reserved
+device itself, so the adb backend launches the pre-installed app instead of `adb install`ing a
+local file (a None `app_path` is the runner's "run against the already-installed app" path). This
+is a per-environment difference, so it lives in config, not in the tool.
 
 Each `--package SRC=ARCNAME` adds a file or directory to the test package under `ARCNAME` (the
-arcname `.` packs a directory at the package root); the scenario / config paths you pass are the
+arcname `.` packs a directory at the package root). The scenario and config paths you pass are the
 paths *inside* the package. Packaging Bajutsu with `--package .=.` puts its `pyproject.toml` and
-`tests/` directory at the root, and the submitter synthesizes an empty root `requirements.txt`, so
-the upload satisfies Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation while the test spec still
-does the real install. Drop `--package-only` and add
-`--project-arn` / `--device-pool-arn` (with AWS credentials configured in the environment) to submit
-the run, poll it to completion, download the artifacts, and print Bajutsu's verdict. The process
-exit code is `0` only when every scenario passed.
+`tests/` directory at the root. The submitter synthesizes an empty root `requirements.txt`, so the
+upload satisfies Device Farm's APPIUM_PYTHON_TEST_PACKAGE validation while the test spec still does
+the real install. To submit the run, drop `--package-only` and add `--project-arn` /
+`--device-pool-arn`, with AWS credentials configured in the environment. The submitter then polls
+the run to completion, downloads the artifacts, and prints Bajutsu's verdict. The process exit code
+is `0` only when every scenario passed.
 
 For the iOS showcase, pass `--platform ios` to select the XCUITest backend and the iOS app upload
 type. Build the device-signed `.ipa` and runner first (BE-0288). The runner build reads your
@@ -169,8 +176,8 @@ uv run python scripts/devicefarm_submit.py \
 ```
 
 `showcase.devicefarm.ios.config.yaml` sets `runsOn.ios.kind: device` (the XCUITest backend
-drives a physical device instead of a Simulator) and carries no `subject.path` (Device Farm installs the
-uploaded `.ipa` on the reserved device itself). The `--package
+drives a physical device instead of a Simulator) and carries no `subject.path` (Device Farm
+installs the uploaded `.ipa` on the reserved device itself). The `--package
 BajutsuKit/Runner/build/dd-device/Build/Products=.` line places the device-signed `.xctestrun` and
 its test bundles at the package root, where the config's `driver.runner.testRunner: BajutsuRunner.xctestrun`
 resolves them. The re-signing and simctl caveats described [above](#ios-re-signing-and-real-device-capabilities)
@@ -187,22 +194,22 @@ allowed: they are device state rather than conditions.
 ## The GitHub Actions workflow
 
 [`.github/workflows/devicefarm.yml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/.github/workflows/devicefarm.yml)
-wraps the submitter as a **manual, opt-in** workflow. It is `workflow_dispatch` only — never on push
+wraps the submitter as a **manual, opt-in** workflow. The trigger is `workflow_dispatch` only, never push
 or pull request, so it is not on the merge path and is not a required check. It mints a short-lived
-AWS credential by exchanging the workflow's GitHub OIDC token for the `AWS_DEVICEFARM_ROLE_ARN` role
-(no static key), scoped to a `devicefarm` Environment, and reads the project and device-pool ARNs
-from the `DEVICEFARM_PROJECT_ARN` / `DEVICEFARM_DEVICE_POOL_ARN` repository variables. With any of
-the three unset, the job is a green no-op (a `::notice::`, never red), so it stays dormant until an
-operator wires up an account.
+AWS credential by exchanging the workflow's GitHub OpenID Connect (OIDC) token for the
+`AWS_DEVICEFARM_ROLE_ARN` role (no static key), scoped to a `devicefarm` Environment. It reads the
+project and device-pool Amazon Resource Names (ARNs) from the `DEVICEFARM_PROJECT_ARN` /
+`DEVICEFARM_DEVICE_POOL_ARN` repository variables. With any of the three unset, the job is a green
+no-op (a `::notice::`, never red), so it stays dormant until an operator wires up an account.
 
 ## Dispatching from serve
 
 The submitter and the workflow above are the headless path: one run packages the whole suite and
 executes its scenarios back to back on a single reserved device. `bajutsu serve` (BE-0336) adds a
-second path on the surface operators already use to dispatch runs and watch history — and it changes
-the shape. Instead of one serialized run, serve **fans the suite out one Device Farm run per
-scenario**, so scenarios run in parallel. Worker job budgets and server concurrency caps bound
-how many run at once, not a single device.
+second path on the surface operators already use to dispatch runs and watch history, and the shape
+changes. Instead of one serialized run, serve **fans the suite out one Device Farm run per
+scenario**, so scenarios run in parallel. Worker job budgets and server concurrency caps bound how many run at once, not a single
+device.
 
 Neither the target nor the fan-out request names a batch provider (BE-0484). Each fan-out job routes
 by its target's platform. Any worker serving that platform can take it, local or Device Farm. The
@@ -582,11 +589,11 @@ directive 1).
 
 ## Batch lifecycle hooks (BE-0435)
 
-`render_test_spec`'s `pre_test_commands` hook (BE-0432) handles **device-host setup**: commands that run on the Device Farm host, during the run, as shell. Some per-run setup cannot run there. It must happen in the worker that submits the run, before packaging — for example, minting a short-lived credential that the app must receive through its launch environment.
+`render_test_spec`'s `pre_test_commands` hook (BE-0432) handles **device-host setup**: commands that run as shell on the Device Farm host, during the run. Some per-run setup cannot run there. It must happen in the worker that submits the run, before packaging. Minting a short-lived credential that the app must receive through its launch environment is one example.
 
 `BatchLifecycleHook` covers that gap. A hook runs in the worker whose environment is `devicefarm`, around one `DeviceFarmBatchProvider.submit` call. The server runs none:
 
-- **`before_submit(ctx)`** — called before the package is built. May populate `ctx.launch_env` with key/value pairs that are merged into the packaged config's `targets.<target>.subject.launch.env` before upload, so the app receives them as launch environment variables.
+- **`before_submit(ctx)`** — called before the package is built. It may populate `ctx.launch_env` with key/value pairs. Bajutsu merges them into the packaged config's `targets.<target>.subject.launch.env` before upload, so the app receives them as launch environment variables.
 - **`after_run(ctx, verdict)`** — called in a `finally` after the verdict is collected (or with `verdict=None` when the run fails before a verdict is available), in reverse hook order so teardown mirrors setup. A hook whose `after_run` raises does not stop the remaining hooks. Once `submit` collects a verdict, it logs every teardown error and raises none. A failed credential release thus never discards a finished run. Without a verdict, `submit` raises one teardown error and logs the others. The raised one comes from the last-registered hook that raised.
 
 `BatchContext` carries the run's `request`, `work_dir`, `job_id` (the stable per-job identifier, useful for looking up per-job state across a restart), and the mutable `launch_env` dict.
@@ -602,14 +609,14 @@ the config needs the `bundle/` prefix on the Device Farm machine.
 
 ### Wiring hooks
 
-Hooks are wired at **process start only**, through the `BAJUTSU_BATCH_HOOKS` environment variable — a comma-separated list of `module:factory` paths. Bajutsu imports each module and calls the named factory (no arguments) to produce one hook instance. A worker whose `maxJobConcurrency` is above one shares that instance across its slots. Its hooks may then run at the same time, so a hook must be thread-safe and keep per-run state keyed by `ctx.job_id`:
+Hooks are wired at **process start only**, through the `BAJUTSU_BATCH_HOOKS` environment variable, a comma-separated list of `module:factory` paths. Bajutsu imports each module and calls the named factory (no arguments) to produce one hook instance. A worker whose `maxJobConcurrency` is above one shares that instance across its slots. Its hooks may then run at the same time, so a hook must be thread-safe and keep per-run state keyed by `ctx.job_id`:
 
 ```bash
 BAJUTSU_BATCH_HOOKS=myapp.hooks:make_proxy_hook,myapp.hooks:make_audit_hook \
   bajutsu worker --worker-config devicefarm.worker.yaml
 ```
 
-A deployment ships its hook module in the worker's image and names it in that variable. A hook that fails to load stops the worker at startup. No `serve` endpoint, config field, or batch-request field may select or configure a hook — hook identity comes only from the deploy-time environment (the same trust boundary as `pre_test_commands`).
+A deployment ships its hook module in the worker's image and names it in that variable. A hook that fails to load stops the worker at startup. No `serve` endpoint, config field, or batch-request field may select or configure a hook. Hook identity comes only from the deploy-time environment (the same trust boundary as `pre_test_commands`).
 
 ```python
 # myapp/hooks.py
@@ -628,44 +635,45 @@ def make_proxy_hook() -> ProxyHook:
     return ProxyHook()
 ```
 
-> **Security note.** Values injected through `ctx.launch_env` land in the packaged run config, which is stored as a Device Farm artifact visible to principals with access to the deployment's own Device Farm project. Hooks that inject secrets should mint **short-lived, per-run values** (which is the motivating case) rather than long-lived ones.
+> **Security note.** Values injected through `ctx.launch_env` land in the packaged run config. That config is stored as a Device Farm artifact, visible to principals with access to the deployment's own Device Farm project. Hooks that inject secrets should mint **short-lived, per-run values** (the motivating case) rather than long-lived ones.
 
 ### Key-collision guard
 
-On-device, the launch-environment merge order is `{**target_env, **preconditions.subject.launch.env}` — a scenario's `preconditions.subject.launch.env` wins over the target-level value. If a hook injects a key that a scenario's preconditions also set, the injected value would be silently overridden. To surface this early, `submit` checks the scenario file and **fails loudly at submit time**, naming the scenario, the key, and the file, before any upload happens.
+On-device, the launch-environment merge order is `{**target_env, **preconditions.subject.launch.env}`, so a scenario's `preconditions.subject.launch.env` wins over the target-level value. If a hook injects a key that a scenario's preconditions also set, the scenario would silently override the injected value. To surface this early, `submit` checks the scenario file and **fails loudly at submit time**, naming the scenario, the key, and the file, before any upload happens.
 
 ### Checkpoint-resume behaviour
 
-When a run restarts mid-poll (the worker re-leases the job), `before_submit` is skipped — the run is already scheduled and packaged — but `after_run` still runs once the resumed run's verdict is collected. A hook that mints credentials in `before_submit` should persist them keyed by `ctx.job_id` so `after_run` can retrieve and release them after a restart.
+When a run restarts mid-poll (the worker re-leases the job), `before_submit` is skipped because the run is already scheduled and packaged. `after_run` still runs once the resumed run's verdict is collected. A hook that mints credentials in `before_submit` should persist them keyed by `ctx.job_id`, so that `after_run` can retrieve and release them after a restart.
 
-## The serial-resolution proof of concept (manual)
+## The manual serial-resolution proof of concept
 
 The one empirical unknown is whether Bajutsu's Android backend picks up the Device Farm host's
-reserved device — the `pre_test` `adb devices` should list it, and `bajutsu run --udid booted`
-should resolve it. Proving this end-to-end needs a real AWS account, credentials, a Device Farm
-project, and billing, so it is **not** part of the deterministic `make check` gate (which must run
-anywhere, with no cloud account) — running it is a manual, human procedure:
+reserved device. The `pre_test` `adb devices` should list it, and `bajutsu run --udid booted`
+should resolve it. Proving this end to end needs a real AWS account, credentials, a Device Farm
+project, and billing. The proof is thus **not** part of the deterministic `make check` gate, which
+must run anywhere with no cloud account. The proof itself is a manual, human procedure:
 
 1. Create a Device Farm project and a device pool in `us-west-2`; note their ARNs.
 2. Build the showcase Compose debug APK: `make -C demos/showcase/android compose-build`.
 3. Run the submitter (or the workflow) against one scenario, e.g. `scenarios/firstlook.yaml`.
 4. Confirm from the downloaded artifacts that `adb devices` listed the reserved device and the
    scenario produced a `manifest.json` with the expected verdict. The submitter extracts the
-   CUSTOMER_ARTIFACT zip (the `runs/` tree with the manifests) into the destination and writes
-   Device Farm's plain-file artifacts — the device and test-spec logs that carry the `adb devices`
-   output — under a `logs/` subdirectory alongside it.
+   CUSTOMER_ARTIFACT zip (the `runs/` tree with the manifests) into the destination. It writes
+   Device Farm's plain-file artifacts, the device and test-spec logs that carry the `adb devices`
+   output, under a `logs/` subdirectory alongside it.
 
 Once confirmed for your account, the workflow can run the fuller scenario set on demand.
 
-## The iOS device-signing proof of concept (manual)
+## The manual iOS device-signing proof of concept
 
-iOS adds an unknown the Android route never faces: the batch upload must carry a **signed device
-build**. Device Farm installs the app on a physical device, so it needs a device `.ipa` rather than
-the unsigned Simulator `.app` the Simulator lanes emit, and the XCUITest runner must already carry a
-device-valid signature because Device Farm re-signs the app but not the runner (BE-0288). Proving the
-iOS route end to end therefore needs both an **Apple Developer account** — to sign the build — and an
-**AWS Device Farm account**, so it is **not** part of the deterministic `make check` gate (which stays
-unsigned and runs anywhere, with no Apple or AWS account). Running it is a manual, human procedure:
+iOS adds an unknown that the Android route never faces: the batch upload must carry a **signed
+device build**. Device Farm installs the app on a physical device, so it needs a device `.ipa`
+rather than the unsigned Simulator `.app` that the Simulator lanes emit. The XCUITest runner must
+also already carry a device-valid signature, because Device Farm re-signs the app but not the
+runner (BE-0288). Proving the iOS route end to end thus needs both an **Apple Developer account**,
+to sign the build, and an **AWS Device Farm account**. The proof is **not** part of the
+deterministic `make check` gate, which stays unsigned and runs anywhere with no Apple or AWS
+account. The proof itself is a manual, human procedure:
 
 1. Create a Device Farm project and a device pool of iOS devices in `us-west-2`; note their ARNs.
 2. Build the two device-signed artifacts. The app takes your 10-character Apple Team ID. Sign that
@@ -684,9 +692,9 @@ unsigned and runs anywhere, with no Apple or AWS account). Running it is a manua
    or a runner build with no signing file, fails fast with a clear message rather than producing an
    unsigned artifact.
 3. Run the submitter against one scenario, e.g. `scenarios/firstlook.yaml`, with the iOS platform
-   selected — the same `--platform ios` command from [Using the submitter](#using-the-submitter)
-   above, with its `--package-only` dry-run flag dropped and `--project-arn <project-arn>
-   --device-pool-arn <device-pool-arn>` added to submit the run. That command already packages the
+   selected. Use the same `--platform ios` command from [Using the submitter](#using-the-submitter)
+   above, drop its `--package-only` dry-run flag, and add `--project-arn <project-arn>
+   --device-pool-arn <device-pool-arn>` to submit the run. That command already packages the
    runner's whole `Products` directory (`--package BajutsuKit/Runner/build/dd-device/Build/Products=.`),
    so the `.xctestrun`'s `__TESTROOT__` test bundles beside it travel with the upload; the file alone
    is not enough. `--platform ios` selects the XCUITest backend, the `IOS_APP` upload type, and the
@@ -696,8 +704,8 @@ unsigned and runs anywhere, with no Apple or AWS account). Running it is a manua
    `runs/` tree with the manifests) into the destination and writes Device Farm's plain-file
    artifacts under a `logs/` subdirectory alongside it. Read the verdict from Bajutsu's own
    `manifest.json`, never from Device Farm's PASSED/FAILED classification. Expect the re-signed
-   behavior for any feature that depends on a dropped entitlement, and expect a scenario using
-   `simctl`-backed device control or a permission grant to be skipped by the preflight — the two
+   behavior for any feature that depends on a dropped entitlement. Expect the preflight to skip a
+   scenario that uses `simctl`-backed device control or a permission grant. These are the two
    [real-device caveats](#ios-re-signing-and-real-device-capabilities) above.
 
 Once confirmed for your account, the workflow can run the fuller iOS scenario set on demand, the same
