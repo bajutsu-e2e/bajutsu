@@ -21,7 +21,7 @@ The crawl engine is already platform-neutral. This item adds the platform-specif
 
 ## Motivation
 
-**The engine is already platform-neutral, and the command alone is iOS-bound.** The crawl engine ([`crawl.py`](../../bajutsu/crawl.py)) is built entirely on the `Driver` abstraction (`query`, `tap`, `type_text`, `tap_point`, and `screenshot`). Its module docstring states that it carries "no AI and no Simulator wiring". A web crawl is thus a gap in *wiring and semantics*, not an engine rewrite.
+**The engine is already platform-neutral, and only the command is iOS-bound.** The crawl engine ([`crawl.py`](../../bajutsu/crawl.py)) is built entirely on the `Driver` abstraction (`query`, `tap`, `type_text`, `tap_point`, and `screenshot`). Its module docstring states that it carries "no AI and no Simulator wiring". A web crawl is thus a gap in *wiring and semantics*, not an engine rewrite.
 
 The one Tier-1 path still pinned to iOS is the `crawl` **command** ([`cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py)):
 
@@ -30,7 +30,7 @@ The one Tier-1 path still pinned to iOS is the `crawl` **command** ([`cli/comman
 - Its crash check is the iOS accessibility-tree collapse (`shows_app_ui`).
 - Its progress text says "preparing the simulator".
 
-**The web lifecycle seam already exists, and `run` uses it.** `run` launches the web driver with `driver.navigate()` ([`runner/launch.py`](../../bajutsu/runner/launch.py)). It relaunches between scenarios with `_web_relauncher`, which is another `navigate()` ([`runner/pool.py`](../../bajutsu/runner/pool.py)). A fresh `BrowserContext` is the `erase` equivalent and costs almost nothing. Crawl should reuse that seam instead of carrying its own iOS-only reset.
+**The web lifecycle seam already exists, and `run` uses it.** `run` launches the web driver with `driver.navigate()` ([`runner/launch.py`](../../bajutsu/runner/launch.py)). It relaunches between scenarios with `_web_relauncher`, which is just another `navigate()` ([`runner/pool.py`](../../bajutsu/runner/pool.py)). A fresh `BrowserContext` is the `erase` equivalent and costs almost nothing. Crawl should reuse that seam instead of carrying its own iOS-only reset.
 
 **Web is the lowest-friction place to make crawl pay off.** Web needs no Mac and no emulator, and it runs on the existing Linux `make check` / CI gate ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)). A web crawl can thus run as a discovery step right inside CI. The three gaps that BE-0038 fills apply verbatim to web apps:
 
@@ -53,7 +53,7 @@ bajutsu crawl --app <web-app> --backend web
 
 The web app is identified by `baseUrl` rather than `bundleId`. The per-app config already models this: an app needs `bundleId` (iOS) *or* `baseUrl` (web) ([`config.py`](../../bajutsu/config.py)). All other flags carry over unchanged from the iOS crawl. `--seed` entries are URLs or paths instead of deeplinks.
 
-As on iOS, this is an *AI-live* path and not part of the deterministic gate. `--guide off` runs on the identifier-driven heuristics alone and needs no model. `--guide ai` layers the optional guide on top. Either way, AI never decides pass/fail.
+As on iOS, this is an *AI-live* path and not part of the deterministic gate. `--guide off` runs purely on the identifier-driven heuristics and needs no model. `--guide ai` layers the optional guide on top. Either way, AI never decides pass/fail.
 
 ### Lifecycle seam (reuse run's, dispatched by platform)
 
@@ -65,7 +65,7 @@ Factor the `reset` of the crawl command out of its iOS branch, and dispatch it t
 | reset / relaunch | `_env.Env.terminate` + `launch` (simctl) | `driver.navigate()` — fresh `BrowserContext` = erase, ~free (mirrors `_web_relauncher`) |
 | readiness / settle | `_await_ready` poll | Playwright native auto-wait (`conditionWait`); the engine's `settle` is simply omitted for the synchronous driver |
 
-`launch_driver` already does the right thing for web, so the sole crawl-side change is the `reset` closure. A small factory that `run` and `crawl` share can hold the relaunch. That keeps one definition of "return to a clean start" per platform, so the two paths cannot drift.
+`launch_driver` already does the right thing for web, so the only crawl-side change is the `reset` closure. A small factory that `run` and `crawl` share can hold the relaunch. That keeps one definition of "return to a clean start" per platform, so the two paths cannot drift.
 
 ### Crash detection on web (the one new design surface; stays deterministic)
 
@@ -83,7 +83,7 @@ On a detected crash, the crawl captures the full evidence set via the existing `
 
 On iOS, the alert guard (`_clear_blocking`, Claude vision) dismisses unexpected OS prompts that the crawl would otherwise read as a crash. The web has no OS alerts. It has JS dialogs (`alert`, `confirm`, and `beforeunload`), which Playwright surfaces deterministically via `page.on("dialog")`. A `BrowserContext` permission model also covers geolocation and notifications.
 
-On web, `clear_blocking` thus becomes a **deterministic** dialog auto-handler that accepts or dismisses per a fixed policy. It needs no model call and no vision round-trip. The AI guide that proposes *what to explore* is unaffected. Merely the alert-clearing step changes.
+On web, `clear_blocking` thus becomes a **deterministic** dialog auto-handler that accepts or dismisses per a fixed policy. It needs no model call and no vision round-trip. The AI guide that proposes *what to explore* is unaffected. Only the alert-clearing step changes.
 
 ### What carries over unchanged
 
@@ -97,13 +97,13 @@ The Crawl tab gains the web backend as a target alongside the Simulator. It reus
 
 ## Alternatives considered
 
-**Use Playwright's native crawling or semantic click instead of the shared engine.** Rejected. Routing matching through the own engine of Playwright (`get_by_test_id().click()`) diverges from the determinism core. That divergence is the reason [`drivers/playwright.py`](../../bajutsu/drivers/playwright.py) deliberately resolves every action through the shared `base.resolve_unique` against a `query()` snapshot. The shared crawl engine keeps the web crawl and the iOS crawl identical and their screen maps comparable.
+**Use Playwright's native crawling or semantic click instead of the shared engine.** Rejected. Routing matching through Playwright's own engine (`get_by_test_id().click()`) diverges from the determinism core. That divergence is the reason [`drivers/playwright.py`](../../bajutsu/drivers/playwright.py) deliberately resolves every action through the shared `base.resolve_unique` against a `query()` snapshot. The shared crawl engine keeps the web crawl and the iOS crawl identical and their screen maps comparable.
 
 **AI-judged crash detection** ("ask the model whether the page looks broken"). Rejected. It violates [prime directive #1](../../CLAUDE.md), and the web already exposes cheap deterministic signals (pageerror, HTTP status, and blank DOM) that need no model.
 
 **Fold this into BE-0038.** Rejected. BE-0038 is framed entirely around iOS and is already in progress, and the web crash semantics and the lifecycle seam are a distinct design surface. The web `run` path followed the same course: it became its own item ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)) rather than an edit to `run`. [BE-0064 (parallel crawl)](../BE-0064-parallel-crawl/BE-0064-parallel-crawl.md) has the same "same engine, new axis" relationship with BE-0038. That item varies concurrency, and this one varies platform.
 
-**Wait for [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend completion).** Not required. The crawl needs `query`, `tap`, `type`, `tap_point`, and `screenshot`, plus the lifecycle seam and the health signals. All of them are present or small additions. The rich capture of BE-0054 (native network, video, parallel runs) enriches a later web crawl but does not block this one. Parallel web crawl is the intersection of this item with the parallel-crawl axis. It can follow once both land.
+**Wait for [BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion.md) (web backend completion).** Not required. The crawl needs only `query`, `tap`, `type`, `tap_point`, and `screenshot`, plus the lifecycle seam and the health signals. All of them are present or small additions. The rich capture of BE-0054 (native network, video, parallel runs) enriches a later web crawl but does not block this one. Parallel web crawl is the intersection of this item with the parallel-crawl axis. It can follow once both land.
 
 ## Progress
 

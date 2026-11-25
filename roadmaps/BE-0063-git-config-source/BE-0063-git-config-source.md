@@ -32,7 +32,7 @@ A team's config and scenarios already live in a Git repository. [DESIGN §6.5](.
 - **Hosted control plane.** The multi-tenant service ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)) needs an answer to the question behind the `ScenarioStore` seam: "where does a project's config and scenarios come from?" A Git-backed source answers it today, alongside the object-store path.
 - **CI without a checkout.** `bajutsu run --config github:acme/mobile-tests@<sha>:e2e/bajutsu.config.yaml --app sample` lets a generic runner execute the suite of a separate test repository. The runner keeps no working copy of that repository.
 
-The crux that shapes the whole design is that **the config alone is not enough.** [`demos/features/demo.config.yaml`](../../demos/features/demo.config.yaml) sets `scenarios: demos/features/app/scenarios`, an `appPath:`, and `build: make -C demos/features sample-build`. All three are relative to the working directory of the run. Fetching the YAML alone would leave those paths dangling. "Load the config from Git" must therefore mean "materialize the repo subtree that holds the config, at a chosen ref, and load from there."
+The crux that shapes the whole design is that **the config alone is not enough.** [`demos/features/demo.config.yaml`](../../demos/features/demo.config.yaml) sets `scenarios: demos/features/app/scenarios`, an `appPath:`, and `build: make -C demos/features sample-build`. All three are relative to the working directory of the run. Fetching only the YAML would leave those paths dangling. "Load the config from Git" must therefore mean "materialize the repo subtree that holds the config, at a chosen ref, and load from there."
 
 ## Detailed design
 
@@ -54,7 +54,7 @@ github:<owner>/<repo>[@<ref>][:<path>]
   - `github:acme/mobile-tests@v1.4.0:e2e/bajutsu.config.yaml`
   - `github:acme/mobile-tests@9f3c1ab:e2e/bajutsu.config.yaml` — pinned, reproducible
 
-A general Git URL keeps the door open for GitHub Enterprise, GitLab, or a self-hosted host later. GitHub is the sole host this item implements.
+A general Git URL keeps the door open for GitHub Enterprise, GitLab, or a self-hosted host later. GitHub is the only host this item implements.
 
 ```
 git+https://<host>/<owner>/<repo>.git@<ref>#<path>
@@ -126,7 +126,7 @@ This is the [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting
 - **Branch-only (always latest), or pinned-only (reject branches).** Rejected in favor of "any ref, record the resolved SHA." Branch tracking is convenient for authoring, and pinning is required for a reproducible gate. Recording the SHA reconciles the two.
 - **A bespoke Bajutsu config store (upload configs to a service).** Rejected. The store contradicts [DESIGN §6.5](../../DESIGN.md) (no store of its own), and Git already is the versioned source of truth.
 - **Resolve relative paths against the current directory of the caller even for a Git source.** Rejected. The directory of the caller has nothing to do with the fetched tree. Paths must resolve against the materialized checkout root, which is why the path base is made explicit.
-- **Let `record` and `crawl` write back into the Git source.** Rejected. An immutable commit SHA content-addresses the cache, so a write into it would break that invariant. The change would also be ephemeral, because a later prune could drop it. Authoring instead emits to a local path that the human commits through git. That is the same review-then-commit flow as today, and it stays consistent with treating a Git source as read-only input.
+- **Let `record` and `crawl` write back into the Git source.** Rejected. The cache is content-addressed by an immutable commit SHA, so a write into it would break that invariant. The change would also be ephemeral, because a later prune could drop it. Authoring instead emits to a local path that the human commits through git. That is the same review-then-commit flow as today, and it stays consistent with treating a Git source as read-only input.
 
 ## Progress
 

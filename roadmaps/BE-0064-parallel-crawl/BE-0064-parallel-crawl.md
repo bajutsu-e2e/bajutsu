@@ -18,7 +18,7 @@
 
 This item runs the [BE-0038 autonomous crawl](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) across **N booted simulators at once**. Independent frontier work then overlaps, and a full screen map takes a fraction of the wall-clock time.
 
-The crawl stays a discovery tool (Tier 1, never a CI gate). Merely its *scheduling* becomes concurrent. Screen identity, transitions, and crashes are decided exactly as before.
+The crawl stays a discovery tool (Tier 1, never a CI gate). Only its *scheduling* becomes concurrent. Screen identity, transitions, and crashes are decided exactly as before.
 
 ## Motivation
 
@@ -49,13 +49,13 @@ A **coordinator** owns the shared screen map and the frontier under a lock. It h
 2. On its own simulator, `reset` and replay `path_to[fp]`, dismissing OS alerts en route. Perform the action, then `observe` (with `clear_blocking`).
 3. **Lock.** Record the edge, crash, or alert. If the destination screen is new, add the node, `path_to`, and `pending`, and run the guide on that simulator while it is positioned there. **Unlock.**
 
-The AI calls of the guide thus run concurrently across workers, which is the primary speedup. Each worker keeps the **forward-walk** optimization. A worker keeps operating on its current screen until no untried action remains. It backtracks (reset and replay) merely to reach another frontier entry. That is the single-device strategy of today, now run on each worker.
+The AI calls of the guide thus run concurrently across workers, which is the primary speedup. Each worker keeps the **forward-walk** optimization. A worker keeps operating on its current screen until no untried action remains. It backtracks (reset and replay) only to reach another frontier entry. That is the single-device strategy of today, now run on each worker.
 
 ### The determinism boundary (the crux)
 
 Screen *identity* (the fingerprint), transition detection, crash detection, and the content of the screen map stay pure deterministic functions of the element tree, unchanged. AI still chooses only *what to try* and never judges ([prime directive #1](../../CLAUDE.md)).
 
-Parallelism relaxes two things: the **exploration order** and the **recorded canonical `path_to`**. Which worker reaches a screen first depends on scheduling. For an app with its own non-determinism, the recorded paths and the tie-broken discovery order can differ from run to run. For a deterministic app, the *set* of discovered nodes and edges is invariant, and merely the ordering and path metadata vary.
+Parallelism relaxes two things: the **exploration order** and the **recorded canonical `path_to`**. Which worker reaches a screen first depends on scheduling. For an app with its own non-determinism, the recorded paths and the tie-broken discovery order can differ from run to run. For a deterministic app, the *set* of discovered nodes and edges is invariant, and only the ordering and path metadata vary.
 
 The relaxation is acceptable because crawl is **Tier 1 and emits a discovery artifact, never a pass/fail**. [BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) already states the same reason: the crawl itself can never be a CI gate. The deterministic *byproducts* keep their guarantees. A recorded repro or flow path still replays AI-free under `run` as a Tier 2 regression.
 

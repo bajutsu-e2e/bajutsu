@@ -17,13 +17,14 @@
 
 Bajutsu の決定的な開発時ゲートは `make check` で、lock-check、format-check、ruff、shellcheck、actionlint、mypy、pytest とカバレッジを実行します。pre-push フックと CI が、これを反映しています。このゲートのおかげで、多数の並行ブランチが衝突せずに緑を保てます（[CLAUDE.md](../../CLAUDE.md)、[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow-ja.md)）。
 
-ゲート*自体*を監査したところ、土台は堅牢でしたが、確定した忠実性の不具合が 1 つと、欠けている層がいくつか見つかりました。本項目は、ゲートを次の 5 点で強化します。
+ゲート*自体*を監査したところ、土台は堅牢でしたが、確定した忠実性の不具合が 1 つと、欠けている層がいくつか見つかりました。本項目は、ゲートを次の 4 点で強化します。
 
 - CI が構造的に `make check` を反映するようにします。
 - ロードマップ用スクリプトを、型検査の対象に加えます。
 - 分岐カバレッジを導入します。
 - セキュリティ linter と依存の脆弱性ゲートで、2 つのセキュリティ層を追加します。
-- CodeQL は、GitHub の default setup のままにします。
+
+CodeQL は、GitHub の default setup のままにします。
 
 これは純粋に開発者向けの基盤です。ツールの挙動、ランタイム、シナリオの意味論には一切触れず、prime directive の範囲内にとどまります。決定的ゲートに増えるのは検査であり、LLM ではありません。
 
@@ -49,7 +50,7 @@ Bajutsu の決定的な開発時ゲートは `make check` で、lock-check、for
 
 ### 分岐カバレッジ
 
-`[tool.coverage.run] branch = true` により、全行が実行されていても、未テストの `if` / `else` の経路が床に対して数えられます。得た改善を固定するため、床を 85% から 87%（実測 87.40%）へ引き上げます。今後、さらに段階的に上げられます。
+`[tool.coverage.run] branch = true` により、全行が実行されていても、未テストの `if` / `else` の経路が床に対して数えられます。得た改善を固定するため、床を 85% から 87%（実測 87.40%）へ引き上げました。今後、さらに段階的に上げられます。
 
 ### セキュリティ linter（ruff `S` / flake8-bandit）
 

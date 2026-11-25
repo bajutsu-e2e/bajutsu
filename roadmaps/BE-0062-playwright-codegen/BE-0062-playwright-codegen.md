@@ -15,7 +15,7 @@
 
 ## Introduction
 
-`bajutsu codegen` turns a passing scenario into a native test written in the idiom of a destination framework. A team can then run the same flow in its existing continuous integration (CI) with no bajutsu runtime and no AI at test time. Today `--emit` accepts `xcuitest` alone.
+`bajutsu codegen` turns a passing scenario into a native test written in the idiom of a destination framework. A team can then run the same flow in its existing continuous integration (CI) with no bajutsu runtime and no AI at test time. Today `--emit` accepts only `xcuitest`.
 
 The web (Playwright) backend has landed ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)), so a scenario can `run` against a browser. Nothing yet hands that flow off as a native browser test. This item adds `--emit playwright`, a second emit target that renders a scenario as a Playwright test. The target is purely structural.
 
@@ -23,7 +23,7 @@ The web (Playwright) backend has landed ([BE-0041](../BE-0041-web-playwright-bac
 
 ## Motivation
 
-`codegen` exists so that a passing scenario can leave the bajutsu runtime behind and live in a team's native CI. Today that promise holds for iOS alone. The web backend can `run` a scenario deterministically on Linux with no Mac, but the handoff artifact stops at XCUITest. A team that adopts the web backend has no `codegen` path at all. That gap is the one place where the iOS and web stories visibly diverge.
+`codegen` exists so that a passing scenario can leave the bajutsu runtime behind and live in a team's native CI. Today that promise holds only for iOS. The web backend can `run` a scenario deterministically on Linux with no Mac, but the handoff artifact stops at XCUITest. A team that adopts the web backend has no `codegen` path at all. That gap is the one place where the iOS and web stories visibly diverge.
 
 The mapping fits for the same reasons the XCUITest mapping does:
 
@@ -112,7 +112,7 @@ Mirrors the `Selector` → web-attribute mapping the driver already uses
 
 ### Determinism in the generated test
 
-All *waiting* uses Playwright's native auto-wait. Web-first assertions retry until the test timeout, so no fixed sleep synchronizes anything. The sole fixed timings in the output are **gesture durations**: the `delay` of `longPress` and the coordinate swipes. Each duration is intrinsic to its gesture. They match in spirit XCUITest's `press(forDuration:)` and the short drag duration of the idb backend. The document names these timings openly, as it does for the iOS path.
+All *waiting* uses Playwright's native auto-wait. Web-first assertions retry until the test timeout, so no fixed sleep synchronizes anything. The only fixed timings in the output are **gesture durations**: the `delay` of `longPress` and the coordinate swipes. Each duration is intrinsic to its gesture. They match in spirit XCUITest's `press(forDuration:)` and the short drag duration of the idb backend. The document names these timings openly, as it does for the iOS path.
 
 ### Shape of the change
 

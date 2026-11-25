@@ -31,9 +31,9 @@ Second, **no generated reference exists.** The hand-written docs under `docs/` e
 
 Both gaps matter more now, because **agentic coding is a primary way that people read and change this code.** A consistent docstring standard and a navigable API surface help contributors who lean on AI assistants, and they help the assistants themselves. Each public parameter gets one place for its meaning. One rendered map of the surface replaces a search through 100+ files.
 
-Agents with repository access still read source. The larger payoff of the standard is therefore the *consistency and the rendered surface*, and the format alone matters less (see *Alternatives considered*).
+Agents with repository access still read source. The larger payoff of the standard is therefore the *consistency and the rendered surface*, not the format alone (see *Alternatives considered*).
 
-The change covers documentation and tooling alone. It adds no LLM anywhere and never runs inside `run`, and the reference build lives outside the gate. Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
+The change covers documentation and tooling only. It adds no LLM anywhere and never runs inside `run`, and the reference build lives outside the gate. Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
 
 ## Detailed design
 
@@ -52,7 +52,7 @@ Internal, module-private helpers (the `_`-prefixed functions) keep a **concise p
 ### The standard
 
 - **Language: English**, like every code comment. The prose docs are bilingual, but code is not ([`docs/README.md`](../../docs/README.md)).
-- **Google style on the public surface.** Write a one-line summary. Add `Args:`, `Returns:`, and `Raises:` (and `Yields:` or `Examples:`) **where they add information**.
+- **Google style on the public surface.** Write a one-line summary. Add `Args:`, `Returns:`, and `Raises:` (and `Yields:` or `Examples:`) **only where they add information**.
 - **Do not restate types.** Types live in annotations, and the generator reads them from the signature. `Args:` and `Returns:` describe *meaning*, such as units, constraints, and what `None` means, and never the type.
 - **Why, not what.** Cover rationale, invariants (especially anything that protects determinism), trade-offs, and edge cases. Tie the rationale of a behavior to its `BE-NNNN` item.
 - **Match the surrounding density.** Stay short and purposeful, without narration.

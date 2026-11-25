@@ -24,7 +24,7 @@ This proposal introduces a **versioned report data contract**, the persisted mod
 - An offline `bajutsu report <run>` command re-renders `report.html` for an existing run and re-emits `junit.xml`.
 - The `serve` web UI renders each report on view from the stored model with the current template. A report seen in the browser is thus always current.
 
-The change adds no LLM anywhere. It never re-runs an assertion or alters a verdict, because the render re-presents recorded outcomes. It therefore sits squarely inside the determinism-first contract.
+The change adds no LLM anywhere. It never re-runs an assertion or alters a verdict, because the render only re-presents recorded outcomes. It therefore sits squarely inside the determinism-first contract.
 
 ## Motivation
 
@@ -34,10 +34,10 @@ A finished run is already **self-describing**. The deterministic runner writes t
 - the executed `scenario.yaml`
 - the evidence tree (`screenshot`, `elements.json`, `network.json`, video, and device log)
 
-The report is a *view* over exactly this data. Yet the run produces that view **at the moment of execution alone**. `bajutsu/runner/pipeline.py` calls `write_report`, which renders `bajutsu/templates/report.html.j2` once and writes `runs/<id>/report.html`. From then on, the HTML is a fixed artifact. Data and presentation are coupled where they should be separable, and the coupling bites in three concrete ways:
+The report is a *view* over exactly this data. Yet the run produces that view **only at the moment of execution**. `bajutsu/runner/pipeline.py` calls `write_report`, which renders `bajutsu/templates/report.html.j2` once and writes `runs/<id>/report.html`. From then on, the HTML is a fixed artifact. Data and presentation are coupled where they should be separable, and the coupling bites in several concrete ways:
 
-1. **Report improvements never reach past runs.** Every change to the report affects runs executed *after* the change alone. Such changes include a new evidence tab, a better step table, a rendering bug fix, and a summary computed from data the run already captured. A two-week-old failure report keeps the old presentation. The single hub artifact of the whole tool cannot be re-presented ([DESIGN §9](../../DESIGN.md): `manifest.json` is "the single source of truth for the report and CI").
-2. **"Re-run to refresh" is wasteful, and often impossible.** Re-executing a scenario to pick up a template change spends a Simulator, minutes, and (on AI paths) tokens. It recomputes a result that is already on disk. Worse, re-running is frequently *not an option*: the failure was a one-off, the app build or backend state has moved on, or the run is a release record that must not change. Refreshing the presentation should not require re-execution.
+1. **Report improvements never reach past runs.** Every change to the report only affects runs executed *after* the change. Such changes include a new evidence tab, a better step table, a rendering bug fix, and a summary computed from data the run already captured. A two-week-old failure report keeps the old presentation. The single hub artifact of the whole tool cannot be re-presented ([DESIGN §9](../../DESIGN.md): `manifest.json` is "the single source of truth for the report and CI").
+2. **"Re-run to refresh" is wasteful, and often impossible.** Re-executing a scenario just to pick up a template change spends a Simulator, minutes, and (on AI paths) tokens. It recomputes a result that is already on disk. Worse, re-running is frequently *not an option*: the failure was a one-off, the app build or backend state has moved on, or the run is a release record that must not change. Refreshing the presentation should not require re-execution.
 3. **A hosted or shared `serve` shows stale reports.** When `serve` ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)) is upgraded, every report it serves is still the HTML baked by whichever version ran that scenario. A browser user who compares two runs sees two different report layouts for one reason: *when* each run happened.
 
 No path today reads a stored run back into the renderer. A `manifest_dict` serializes the result out, but no inverse loads it in. `html_report` takes live `RunResult` objects plus side inputs rather than one persisted model.
@@ -96,7 +96,7 @@ The promise stays precise: re-rendering reflects template and feature changes *t
 Tests that need no Simulator pin four properties:
 
 - (a) **Round-trip.** Loading the persisted model back reconstructs the input of the renderer without loss. `load(persist(result))` carries every field that the report uses.
-- (b) **Purity.** Re-rendering a fixture run twice is byte-identical. A fresh `run` bakes a report that equals the report `bajutsu report` produces for the same run and template. The render depends on stored data alone, with timestamps drawn from that data and not from the wall clock.
+- (b) **Purity.** Re-rendering a fixture run twice is byte-identical. A fresh `run` bakes a report that equals the report `bajutsu report` produces for the same run and template. The render depends only on stored data, with timestamps drawn from that data and not from the wall clock.
 - (c) **Older versions still render.** A fixture written at an earlier `schemaVersion` renders without error, with newer-only sections shown as "not captured".
 - (d) **No verdict drift.** The pass/fail of the re-rendered report matches the stored model for every scenario.
 
@@ -110,10 +110,10 @@ Three topics stay out of scope:
 
 ## Alternatives considered
 
-- **Keep baking alone; re-run to refresh (the status quo).** This is the problem itself. A re-run spends a Simulator and minutes (and tokens, on AI paths) to recompute a result already on disk. It cannot run at all when the failure was a one-off, the app or backend state has moved on, or the run is an immutable release record.
+- **Keep baking only; re-run to refresh (the status quo).** This is the problem itself. A re-run spends a Simulator and minutes (and tokens, on AI paths) to recompute a result already on disk. It cannot run at all when the failure was a one-off, the app or backend state has moved on, or the run is an immutable release record.
 - **serve renders dynamically, but no offline command.** This refreshes the browser view but leaves the portable `report.html` frozen at its baked version. CI uploads that artifact, and [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) zips it. Rejected as half a solution. The offline re-render keeps shared and archived reports current.
 - **An offline command, but serve keeps serving the baked file.** This refreshes artifacts on demand, but the web UI still shows stale HTML until each run is re-baked. Rejected for the same reason from the other side. Both surfaces are wanted, which is why they share one renderer.
-- **A separate `report.json` instead of elevating `manifest.json`.** This keeps `manifest.json` a lean summary. It also adds a second near-duplicate artifact and a way for the two to drift. The item prefers reusing `manifest.json` as the single versioned source. A separate file is the fallback if the manifest must stay a summary. Either way, the model is persisted in full and carries a `schemaVersion`.
+- **A separate `report.json` instead of elevating `manifest.json`.** This keeps `manifest.json` a lean summary. It also adds a second near-duplicate artifact and a way for the two to drift. The item prefers reusing `manifest.json` as the single versioned source. A separate file is the fallback only if the manifest must stay a summary. Either way, the model is persisted in full and carries a `schemaVersion`.
 - **Ship raw JSON plus a client-side JS app (render in the browser).** The report is deliberately a self-contained static HTML with inline assets and relative links. It opens by double-click and zips cleanly ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md), [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md)). A JSON + SPA would break that portability. The renderer stays server-side and offline, and it keeps emitting self-contained HTML.
 - **Auto-rebake on a template-version mismatch.** Tempting, but silently rewriting the artifacts of a past run on read is surprising and at odds with treating a run as a record. The explicit `bajutsu report` command plus the render-on-view of serve cover the need without mutating old runs behind the back of the user. A later change could revisit an opt-in auto-refresh.
 - **A dedicated "Reporting" roadmap topic.** Deferred. This item is filed under *Authoring experience* alongside [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md), following the precedent that BE-0060 set (one topic until siblings accumulate). This item and BE-0060 are the first two report-subsystem proposals. If more arrive, a "Reporting" topic can be carved out then.

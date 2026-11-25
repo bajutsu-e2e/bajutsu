@@ -15,7 +15,7 @@
 
 ## Introduction
 
-This item promotes the contributor procedures that today live as **prose** into **human-runnable commands**. The prose sits in [`CLAUDE.md`](../../CLAUDE.md), in the `ideation` and `implement-be` skills, and in [`docs/ai-development.md`](../../docs/ai-development.md). The commands are `make` targets backed by small scripts.
+This item promotes the contributor procedures that today live only as **prose** into **human-runnable commands**. The prose sits in [`CLAUDE.md`](../../CLAUDE.md), in the `ideation` and `implement-be` skills, and in [`docs/ai-development.md`](../../docs/ai-development.md). The commands are `make` targets backed by small scripts.
 
 One entrypoint then serves both a human who starts a task and an AI that does it on behalf of that human. A guardrail stops being a recipe that only an agent follows reliably from prose. It becomes a command that anyone can run.
 
@@ -37,7 +37,7 @@ The guardrails of Bajutsu already split into two kinds, by whether a human can r
   - **Scaffolding a new roadmap item.** The author creates the directory and *both* bilingual files in the exact Swift-Evolution format. The files need a complete metadata block, the `BE-0069` placeholder, and the GitHub handle of the author. The `ideation` skill spends most of its text on this procedure. It is the most error-prone, highest-ceremony procedure in the repo, yet it has no command.
   - **Worktree and branch setup.** The recipe `git fetch origin && git worktree add … -b … origin/main && make setup` lives in [`docs/ai-development.md`](../../docs/ai-development.md).
   - **Pre-push routine.** The routine is `git fetch origin && git rebase origin/main && make check`, plus the "definition of done" checklist. The checklist asks whether the docs of both languages were touched, whether a test changed with the behavior, and whether `Status` flipped if the item ships.
-  - **Item well-formedness.** The bilingual pair is present, the slug matches the directory, and the metadata block is complete. The author is a handle link, `Status` is consistent with the subdirectory, and every cross-referenced `BE-NNNN` exists. Today two narrow tests (index drift and the `Status`-to-directory match) enforce part of this, and the eyes of a reviewer enforce the rest.
+  - **Item well-formedness.** The bilingual pair is present, the slug matches the directory, and the metadata block is complete. The author is a handle link, `Status` is consistent with the subdirectory, and every cross-referenced `BE-NNNN` exists. Today only two narrow tests (index drift and the `Status`-to-directory match) enforce this, plus the eyes of a reviewer.
 
 Leaving these procedures as prose causes three problems:
 
@@ -78,7 +78,7 @@ The command is the human entrypoint to the procedure that the `ideation` skill p
 - every cross-referenced `BE-NNNN` resolves to an item that exists;
 - a `BE-0069` item does not cross-reference *another* `BE-0069` item, because the per-item rewrite of the allocator cannot fix that (a documented limitation).
 
-Today tests cover index drift and `Status`-to-directory consistency alone ([`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py), [`tests/test_promote_roadmap_items.py`](../../tests/test_promote_roadmap_items.py)). The rest relies on a reviewer noticing.
+Today tests cover only index drift and `Status`-to-directory consistency ([`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py), [`tests/test_promote_roadmap_items.py`](../../tests/test_promote_roadmap_items.py)). The rest relies on a reviewer noticing.
 
 The lint makes well-formedness a first-class, fast, author-time check with actionable messages. An author can run it mid-edit without the full suite. Where the lint overlaps the existing tests, the invariant consolidates here, and the tests call it.
 
@@ -91,7 +91,7 @@ These two targets turn the multi-line recipes in [`docs/ai-development.md`](../.
 
 ### D. Commit / PR metadata checks — `make lint-pr` (lightest)
 
-This mechanism makes the prose-only conventions that reviewers enforce today checkable. It covers the **mechanical** conventions alone and never the judgement calls:
+This mechanism makes the prose-only conventions that reviewers enforce today checkable. It covers strictly the **mechanical** conventions and never the judgement calls:
 
 - a roadmap-touching change carries the `[BE-NNNN]` (or `[BE-0069]`) prefix on its PR title;
 - commit messages are scoped (`feat(scope): …`, `fix(scope): …`, or `docs: …`);
@@ -117,7 +117,7 @@ Each phase is a small, independent PR, following the parallel-work model of BE-0
 ## Alternatives considered
 
 - **Keep the procedures as prose (status quo).** Rejected. Prose drifts (the BE-0067 finding), and only an AI reliably executes a long prose recipe. A human cannot own the entrypoint, and that is the asymmetry this item exists to remove.
-- **Encode the procedures inside the skills alone** (richer `ideation` prose, or a dedicated sub-agent). Rejected. That doubles down on AI-only execution, which is the thing this item moves away from. A skill that *calls* a command is good. A skill that is the *only* way to run the procedure is not.
+- **Encode the procedures only inside the skills** (richer `ideation` prose, or a dedicated sub-agent). Rejected. That doubles down on AI-only execution, which is the thing this item moves away from. A skill that *calls* a command is good. A skill that is the *only* way to run the procedure is not.
 - **Make the scaffolder allocate a real BE number.** Rejected. It violates the placeholder rule: IDs are permanent and monotonic, and allocation is the atomic, race-free job of CI ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)). The scaffolder must emit `BE-0069`.
 - **Make `preflight` a second hard gate (a pre-commit hook running `make check`).** Rejected. The pre-push hook already gates `make check`. A per-commit gate slows the inner loop and adds no safety. `preflight` is advisory and human-initiated by design.
 - **A shipped `bajutsu dev …` CLI instead of `make` targets.** Rejected for now. `make <verb>` matches every other contributor entrypoint in the repo and needs no packaging. It also keeps developer tooling out of the shipped `bajutsu` CLI surface. A consolidated dev CLI can come later if the target count grows.
