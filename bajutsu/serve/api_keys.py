@@ -106,8 +106,8 @@ def admit(
 
     A key that is recognized is judged here and nowhere else: 401 with no hint when its secret is
     wrong, it expired, it was revoked, or its org is gone; 403 off the allowlist or above its role.
-    Every use of a valid key, refused or not, is audited. A 401 is only logged, with the reason the
-    caller is not told.
+    Every admitted use is audited; a refused one at most once a minute for each key, and always
+    logged. A 401 is only logged, with the reason the caller is not told.
     """
     repository = state.repository
     parsed = bearer_key(authorization)
@@ -142,15 +142,18 @@ def admit(
     )
     refused = forbidden_for_api_key(method, path, role=key.role)
     oplog.bind_actor(api_key_identity(key.id))
-    repository.touch_api_key(key.id, at=now, min_interval=_TOUCH_INTERVAL)
-    _record_audit(
-        state,
-        principal.identity,
-        key.org_id,
-        "apikey.use",
-        path,
-        {"method": method, "allowed": not refused},
-    )
+    touched = repository.touch_api_key(key.id, at=now, min_interval=_TOUCH_INTERVAL)
+    # A refused request reached nothing, so recording each one would only let the caller grow
+    # `audit_log` at a rate of their choosing. It is bounded like the touch; the log line is not.
+    if touched or not refused:
+        _record_audit(
+            state,
+            principal.identity,
+            key.org_id,
+            "apikey.use",
+            path,
+            {"method": method, "allowed": not refused},
+        )
     oplog.log_event(
         _logger,
         "apikey.use",

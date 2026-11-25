@@ -258,8 +258,11 @@ def forbidden_for_api_key(method: str, path: str, *, role: str | None) -> bool:
     Default deny, like `forbidden_for_machine`: a route not named in `_API_KEY_PATHS` is closed.
     A named one is still bounded by the key's role, wherever `required_role` asks for one, so a
     viewer key cannot call an editor route. A key with no role is refused outright.
+
+    Where `required_role` says nothing, only a read stays open to a viewer: it names no role for
+    several writes, and listing one of those must not quietly grant it to a read-only key.
     """
     if role is None or (method, path) not in _API_KEY_PATHS:
         return True
-    required = required_role(method, path)
-    return required is not None and not role_allows(role, required)
+    required = required_role(method, path) or ("viewer" if method == "GET" else "editor")
+    return not role_allows(role, required)

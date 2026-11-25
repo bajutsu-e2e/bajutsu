@@ -464,6 +464,16 @@ def test_only_the_bearer_check_builds_a_key_principal() -> None:
     assert Principal.from_stored("alice", None, HUMAN).role is None
 
 
+@pytest.mark.parametrize("method", ["POST", "DELETE"])
+def test_a_viewer_key_cannot_write_where_no_role_is_named(
+    monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    # `required_role` answers None for this path under both verbs.
+    _open_routes(monkeypatch, (method, "/api/triage"))
+    assert gate.forbidden_for_api_key(method, "/api/triage", role="viewer")
+    assert not gate.forbidden_for_api_key(method, "/api/triage", role="editor")
+
+
 def test_a_key_with_no_role_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     _open_routes(monkeypatch, ("GET", "/api/runs"))
     assert gate.forbidden_for_api_key("GET", "/api/runs", role=None)
@@ -482,8 +492,11 @@ def test_issue_use_and_revoke_are_audited_by_identifier_alone(
     _open_routes(monkeypatch, ("GET", "/api/runs"))
     key_id, key = _issue(state)
     call = backend(state)
-    assert call("GET", "/api/runs", bearer=key).status == 200
+    # The refusal comes first: it is the minute's first use, so it is recorded. The second falls
+    # inside that minute and is not, while the admitted use after it still is.
     assert call("GET", "/api/config", bearer=key).status == 403
+    assert call("GET", "/api/config", bearer=key).status == 403
+    assert call("GET", "/api/runs", bearer=key).status == 200
     assert _repository(state).list_api_keys("acme")[0].last_used_at is not None
     assert ops.revoke_api_key(state, "acme", key_id, actor="alice")[1] == 200
 

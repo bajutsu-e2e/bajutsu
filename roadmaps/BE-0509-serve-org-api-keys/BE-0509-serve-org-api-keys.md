@@ -156,8 +156,9 @@ The tests cover these cases:
 Log:
 
 - [#2558](https://github.com/bajutsu-e2e/bajutsu/pull/2558): the six units landed in one change. A revoked key keeps its row, so its identifier is still
-  recognized and answers `401` rather than falling through to the shared-token check. A use is audited
-  whether the route was allowed or refused. The admin's issue and revoke entries sit in the acting
+  recognized and answers `401` rather than falling through to the shared-token check. Every admitted
+  use is audited, and a refused one at most once a minute for each key. A write route that names no
+  role requires `editor` of a key. The admin's issue and revoke entries sit in the acting
   admin's organization, like the other `/api/orgs/…` actions, and name the key's organization in
   their detail. `docs/cli.md` has no section on the HTTP routes, so it carries a short pointer to
   `docs/self-hosting.md`.

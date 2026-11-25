@@ -1156,12 +1156,13 @@ and it cannot issue or revoke keys. To rotate one, issue a new key, then revoke 
 
 A key answers `401` once it is revoked or expired, and once its organization is retired; retiring an
 organization also revokes its keys. A route on the allowlist still requires the role it requires of a
-person, so a `viewer` key cannot call an `editor` route.
+person, so a `viewer` key cannot call an `editor` route. A route that writes and names no role requires
+`editor` of a key.
 
-The audit log records each issue, revocation, and use under the key's identifier. A use is recorded
-whether the route was allowed or refused. A `401` writes no audit entry; the operations log records
-it as `apikey.denied` with the reason the caller is not told. A key's last-used time updates at most
-once a minute.
+The audit log records each issue, revocation, and admitted use under the key's identifier. A request
+refused with `403` is audited at most once a minute for each key; the operations log records every
+one. A `401` writes no audit entry; the operations log records it as `apikey.denied` with the reason
+the caller is not told. A key's last-used time updates at most once a minute.
 
 ### Operator secrets and the Claude API key
 
