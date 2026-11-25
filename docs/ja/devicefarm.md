@@ -4,15 +4,17 @@
 
 ## バッチモデルと、ドライバーではなくサブミッターである理由
 
-Device Farm はライブデバイスのプロバイダーではなく、**バッチ**サービスです。ネットワーク越しに操作するデバイスを貸し出すのではなく、Device Farm 側のホスト上で利用者のコマンドを実行します。そのホストには、予約されたデバイスに接続された `adb` がすでに用意されています。したがって、ここで提供するのは実行時のドライバー（取得すべきデバイスは存在しません）ではなく、**CI 側のサブミッター**です。Bajutsu とシナリオをパッケージ化し、`bajutsu run --backend adb` を実行するテスト仕様とともにアップロードして、Device Farm にホスト上で実行させ、成果物を回収します。
+Device Farm はライブデバイスのプロバイダーではなく、**バッチ**サービスです。ネットワーク越しに操作するデバイスを貸し出すのではなく、Device Farm 側のホスト上で利用者のコマンドを実行します。そのホストには、予約されたデバイスに接続された `adb` がすでに用意されています。したがって、ここで提供するのは実行時のドライバーではなく、**CI 側のサブミッター**です。取得すべきデバイスが存在しないためです。サブミッターは、Bajutsu とシナリオをパッケージ化し、`bajutsu run --backend adb` を実行するテスト仕様とともにアップロードします。そのうえで、Device Farm にホスト上で実行させ、成果物を回収します。
 
-サブミッターの中核は決定的なコアの外側、[`bajutsu/common/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/cloud/devicefarm.py)（`render_test_spec` / `build_package` / `submit_and_collect` と `DeviceFarmClient` / `Transfer` の seam、BE-0336）にすべて収まっており、他の呼び出し元からも再利用できます。[`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py) は、引数解析と実際の boto3 / urllib アダプタだけを持つ薄いラッパーになりました。アップロード、ポーリング、ダウンロードのしくみは、`run` や CI の判定経路に一切触れません。Bajutsu はローカルと同じように Device Farm の内側で動作し、同じ決定的なコアと、機械的に検査できるアサーションによる同じ合否を用います。そのため、サブミッターが報告する判定は **Bajutsu 自身の `manifest.json`** に由来し、Device Farm 独自の PASSED / FAILED 分類に依存しません。
+サブミッターの中核は決定的なコアの外側、[`bajutsu/common/cloud/devicefarm.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/bajutsu/common/cloud/devicefarm.py)（`render_test_spec` / `build_package` / `submit_and_collect` と `DeviceFarmClient` / `Transfer` の seam、BE-0336）にすべて収まっています。他の呼び出し元からも再利用できます。[`scripts/devicefarm_submit.py`](https://github.com/bajutsu-e2e/bajutsu/blob/main/scripts/devicefarm_submit.py) は、引数解析と実際の boto3 / urllib アダプタだけを持つ薄いラッパーになりました。
+
+アップロード、ポーリング、ダウンロードのしくみは、`run` や CI の判定経路に一切触れません。Bajutsu はローカルと同じように Device Farm の内側で動作し、同じ決定的なコアと、機械的に検査できるアサーションによる同じ合否を用います。そのため、サブミッターが報告する判定は **Bajutsu 自身の `manifest.json`** に由来し、Device Farm 独自の PASSED / FAILED 分類に依存しません。
 
 ## バッチトポロジーの注意点
 
 以下は Device Farm 自体の性質です。将来 Device Farm 側が変わってもフローが気付かないうちに壊れないよう、サブミッターはこれらを文書化して扱います。
 
-- **生の adb は副産物であって保証ではありません。** Device Farm がカスタム環境で第一級に扱う経路は Appium です。予約されたデバイスに対する `adb` は、ホストのツールチェーンに含まれるために利用できるのであって、Amazon が約束する契約ではありません。Bajutsu の Android バックエンドが必要とするのは「デバイスに接続された `adb` を備えたホスト」だけで、カスタム環境はそれを提供しますが、将来のプラットフォーム変更で失われうる副産物として扱ってください。
+- **生の adb は副産物であって保証ではありません。** Device Farm がカスタム環境で第一級に扱う経路は Appium です。予約されたデバイスに対する `adb` は、ホストのツールチェーンに含まれるために利用できるのであって、Amazon が約束する契約ではありません。Bajutsu の Android バックエンドが必要とするのは「デバイスに接続された `adb` を備えたホスト」だけで、カスタム環境はそれを提供します。ただし、将来のプラットフォーム変更で失われうる副産物として扱ってください。
 - **150 分のハードキャップ。** カスタム環境の 1 回の実行は 150 分が上限です。サブミッターはそれを超えてポーリングせず、CI ジョブを無限にブロックするのではなく、明示的に失敗させます。
 - **APK のみ。** Device Farm の Android アプリのアップロードは `.apk` を受け付け、`.aab` は受け付けません。実行にはデバッグ APK をビルドしてください。
 - **Appium コマンドごとのタイムアウト。** Device Farm の Appium コマンドごとのタイムアウトは、Bajutsu が用いる生の adb 経路には適用されません。実効的な上限は 150 分の実行キャップです。
@@ -24,15 +26,15 @@ Device Farm の iOS は実機で動作するため、下記の [iOS: 再署名�
 実機で動作させることにより、Bajutsu が前もって織り込む点が 2 つあります（BE-0238）。いずれも Device Farm の分類ではなく物理デバイスそのものの性質なので、XCUITest バックエンドが駆動する実機（`runsOn.ios.kind: device`）であれば、Device Farm でもローカル接続のデバイスでも同じように当てはまります。
 
 - **再署名でエンタイトルメントが剥がれます。** Device Farm はアップロードされた `.ipa` を自前のプロビジョニングプロファイルで再署名し、予約されたデバイスにインストールできるようにします。この再署名では、新しいプロファイルが持たないエンタイトルメント（多くは Push（`aps-environment`）と App Groups（`com.apple.security.application-groups`））が落ちます。剥がれたエンタイトルメントに依存するアプリの機能（リモートプッシュの登録、App Group の共有コンテナ）は再署名後のビルドでは動作しないため、そうした機能をアサートするシナリオは、App Store 版ではなく再署名後の挙動を前提にしてください。
-- **simctl のデバイス制御と権限付与は適用されません。** Bajutsu の iOS デバイス制御（`setLocation`、クリップボード系のステップ、`push`、`clearKeychain`、`background` / `foreground`、ステータスバーの上書き）と権限付与は、いずれも `simctl` に支えられています。`simctl` が届くのはシミュレータだけで、物理デバイスには届きません。そのため実機では XCUITest バックエンドはこれらを宣言せず、いずれかを使うシナリオは、デバイス操作を始める前に **preflight でスキップ**され（BE-0082）、実行の途中で `simctl` エラーとして遅れて失敗する代わりに、明確な理由とともに弾かれます。XCTest ランナー自身が駆動する実機側のケーパビリティ（query、elements、スクリーンショット、タップ、2 本指ジェスチャー）は影響を受けません。
+- **simctl のデバイス制御と権限付与は適用されません。** Bajutsu の iOS デバイス制御（`setLocation`、クリップボード系のステップ、`push`、`clearKeychain`、`background` / `foreground`、ステータスバーの上書き）と権限付与は、いずれも `simctl` に支えられています。`simctl` が届くのはシミュレータだけで、物理デバイスには届きません。そのため実機では、XCUITest バックエンドはこれらを宣言しません。いずれかを使うシナリオは、デバイス操作を始める前に preflight で**スキップ**されます（BE-0082）。実行の途中で `simctl` エラーとして遅れて失敗する代わりに、明確な理由とともに弾かれます。XCTest ランナー自身が駆動する実機側のケーパビリティ（query、elements、スクリーンショット、タップ、2 本指ジェスチャー）は影響を受けません。
 - **ホストとアプリは 2 つの経路でつながります。** 物理デバイスは自分専用のループバックを持ちます。Bajutsu は runner とアプリ内の応答器に usbmuxd で接続します。アプリは、ネットワークのやり取りをホストアドレスへ報告します。このアドレスは実行ごとに渡すか、`BAJUTSU_HOST_ADDRESS` で指定します。`bajutsu run` の前に、Device Farm のホストで doctor を実行してください。コマンドは `bajutsu doctor --udid "$DEVICEFARM_DEVICE_UDID" --environment-only` です。usbmuxd が予約した実機を列挙しない場合、doctor は失敗します。アプリが受け取るホストアドレスの一覧も示します。新しくインストールしたアプリには、2 つ目の経路が必要とする iOS のローカルネットワークの許可もありません。どちらの経路も、Device Farm ではまだ誰も検証していません（[iOS を実機とデバイスクラウドで動かす](ios-device-cloud.md)を参照してください）。
 
 ## テスト仕様
 
 Device Farm は[カスタム環境のテスト仕様](https://docs.aws.amazon.com/devicefarm/latest/developerguide/custom-test-environment-test-spec.html)から実行を駆動します。これは `install`、`pre_test`、`test`、`post_test` の各フェーズにシェルコマンドを記した YAML ファイルです。サブミッターは、次のような仕様を生成します。
 
-1. **install**：uv で Python 3.13 を用意し、アップロードしたテストパッケージから Bajutsu をその venv へインストールします。Device Farm のホストは Python が最大 3.12 まで（`devicefarm-cli use python` は Amazon があらかじめ用意したランタイムしか選べません）で、Bajutsu は 3.13 を要求するため、ホストの標準 pip で uv を入れ、uv にスタンドアロンの 3.13 を取得させて、その venv へインストールします。これは暫定的な回避策で、Device Farm が 3.13 を提供したら取り除きます（サブミッターの `_python_bootstrap_commands` を参照）。adb バックエンドはサブプロセスだけで動くため、追加の extra を入れないベースのインストールで足ります。
-2. **pre_test**：`adb devices` を実行し、予約されたデバイスが見えていること（シリアル解決の確認）を示します。呼び出し側は、`render_test_spec` の `pre_test_commands` パラメータを使って、独自のデバイス側セットアップをここに追加できます。渡したコマンドはプローブの後に、そのままの文字列で、指定した順序で差し込まれます。あるデプロイのバックエンドが実行前に必要とするもの（ネットワークリレーや VPN クライアントなど）を配置するための拡張点です。`build_package` の `extra_texts`（セットアップスクリプトをパッケージへ同梱するパラメータ）と組み合わせることで、そのデプロイ固有のセットアップを `bajutsu/` の外に完全に置いておけます。これは Python API 専用のフックです。`serve` エンドポイント・config フィールド・バッチリクエストのフィールドのいずれからも配線されないため、クライアント由来の値が、実行時の AWS ロール認証情報を持つホスト上のシェルに到達することはありません。
+1. **install**：uv で Python 3.13 を用意し、アップロードしたテストパッケージから Bajutsu をその venv へインストールします。Device Farm のホストは Python が最大 3.12 までです（`devicefarm-cli use python` は Amazon があらかじめ用意したランタイムしか選べません）。一方、Bajutsu は 3.13 を要求します。そこで、ホストの標準 pip で uv を入れ、uv にスタンドアロンの 3.13 を取得させて、その venv へインストールします。これは暫定的な回避策で、Device Farm が 3.13 を提供したら取り除きます（サブミッターの `_python_bootstrap_commands` を参照）。adb バックエンドはサブプロセスだけで動くため、追加の extra を入れないベースのインストールで足ります。
+2. **pre_test**：`adb devices` を実行し、予約されたデバイスが見えていること（シリアル解決の確認）を示します。呼び出し側は、`render_test_spec` の `pre_test_commands` パラメータを使って、独自のデバイス側セットアップをここに追加できます。渡したコマンドはプローブの後に、そのままの文字列で、指定した順序で差し込まれます。あるデプロイのバックエンドが実行前に必要とするもの（ネットワークリレーや VPN クライアントなど）を配置するための拡張点です。`build_package` の `extra_texts`（セットアップスクリプトをパッケージへ同梱するパラメータ）と組み合わせると、そのデプロイ固有のセットアップを `bajutsu/` の外に完全に置けます。このフックは Python API 専用です。`serve` エンドポイント、config フィールド、バッチリクエストのフィールドのいずれからも配線されません。そのため、クライアント由来の値が、実行時の AWS ロール認証情報を持つホスト上のシェルに到達することはありません。
 3. **test**：シナリオごとに 1 回ずつ `bajutsu run --backend adb --udid booted` を実行します。あるシナリオが失敗しても、残りのシナリオの manifest は残ります。
 4. **post_test**：`runs/` ツリー全体を `$DEVICEFARM_LOG_DIR` にコピーし、成果物が回収できるようにします。
 
@@ -59,9 +61,9 @@ uv run python scripts/devicefarm_submit.py \
   --package-only
 ```
 
-実行には `showcase.devicefarm.config.yaml` を使います。これは `showcase-compose` ターゲットの Device Farm 版で、**`subject.path` を持ちません**。Device Farm はアップロードした APK を予約デバイスへ自分でインストールするため、adb バックエンドはローカルの APK を `adb install` するのではなく、インストール済みのアプリを起動します（`app_path` が None のときの、既存の「インストール済みアプリに対して実行する」経路です）。これは環境ごとの違いなので、ツールではなく設定に置きます。
+実行には `showcase.devicefarm.config.yaml` を使います。これは `showcase-compose` ターゲットの Device Farm 版で、**`subject.path` を持ちません**。Device Farm はアップロードした APK を予約デバイスへ自分でインストールします。そのため adb バックエンドは、ローカルの APK を `adb install` せず、インストール済みのアプリを起動します（`app_path` が None のときの、既存の「インストール済みアプリに対して実行する」経路です）。これは環境ごとの違いなので、ツールではなく設定に置きます。
 
-`--package SRC=ARCNAME` はそれぞれ、ファイルまたはディレクトリを `ARCNAME` の位置でテストパッケージに追加します（arcname に `.` を指定すると、ディレクトリをパッケージのルートに展開します）。渡すシナリオや設定のパスは、パッケージの**内側**でのパスです。`--package .=.` で Bajutsu をパッケージすると、`pyproject.toml` と `tests/` ディレクトリがルートに置かれ、サブミッターは空の `requirements.txt` をルートに合成します。これにより、実際のインストールはテスト仕様が行いつつ、アップロードは Device Farm の APPIUM_PYTHON_TEST_PACKAGE 検証を満たします。`--package-only` を外して `--project-arn` と `--device-pool-arn` を加えれば（環境に AWS の認証情報を設定したうえで）、実行を投入し、完了までポーリングし、成果物をダウンロードして、Bajutsu の判定を表示します。プロセスの終了コードが `0` になるのは、すべてのシナリオが合格したときだけです。
+`--package SRC=ARCNAME` はそれぞれ、ファイルまたはディレクトリを `ARCNAME` の位置でテストパッケージに追加します（arcname に `.` を指定すると、ディレクトリをパッケージのルートに展開します）。渡すシナリオや設定のパスは、パッケージの**内側**でのパスです。`--package .=.` で Bajutsu をパッケージすると、`pyproject.toml` と `tests/` ディレクトリがルートに置かれます。サブミッターは空の `requirements.txt` をルートに合成します。これにより、実際のインストールはテスト仕様が行いつつ、アップロードは Device Farm の APPIUM_PYTHON_TEST_PACKAGE 検証を満たします。実行を投入するには、`--package-only` を外して `--project-arn` と `--device-pool-arn` を加え、環境に AWS の認証情報を設定します。サブミッターは、完了までポーリングし、成果物をダウンロードして、Bajutsu の判定を表示します。プロセスの終了コードが `0` になるのは、すべてのシナリオが合格したときだけです。
 
 iOS ショーケースの場合は `--platform ios` を渡し、XCUITest バックエンドと iOS アプリのアップロード種別を選択します。先にデバイス署名済みの `.ipa` とランナーをビルドします（BE-0288）。ランナーのビルドは、ユーザーごとの[署名ファイル](ios-device-cloud.md#署名ファイル)を読みます（BE-0456）。
 
@@ -88,15 +90,15 @@ uv run python scripts/devicefarm_submit.py \
 
 `showcase.devicefarm.ios.config.yaml` は `runsOn.ios.kind: device`（XCUITest バックエンドがシミュレーターではなく実機を操作します）を設定し、`subject.path` を持ちません（Device Farm がアップロードした `.ipa` を予約デバイスへ自分でインストールします）。`--package BajutsuKit/Runner/build/dd-device/Build/Products=.` は、デバイス署名済みの `.xctestrun` とテストバンドルをパッケージのルートに配置します。これは設定の `driver.runner.testRunner: BajutsuRunner.xctestrun` が参照する場所です。再署名と simctl に関する注意事項は[上記](#ios-再署名と実機のケーパビリティ)をご参照ください。
 
-Device Farm のジョブでは、`runsOn.ios.model` や `runsOn.ios.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前に読み取れるデバイスに対して条件を照合しますが、Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットが条件を宣言しているジョブや、`runsOn` のフィールドを宛先のブロックに入れずに直下に書いたままのジョブを、アップロードの前に拒否し、該当するフィールドを示します。`runsOn.ios.locale` と `runsOn.ios.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。
+Device Farm のジョブでは、`runsOn.ios.model` や `runsOn.ios.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前にデバイスを読み取り、条件を照合します。Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットが条件を宣言しているジョブを、アップロードの前に拒否します。宛先のブロックに入れずに `runsOn` のフィールドを直下に書いたままのジョブも同じです。拒否するときは、該当するフィールドを示します。`runsOn.ios.locale` と `runsOn.ios.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。
 
 ## GitHub Actions ワークフロー
 
-[`.github/workflows/devicefarm.yml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/.github/workflows/devicefarm.yml) は、サブミッターを**手動でオプトインする**ワークフローとしてラップします。これは `workflow_dispatch` のみで起動し、push や pull request では動きません。したがってマージ経路には乗らず、必須チェックにもなりません。ワークフローの GitHub OIDC トークンを `AWS_DEVICEFARM_ROLE_ARN` のロールと交換して短命の AWS 認証情報を発行し（静的なキーは使いません）、`devicefarm` という Environment にスコープします。プロジェクトとデバイスプールの ARN は、リポジトリ変数 `DEVICEFARM_PROJECT_ARN` と `DEVICEFARM_DEVICE_POOL_ARN` から読み取ります。この 3 つのいずれかが未設定のとき、ジョブは緑の no-op（`::notice::` を出すだけで、赤にはなりません）になります。運用者がアカウントを接続するまで、休止したままです。
+[`.github/workflows/devicefarm.yml`](https://github.com/bajutsu-e2e/bajutsu/blob/main/.github/workflows/devicefarm.yml) は、サブミッターを**手動でオプトインする**ワークフローとしてラップします。`workflow_dispatch` のみで起動し、push や pull request では動きません。したがってマージ経路には乗らず、必須チェックにもなりません。ワークフローの GitHub OpenID Connect（OIDC）トークンを `AWS_DEVICEFARM_ROLE_ARN` のロールと交換して短命の AWS 認証情報を発行し（静的なキーは使いません）、`devicefarm` という Environment にスコープします。プロジェクトとデバイスプールの Amazon リソースネーム（ARN）は、リポジトリ変数 `DEVICEFARM_PROJECT_ARN` と `DEVICEFARM_DEVICE_POOL_ARN` から読み取ります。この 3 つのいずれかが未設定のとき、ジョブは緑の no-op になります（`::notice::` を出すだけで、赤にはなりません）。運用者がアカウントを接続するまで、休止したままです。
 
 ## serve からのディスパッチ
 
-上記のサブミッターとワークフローはヘッドレスの経路で、1 回の実行が一式をまとめてパッケージ化し、そのシナリオを 1 台の予約デバイス上で順番に実行します。`bajutsu serve`（BE-0336）は、運用者がすでに実行のディスパッチと履歴の確認に使っている画面に、2 つ目の経路を加えます。そしてその形を変えます。1 回に直列化した実行ではなく、serve は**シナリオごとに 1 つの Device Farm 実行へと一式を展開（fan-out）**します。これによりシナリオは並列に走ります。同時に走る数の上限を決めるのは 1 台のデバイスではなく、各ワーカーのジョブ予算とサーバの同時実行の上限です。
+上記のサブミッターとワークフローはヘッドレスの経路です。1 回の実行が一式をまとめてパッケージ化し、そのシナリオを 1 台の予約デバイス上で順番に実行します。`bajutsu serve`（BE-0336）は、運用者がすでに実行のディスパッチと履歴の確認に使っている画面に、2 つ目の経路を加えます。そしてその形を変えます。1 回に直列化した実行ではなく、serve は**シナリオごとに 1 つの Device Farm 実行へと一式を展開（fan-out）**します。これによりシナリオは並列に走ります。同時に走る数の上限を決めるのは 1 台のデバイスではなく、各ワーカーのジョブ予算とサーバの同時実行の上限です。
 
 ターゲットも fan-out のリクエストも、バッチプロバイダーを指定しません（BE-0484）。fan-out の各ジョブは、ターゲットのプラットフォームを扱えるワーカーへ振り分けられます。ローカルのワーカーと Device Farm ワーカーのどちらでもかまいません。ジョブがどこで動くかは、デプロイが動かすワーカーの顔ぶれで決まります。ターゲットに要るのは、Device Farm が予約デバイスへインストールするバイナリを指す `subject.path` だけです。
 
@@ -295,7 +297,9 @@ GitHub Actions のジョブは、次の4つの変数からキーを組み立て�
 | リースを失ったためにサーバが ARN に `409` を返した | 再開できるワーカーがいないため、ワーカーが実行を止める | 失敗の結果（リースが移っているので、サーバは無視する） |
 | サーバがそれ以外の `4xx`（サーバか設定の誤り）で ARN を拒否したか、6 分の再送が尽きた | 再開の手がかりとなる ARN をサーバが持たないため、ワーカーが実行を止め、誤りをログに残す | その誤りを添えた、失敗したジョブ |
 
-アップロードの途中で取り消しが届いた場合、実行はスケジュールされません。スロットを使うワーカーは、停止シグナルを取り消しではなく終了の合図として扱います。シグナルを受けるとリースの要求をやめ、処理中のリースはすべて期限切れに任せます。それらのジョブは、再起動したワーカーかほかのワーカーが引き継ぎます。ワーカーは、各スロットが実行を手放し、始まっていたアップロードが終わるのを待ってから終了します。2 回目の SIGINT を受けると、待たずに終了します。同じ `worker.yaml` を指定した `bajutsu worker --once <spec.json>` は、サーバなしでバッチの仕様を 1 つ投入します。その `batch.app_path` はそのマシン上のパスであり、ARN は保存しません。SIGINT、SIGTERM、SIGHUP は、取り消しと同じようにスケジュール済みの実行を止めます。
+アップロードの途中で取り消しが届いた場合、実行はスケジュールされません。スロットを使うワーカーは、停止シグナルを取り消しではなく終了の合図として扱います。シグナルを受けるとリースの要求をやめ、処理中のリースはすべて期限切れに任せます。それらのジョブは、再起動したワーカーかほかのワーカーが引き継ぎます。ワーカーは、各スロットが実行を手放し、始まっていたアップロードが終わるのを待ってから終了します。2 回目の SIGINT を受けると、待たずに終了します。
+
+同じ `worker.yaml` を指定した `bajutsu worker --once <spec.json>` は、サーバなしでバッチの仕様を 1 つ投入します。その `batch.app_path` はそのマシン上のパスであり、ARN は保存しません。SIGINT、SIGTERM、SIGHUP は、取り消しと同じようにスケジュール済みの実行を止めます。
 
 これらはいずれも判定には触れません。各 Device Farm 実行は、ローカル実行とまったく同じく、Bajutsu 自身の `manifest.json` から合否を報告します。ワーカーはダウンロードした実行を収めてアップロードします。serve のレポートビューアと履歴は、その実行をほかの実行と同じように描画します。判定が出る前に投入が失敗した場合は、その理由をジョブのエラーとして送ります。投入とポーリングのしくみは `run` / CI の判定経路の外にとどまり、そこに大規模言語モデル（LLM）の呼び出しは載りません（prime directive 1）。
 
@@ -305,8 +309,8 @@ GitHub Actions のジョブは、次の4つの変数からキーを組み立て�
 
 `BatchLifecycleHook` はそのギャップを埋めます。フックは、環境が `devicefarm` のワーカーの中で、`DeviceFarmBatchProvider.submit` の前後に実行されます。サーバはフックを実行しません。
 
-- **`before_submit(ctx)`** — パッケージのビルド前に呼ばれます。`ctx.launch_env` にキーと値を追加することで、パッケージされる config の `targets.<target>.subject.launch.env` にマージされ、アプリが launch 環境変数として受け取ります。
-- **`after_run(ctx, verdict)`** — 判定収集後（または判定前に失敗した場合は `verdict=None`）に `finally` の中で逆順に呼ばれます。あるフックの `after_run` が例外を送出しても、残りのフックは実行されます。判定（verdict）を収集できた場合、`submit` はティアダウンの失敗をすべてログに出力し、1つも送出しません。クレデンシャルの解放に失敗しても、完了した実行が破棄されることはありません。判定が得られる前に失敗した場合は、失敗したフックのうち最後に登録されたものの例外が伝播し、残りを `submit` がログに出力します。
+- **`before_submit(ctx)`**：パッケージのビルド前に呼ばれます。`ctx.launch_env` にキーと値を追加すると、パッケージされる config の `targets.<target>.subject.launch.env` にマージされ、アプリが launch 環境変数として受け取ります。
+- **`after_run(ctx, verdict)`**：判定収集後（または判定前に失敗した場合は `verdict=None`）に `finally` の中で逆順に呼ばれます。あるフックの `after_run` が例外を送出しても、残りのフックは実行されます。判定を収集できた場合、`submit` はティアダウンの失敗をすべてログに出力し、1 つも送出しません。クレデンシャルの解放に失敗しても、完了した実行が破棄されることはありません。判定が得られる前に失敗した場合は、失敗したフックのうち最後に登録されたものの例外が伝播します。残りは `submit` がログに出力します。
 
 `BatchContext` には実行の `request`、`work_dir`、`job_id`（再起動をまたいで安定した per-job 識別子）、および変更可能な `launch_env` 辞書が含まれます。
 
@@ -321,7 +325,7 @@ BAJUTSU_BATCH_HOOKS=myapp.hooks:make_proxy_hook,myapp.hooks:make_audit_hook \
   bajutsu worker --worker-config devicefarm.worker.yaml
 ```
 
-デプロイ側はフックモジュールをワーカーのイメージに同梱し、その変数で名前を指定します。読み込めないフックがあると、ワーカーは起動時に終了します。いかなる `serve` エンドポイント、config フィールド、バッチリクエストフィールドもフックを選択・設定してはなりません——フックの同一性はデプロイ時の環境からのみ与えられます（`pre_test_commands` と同じ信頼境界）。
+デプロイ側はフックモジュールをワーカーのイメージに同梱し、その変数で名前を指定します。読み込めないフックがあると、ワーカーは起動時に終了します。`serve` のエンドポイント、config のフィールド、バッチリクエストのフィールドは、いずれもフックを選択も設定もしてはなりません。フックの同一性は、デプロイ時の環境からのみ与えられます（`pre_test_commands` と同じ信頼境界です）。
 
 ```python
 # myapp/hooks.py
@@ -344,13 +348,13 @@ def make_proxy_hook() -> ProxyHook:
 
 ### キー衝突ガード
 
-デバイス上のマージ順序は `{**target_env, **preconditions.subject.launch.env}` です——シナリオの `preconditions.subject.launch.env` が target レベルの値より優先されます。フックが注入したキーとシナリオの preconditions が衝突する場合、注入された値が暗黙的に上書きされます。これを早期に表面化させるため、`submit` はシナリオファイルを確認し、衝突があれば**投入時点でシナリオ名・キー・ファイル名を明示してエラー**を発生させます。アップロードは開始されません。
+デバイス上のマージ順序は `{**target_env, **preconditions.subject.launch.env}` で、シナリオの `preconditions.subject.launch.env` が target レベルの値より優先されます。フックが注入したキーとシナリオの preconditions が衝突する場合、注入された値は暗黙的に上書きされます。これを早期に表面化させるため、`submit` はシナリオファイルを確認し、衝突があれば**投入時点でシナリオ名、キー、ファイル名を明示してエラー**を発生させます。アップロードは開始されません。
 
 ### checkpoint 再開時の動作
 
 再起動によってワーカーが再リースされた場合、`before_submit` はスキップされます（実行は既にスケジュール済みでパッケージ済みです）。しかし、再開した実行の判定収集後に `after_run` は実行されます。`before_submit` でクレデンシャルを発行するフックは、`ctx.job_id` をキーとして永続化しておくことで、`after_run` が再起動後に取得・解放できるようにしてください。
 
-## シリアル解決の実証（手動）
+## シリアル解決を手動で実証する
 
 唯一の経験的な未知は、Bajutsu の Android バックエンドが Device Farm ホストの予約されたデバイスを拾えるかどうかです。`pre_test` の `adb devices` にそのデバイスが並び、`bajutsu run --udid booted` がそれを解決するはずです。これをエンドツーエンドで実証するには、実際の AWS アカウント、認証情報、Device Farm プロジェクト、そして課金が必要です。そのため、これは決定的な `make check` ゲート（クラウドのアカウントなしでどこでも動く必要があります）には**含めません**。実施は手動の手順とします。
 
@@ -361,7 +365,7 @@ def make_proxy_hook() -> ProxyHook:
 
 自分のアカウントで確認できたら、ワークフローはより広いシナリオ一式を必要に応じて実行できます。
 
-## iOS のデバイス署名の実証（手動）
+## iOS のデバイス署名を手動で実証する
 
 iOS には、Android の経路にはない未知が加わります。バッチのアップロードが**署名済みのデバイスビルド**を伴わなければならない点です。Device Farm はアプリを物理デバイスへインストールするため、シミュレーター用レーンが出力する未署名の `.app` ではなく、デバイス用の `.ipa` が必要になります。さらに XCUITest ランナーは、あらかじめデバイスで有効な署名を持っていなければなりません。Device Farm はアプリを再署名しますが、ランナーは再署名しないためです（BE-0288）。したがって iOS の経路をエンドツーエンドで実証するには、ビルドに署名するための **Apple Developer アカウント**と、**AWS Device Farm アカウント**の両方が必要です。そのため、これは決定的な `make check` ゲート（未署名のまま、Apple や AWS のアカウントなしでどこでも動きます）には**含めません**。実施は手動の手順とします。
 

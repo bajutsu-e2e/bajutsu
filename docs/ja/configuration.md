@@ -636,14 +636,14 @@ orgs:
     targets: [demo, checkout]
 ```
 
-`allowedRepositories` は、人間の名簿の隣に並ぶ org の**機械**の名簿です（[BE-0414](../../roadmaps/BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)）。継続的インテグレーション（CI）のジョブが OpenID Connect（OIDC）トークンを交換して、この org として振る舞う短命のセッションを得られるリポジトリを挙げます。ロールは一切付きません。パイプラインを律するのは endpoint の許可リストであって、viewer／editor／admin ではありません。エントリには `"<owner>/<repo>"` という名前だけを書くか、その名前に `environment`、`ref`、`workflowRef` のいずれかの絞り込みを添えたオブジェクトを書きます。設定の手順、operator が指定しなければならない audience、交換の endpoint、名前の再利用とフォークにまつわる注意点は、[セルフホスティング](self-hosting.md#ci-ジョブを認証する任意be-0414)にあります。
+`allowedRepositories` は、人間の名簿の隣に並ぶ org の**機械**の名簿です（[BE-0414](../../roadmaps/BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)）。継続的インテグレーション（CI）のジョブが OpenID Connect（OIDC）トークンを交換して、この org として振る舞う短命のセッションを得られるリポジトリを挙げます。ロールは一切付きません。パイプラインを律するのは endpoint の許可リストであって、viewer／editor／admin ではありません。エントリには `"<owner>/<repo>"` という名前だけを書くか、その名前に `environment`、`ref`、`workflowRef` のいずれかの絞り込みを添えたオブジェクトを書きます。設定の手順、operator が指定しなければならない audience、交換の endpoint、名前の再利用とフォークにまつわる注意点は、[セルフホスティング](self-hosting.md#ci-ジョブを認証するbe-0414)にあります。
 
 OAuth ログイン時にユーザは自分の org に割り当てられます。順に、明示の `members`、GitHub org メンバーシップからの `githubOrgs` 一致、直接の Team メンバーシップからの `githubTeams` または `editorTeams` 一致を見ます。Team を最後に見るのは、org に Team を足したときに既存の login の所属先を動かさないためです。以後はその org の targets だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない target は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
 
 GitHub OAuth を構成すると、org メンバーシップがアクセスも決めます（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。サインインには構成済みの org への所属が必要です。`members`、`githubOrgs`、`githubTeams`、`editorTeams` のいずれかで所属すると、**viewer** ロールが付きます。viewer より上のロールは、Team のメンバーシップで決まります。
 
 - org の `editorTeams` のいずれかの直接メンバーは、**editor** に昇格します。
-- サーバ全体で 1 つ以上の admin Team（`BAJUTSU_OAUTH_ADMIN_TEAMS`。[セルフホスティング](self-hosting.md#2-github-oauth-を足す任意)を参照）のいずれかのメンバーは、**admin** になります。
+- サーバ全体で 1 つ以上の admin Team（`BAJUTSU_OAUTH_ADMIN_TEAMS`。[セルフホスティング](self-hosting.md#2-github-oauth-を足す)を参照）のいずれかのメンバーは、**admin** になります。
 
 `editorTeams` は昇格させるだけでなく、サインインも許します。書き込みを許した Team を `githubTeams` に重ねて書く必要はありません。`editorTeams` がリストなのは、`githubOrgs` と `githubTeams` がリストなのと同じ理由です。1つの org が複数の GitHub organization にまたがることがあり、枠が1つでは organization ごとの書き込み Team を挙げられません。旧来の単数形 `editorTeam` を書いた config もそのまま動きます。`serve` がそのキーを `editorTeams` に畳み込み、名前の変更が中途半端で単数形が複数形の隣に残っている場合は両方を畳み込みます。ただし、文書に載るのは複数形だけなので、名前は変更してください。
 
