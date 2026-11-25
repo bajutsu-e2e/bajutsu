@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0503") |
+| Implementing PR | [#2531](https://github.com/bajutsu-e2e/bajutsu/pull/2531) (units 2-7) |
 | Topic | Integration with external services |
 | Related | [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -60,7 +61,7 @@ GitHub has no documented endpoint that uploads an image or a video into a commen
 
 The default is `none` because an upload is outward-facing and the script should not make one unless the developer asked. A developer who already ran `bajutsu run --evidence-store` ([BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) passes the public base URL of the store's prefix (a public bucket path, or a CDN in front of it) as `--evidence-base-url`, and a screenshot then appears inline in the comment. The renderer percent-encodes each path segment before it joins the base, so a run id or a file name holding a space, a `#`, or a `?` still produces a link that resolves. A presigned URL signs one object, so it cannot serve as a base URL. The script does not call the uploader of BE-0110, so it needs no `s3` or `gcs` extra.
 
-A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Each release uses the tag `bajutsu-evidence-<number>` and is created with `prerelease: true` and `make_latest: "false"`, so it never becomes the repository's latest release. Publishing creates that tag and fires any workflow that listens for a published release. The script finds an existing release by listing releases and matching the tag name exactly, because the tag endpoint does not return drafts. The plan states whether the reused release is a draft or published. When `--publish` would publish an existing draft, the plan also lists the assets already on it, since they become public too. A spike on a draft release (unit 1) measured three things. An anonymous request to a draft asset's `browser_download_url` returns 404. A request that carries a token returns 404 too. The asset API, called with a token, serves a PNG, an MP4, and a zip with `Content-Disposition: attachment`, so an asset opened that way downloads and does not display. Two questions stay open, because the spike ran on a draft alone. A signed-in browser may or may not display an image inline from a published release. A published release's links may or may not open anonymously.
+A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Each release uses the tag `bajutsu-evidence-<number>` and is created with `prerelease: true` and `make_latest: "false"`, so it never becomes the repository's latest release. Publishing creates that tag and fires any workflow that listens for a published release. The script finds an existing release by listing releases and matching the tag name exactly, because the tag endpoint does not return drafts. The plan states whether the reused release is a draft or published. When `--publish` would publish an existing draft, the plan also lists the assets already on it, since they become public too. A spike on a draft release (unit 1) measured three things. An anonymous request to a draft asset's `browser_download_url` returns 404. A request that carries a token returns 404 too. The asset API, called with a token, serves an image, a video, and a zip with `Content-Disposition: attachment`, so an asset opened that way downloads and does not display. Two questions stay open, because the spike ran on a draft alone. A signed-in browser may or may not display an image inline from a published release. A published release's links may or may not open anonymously.
 
 ### What the comment holds
 
@@ -90,7 +91,7 @@ The coverage ratchet measures `bajutsu/` alone, so it does not hold this script.
 
 ### One script for two entry points
 
-The two items share one file, `scripts/post_evidence.py`. [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) names it as the Action's renderer. The runner downloads this repository at the Action's `<ref>` to run the Action, so the Action loads the script from that copy through `${{ github.action_path }}`, and the calling job needs no checkout of Bajutsu.
+The two items share one file, `scripts/post_evidence.py`. [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) names it as the Action's renderer. To run the Action, the runner downloads this repository at the Action's `<ref>`. The Action loads the script from that copy through `${{ github.action_path }}`. The calling job needs no checkout of Bajutsu.
 
 ### Documentation
 
@@ -111,13 +112,17 @@ The two items share one file, `scripts/post_evidence.py`. [BE-0504](../BE-0504-p
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: upload a screenshot, a video, and a zip as assets of a draft and a published release, and record who can open each and whether it displays or downloads. The draft half is done: see the *Where the evidence goes* section. The published half is open.
+- [ ] Spike: upload a screenshot, a video, and a zip as assets of a draft and a published release, and record who can open each and whether it displays or downloads. The draft half has finished: see the *Where the evidence goes* section. The published half is open.
 - [x] Shared renderer: one script that both this item and the Action run, with the Action item's script location reconciled to `scripts/post_evidence.py`.
 - [x] GitHub client: token resolution, `GET /user`, the find-or-update sticky comment with paging, the `--key` check, and `--author`.
 - [x] Sinks: `none` with `--evidence-base-url`, and `release` with `--publish`, the tag scheme, `make_latest: false`, the lookup by tag name, and the draft-or-published state in the plan.
 - [x] Staging and guards: the temporary staging copy, log truncation, the `--size-warn-mb` guard, the confirmation, `--dry-run`, `--yes`, and the exit status.
 - [x] Tests: a fake GitHub HTTP server that the gate runs offline, covering the sticky comment, the CRLF marker match, the `--key` rejection, the no-manifest case, and a run directory left unchanged.
 - [x] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
+
+Log:
+
+- [#2531](https://github.com/bajutsu-e2e/bajutsu/pull/2531) — Units 2-7. Added `scripts/post_evidence.py`, its offline tests, and a `docs/reporting.md` section with its Japanese mirror. BE-0504 now points at the same script. The draft half of the spike ran on a throwaway draft prerelease. Draft asset links return 404, anonymously and with a token. The asset API serves attachments. The published half stays open.
 
 ## References
 
