@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-adb-read-lag-attempt-bound-ja.md)
+**English** · [日本語](BE-0505-adb-read-lag-attempt-bound-ja.md)
 
-# BE-XXXX — Bound the adb read-lag barrier by completed device waits, so a loaded runner costs time and not a verdict
+# BE-0505 — Bound the adb read-lag barrier by completed device waits, so a loaded runner costs time and not a verdict
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-adb-read-lag-attempt-bound.md) |
+| Proposal | [BE-0505](BE-0505-adb-read-lag-attempt-bound.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0505") |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 

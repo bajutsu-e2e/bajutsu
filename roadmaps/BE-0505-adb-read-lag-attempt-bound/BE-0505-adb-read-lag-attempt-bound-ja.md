@@ -1,14 +1,14 @@
-[English](BE-XXXX-adb-read-lag-attempt-bound.md) · **日本語**
+[English](BE-0505-adb-read-lag-attempt-bound.md) · **日本語**
 
-# BE-XXXX — read lag バリアの上限を完了したデバイス側待機の回数で定め、負荷の高いランナーに時間だけを払わせる
+# BE-0505 — read lag バリアの上限を完了したデバイス側待機の回数で定め、負荷の高いランナーに時間だけを払わせる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-adb-read-lag-attempt-bound-ja.md) |
+| 提案 | [BE-0505](BE-0505-adb-read-lag-attempt-bound-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0505") |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 <!-- /BE-METADATA -->
 
