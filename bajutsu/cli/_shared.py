@@ -364,19 +364,13 @@ def _reject_unmet_hook_conditions(
     Given every expanded scenario, not the selected ones alone: the mismatch is a defect in the
     files, so a run that selects a different subset reports it too. A scenario that names no target
     drives whatever `--target` says, so while deselected it is a defect only if no target of the
-    config lets it run. A target that does not resolve is left to the checks on the targets this run
-    drives.
+    config lets it run.
     """
     from bajutsu.common.runner.hook_commands import unmet_hook_condition
     from bajutsu.common.runner.scenario_hooks import own_phases
     from bajutsu.common.scenario.interp import find_tokens
 
-    effs: dict[str, Effective] = {}
-    for name in loaded.config.targets:
-        try:
-            effs[name] = resolve(loaded.config, name)
-        except (KeyError, ValueError):
-            continue
+    effs = {name: resolve(loaded.config, name) for name in loaded.config.targets}
     phases = {name: eff.hooks for name, eff in effs.items()}
 
     def body(s: Scenario) -> dict[str, object]:
