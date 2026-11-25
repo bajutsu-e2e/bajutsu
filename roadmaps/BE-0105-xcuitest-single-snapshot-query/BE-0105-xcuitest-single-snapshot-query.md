@@ -17,31 +17,31 @@
 ## Introduction
 
 Replace the XCUITest runner's per-element, per-attribute element query with a single
-snapshot walk, cutting `GET /elements` from hundreds of XCUITest round-trips to one — while
-keeping BE-0019's addressing guarantees intact (Python resolves the unique element, the runner
-acts on exactly that element, ambiguity fails immediately, staleness fails loudly).
+snapshot walk, cutting `GET /elements` from hundreds of XCUITest round-trips to one. BE-0019's
+addressing guarantees stay intact: Python resolves the unique element, the runner acts on exactly
+that element, ambiguity fails immediately, and staleness fails loudly.
 
 ## Motivation
 
-On the showcase app's 84-element screen, a single `GET /elements` takes 10–12 seconds. Because
-that query gates run readiness, every condition-wait poll, and each step's element resolution, the
-whole run is rate-limited by it; a stopgap has already raised the Python driver's socket timeout to
+On the showcase app's 84-element screen, a single `GET /elements` takes 10–12 seconds. That query gates run readiness, every condition-wait poll, and each step's element resolution, so
+it rate-limits the whole run. A stopgap has already raised the Python driver's socket timeout to
 30 seconds so requests do not simply time out.
 
 The likely cause is the shape of the query. The runner's `queryElements()` walks
 `app.descendants(matching: .any).allElementsBoundByIndex` and reads `identifier`, `label`, `value`,
 `frame`, `isEnabled`, `isSelected`, and `elementType` **individually** for each element. Each read is
-an XCUITest round-trip, so the count scales as elements × attributes — roughly 84 × 7 ≈ 600 round-trips
-for one screen. Materializing an `XCUIElement` per node via `allElementsBoundByIndex` is itself costly
-on top of that.
+an XCUITest round-trip, so the count scales as elements × attributes: roughly 84 × 7 ≈ 600 round-trips
+for one screen. Materializing an `XCUIElement` per node via `allElementsBoundByIndex` adds cost on
+top of that.
 
-This is a follow-on to [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md),
-not a re-litigation of it. BE-0019 established the snapshot-handle addressing — `SnapshotStore` mints a
+This item follows on from [BE-0019](../BE-0019-xcuitest-backend/BE-0019-xcuitest-backend.md)
+and does not re-litigate it. BE-0019 established the snapshot-handle addressing: `SnapshotStore` mints a
 per-snapshot handle for each element, Python resolves the unique element from the `/elements` JSON, and
 the runner acts on the exact element that handle maps to. That design optimized for **correctness**, not
-query latency. This item narrows it: make the query cheap without weakening any of those guarantees.
+query latency. This item narrows the design: it makes the query cheap without weakening any of those
+guarantees.
 
-The design wall is real. The fast read, the public `XCUIElement.snapshot()` (`app.snapshot()`), returns
+The design has a real obstacle. The fast read, the public `XCUIElement.snapshot()` (`app.snapshot()`), returns
 an attribute-bearing subtree in a single round-trip — but its nodes are `XCUIElementSnapshot` **values**,
 not tappable `XCUIElement`s. Reconciling "one cheap read" with "tap exactly the element Python resolved"
 is the problem this proposal solves.
@@ -51,17 +51,17 @@ is the problem this proposal solves.
 The change is confined to the runner-side `ElementProviding` conformance (the real XCUITest-backed
 implementation supplied by the UI test target) plus a small Python timeout revert. The public
 `ElementProviding` protocol, `Router`, `SnapshotStore`'s handle scheme, and the Python driver's
-resolve → handle flow are all **unchanged** — `ElementSnapshot.backingElement` is already an opaque
+resolve → handle flow are all **unchanged**. `ElementSnapshot.backingElement` is already an opaque
 `AnyObject`, so what it holds can change with no effect above it.
 
-1. **Measure first.** Before choosing, establish where the time goes — the `allElementsBoundByIndex`
-   materialization versus the per-attribute reads — and record a baseline on a named environment (the
+1. **Measure first.** Before choosing, establish where the time goes (the `allElementsBoundByIndex`
+   materialization versus the per-attribute reads) and record a baseline on a named environment (the
    Simulator model, the Xcode version, and the showcase 84-element screen). The measurement mainly
-   confirms the hypothesis and fixes the baseline for the acceptance number; both suspected costs are
-   removed by the same single-snapshot approach, so the design direction does not hinge on which
+   confirms the hypothesis and fixes the baseline for the acceptance number. The same single-snapshot
+   approach removes both suspected costs, so the design direction does not hinge on which one
    dominates.
 2. **Single-snapshot query.** `queryElements()` performs **one** `app.snapshot()` walk and reads every
-   attribute from the returned tree — no per-element attribute round-trips. It emits the same normalized
+   attribute from the returned tree — with no per-element attribute round-trips. The query emits the same normalized
    `Element[]` shape (`identifier` / `label` / `value` / `traits` / `frame`) so `find_all` /
    `resolve_unique` and the `/elements` JSON contract are unchanged.
 3. **Position-path backing with attribute re-verification.** Each node records a **root-relative index
@@ -73,22 +73,22 @@ resolve → handle flow are all **unchanged** — `ElementSnapshot.backingElemen
    stale detection from BE-0019's generation-only scheme (which catches an old-snapshot handle but not a
    same-generation UI change) to an attribute match, preserving "never silently act on whatever now
    matches." A pure index path without the attribute check would risk tapping a different element after a
-   sibling-order change; the verification is what keeps it deterministic-safe. ([BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)
+   sibling-order change, so the verification is what keeps the path deterministic-safe. ([BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience.md)
    later narrowed this match to `identifier` / `label` / `traits`, dropping `frame`: a snapshot is taken
    while the UI may still be settling, so an unchanged element's frame legitimately shifts between the
    snapshot and the tap, and matching on it read a still-valid element as stale.)
 4. **Driver timeout re-tuning.** Once the query is within target, revert the stopgap socket timeout
    (currently 30 s) to a bounded value in `bajutsu/drivers/xcuitest.py`, so an unresponsive runner still
    fails loudly within a reasonable window rather than hanging for 30 s.
-5. **Validation split.** The fast gate (fake transport) guards **addressing correctness** — path
+5. **Validation split.** The fast gate (fake transport) guards **addressing correctness**: path
    re-derivation returns `stale` on an attribute mismatch, and an ambiguous selector still fails before
-   any request — but it **cannot** measure Swift-side query latency, so the acceptance *number* (a typical
+   any request. The gate **cannot** measure Swift-side query latency, so the acceptance *number* (a typical
    screen's `/elements` within the target) is an on-device / `e2e.yml` measurement, not a fast-gate
    assertion. The two are deliberately separated: the gate proves the new addressing does not regress,
-   the on-device path proves the speed.
+   and the on-device path proves the speed.
 
 **Acceptance criteria.** A typical screen's `GET /elements` completes within the target (proposed:
-1–2 seconds on the measured environment) with no regression to BE-0019's guarantees — Python-side
+1–2 seconds on the measured environment) with no regression to BE-0019's guarantees: Python-side
 resolution, actuation of exactly the resolved element via its handle, ambiguous selectors failing
 immediately, and stale handles failing explicitly.
 
@@ -103,14 +103,14 @@ immediately, and stale handles failing explicitly.
   reconsidered only if the public `app.snapshot()` walk misses the target.
 - **Narrow the walk (depth / type / `hittable`-only filters).** Dropping any element a selector could
   match breaks determinism (directive 2: an ambiguous selector must fail, and a match is never missed).
-  The single-snapshot walk should make the full tree cheap enough that filtering is unnecessary, so it is
-  kept as rejected-unless-proven-safe rather than a performance lever.
+  The single-snapshot walk should make the full tree cheap enough that filtering is unnecessary, so
+  the filters stay rejected unless proven safe, rather than serving as a performance lever.
 - **Identifier alone as the handle backing.** An accessibility `identifier` need not be unique, so
   re-resolving by it on the runner reintroduces the very ambiguity selection removed — already rejected
   by BE-0019. Position path + attribute verification is the unique-safe form.
 - **Fold into BE-0019.** BE-0019's Detailed design is MECE around correctness and capabilities and its
   close-out is on-device validation; query performance is a separable, measurable concern with its own
-  acceptance number and its own design alternatives. Landing it as a Related follow-on keeps both items'
+  acceptance number and its own design alternatives. Landing the work as a Related follow-on keeps both items'
   breakdowns clean, matching how the roadmap tracks performance follow-ons as their own items.
 
 ## Progress
