@@ -436,7 +436,7 @@ def test_retiring_an_org_revokes_its_keys(
 ) -> None:
     state = _state(tmp_path)
     _key_id, key = _issue(state)
-    _other_id, _other = _issue(state, "globex")
+    _issue(state, "globex")
     assert ops.delete_org(state, "acme", actor="alice")[1] == 200
     assert backend(state)("GET", "/api/runs", bearer=key).status == 401
     assert _repository(state).list_api_keys("acme") == []
