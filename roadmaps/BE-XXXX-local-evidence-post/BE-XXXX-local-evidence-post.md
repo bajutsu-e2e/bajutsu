@@ -66,7 +66,7 @@ A reviewer without write access gets a 404 on a draft release's links. A develop
 
 The renderer produces the same Markdown as the Action. The header gives the verdict, the counts, and the run id. Each failed scenario gets a block with its name, the first failed step, and the failure reason. The renderer reads `manifest.json`, or `<sid>/result.json` when a run left no manifest. It escapes every string it copies from the run, using the escaping rules that the Action's item defines.
 
-The sticky comment carries the hidden marker `<!-- bajutsu-evidence:<key> -->` on its first line, compared after stripping trailing whitespace and a carriage return. `--key` defaults to `local`, so a local comment and a CI comment on the same pull request stay separate. `--key` must match `[A-Za-z0-9._-]+`. Any other value exits non-zero before any network call, because a `-->` or a newline would close the marker early and post a duplicate on every run.
+The sticky comment carries the hidden marker `<!-- bajutsu-evidence:<key> -->` on its first line, compared after stripping trailing whitespace and a carriage return. `--key` defaults to `local`, so a local comment and a CI comment on the same pull request stay separate. `--key` must match `[A-Za-z0-9._-]+` over its whole value, as an anchored match (`re.fullmatch`), because an unanchored `re.match` would accept `local-->` on its prefix. Any other value exits non-zero before any network call, because a `-->` or a newline would close the marker early and post a duplicate on every run.
 
 The script finds its own comment through the login that `GET /user` returns for the token. For a token that has no user, such as a GitHub App installation token, the developer names the login with `--author`.
 
