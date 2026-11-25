@@ -54,25 +54,25 @@ The `app` and `appSource` keys below sit under each `targets.<name>` entry.
 | `appSource.commit` | Full commit hash of the app's source repository |
 | `appSource.uncommitted` | `true` when the source tree holds uncommitted changes |
 
-The two `toolSource` keys, `commit` and `uncommitted`, describe Bajutsu's own checkout. They sit at the top level of the `provenance` stamp.
+The `toolSource` object describes Bajutsu's own checkout. It sits at the top level of the `provenance` stamp. It always carries `source`, which names where the identity came from, and `commit`. The value of `source` is `checkout` or `build-arg`. The `uncommitted` key appears when `source` is `checkout`, and never otherwise. A build-time commit has no working tree to compare against.
 
 The existing `gitRevision` keeps its meaning and its value. Every reader of it keeps working.
 
-The serve job list is one such reader (`bajutsu/serve/jobs.py:653`). A reader treats a run without the new keys as an older run. The manifest `schemaVersion` rises from 18 to 19.
+The serve job list is one such reader. Its function `_run_provenance` (`bajutsu/serve/jobs.py:836`) mirrors the stamp onto the database record. A reader treats a run without the new keys as an older run. The manifest `schemaVersion` rises from 18 to 19.
 
 ### How each value is obtained
 
 **Binary hash.** For each target, the runner reads the binary at the resolved `app.path`. It reads after `build_app` (`bajutsu/common/runner/build.py:41`) has run. The hash then covers the binary the run launches.
 
-A file hashes as a stream of its bytes. A directory hashes as a tree. The runner lists every regular file in sorted order of relative paths. It hashes one line per file: `<relative path>\0<file hash>\n`. A symbolic link contributes its target string. The tree hash includes the code-signing files, because a re-signed build is a different artifact.
+A file hashes as a stream of its bytes. A directory hashes as a tree. The runner lists every regular file and every symbolic link in sorted order of relative paths. It never follows a link. It hashes one line per entry: `<relative path>\0<entry hash>\n`. A regular file contributes the hash of its bytes. A symbolic link contributes the hash of its target string. The tree hash includes the code-signing files, because a re-signed build is a different artifact.
 
-**Version.** For an iOS `.app`, the runner parses the bundle's `Info.plist` with `plistlib`. For Android, it queries the installed package through the existing `adb` environment. That code lives in `bajutsu/common/backend_cli/adb/`. The query returns `versionName` and `versionCode`. The value then describes what the device ran. Neither read involves a Large Language Model (LLM).
+**Version.** For an iOS `.app`, the runner parses the bundle's `Info.plist` with `plistlib`. For Android, it opens the `.apk` at `app.path` as a zip archive. It parses the binary `AndroidManifest.xml` inside for `versionName` and `versionCode`. Both versions then come from the same file the hash covers. Targets that share a package each report their own `.apk`. A version the device reports after install is a different fact. This item leaves it out of the stamp. Neither read involves a Large Language Model (LLM).
 
 **Source commit.** A new optional target key, `sourceRoot`, names the app's source repository. The runner resolves it against the config root, as it does `app.path`. It runs `git rev-parse HEAD` and `git status --porcelain` there. The commit describes the working tree, not the binary. The stamp records both separately, so a mismatch between them stays visible.
 
 **Tool commit.** The runner reads Bajutsu's own checkout with the helper that `server_checkout()` uses. [BE-0272](../BE-0272-serve-version-badge/BE-0272-serve-version-badge.md) introduced it. The helper anchors Git at the package directory, not the current directory. We move it from `bajutsu/serve/operations/version.py` into `bajutsu/common/`. The runner then imports it without depending on `serve`.
 
-A pip-installed copy has no checkout. It falls back to the build-time `BAJUTSU_BUILD_COMMIT` value. [BE-0277](../BE-0277-docker-build-commit-badge/BE-0277-docker-build-commit-badge.md) added that value. `toolSource` then records `source: build-arg` and no `uncommitted` flag.
+A pip-installed copy has no checkout. It falls back to the build-time `BAJUTSU_BUILD_COMMIT` value. [BE-0277](../BE-0277-docker-build-commit-badge/BE-0277-docker-build-commit-badge.md) added that value. `toolSource` then records `source: build-arg` and no `uncommitted` flag. A real checkout records `source: checkout`.
 
 The runner accepts a checkout when that checkout tracks Bajutsu's package directory. The test is `git ls-files --error-unmatch` on the package's `__init__.py`. An install inside another repository counts as no checkout. A virtualenv under the app's tree is one example. Without the test, `git` walks up from site-packages and stamps the app's commit as Bajutsu's.
 
@@ -91,7 +91,7 @@ A raw message can carry a local path or a token. The run directory does not othe
 | `path-missing` | The binary does not exist at `app.path` |
 | `read-error` | The runner could not read the binary |
 | `plist-unreadable` | The `Info.plist` did not parse |
-| `adb-query-failed` | The `adb` query for the package errored |
+| `apk-unreadable` | The `.apk` did not open or its manifest did not parse |
 | `not-a-git-repo` | The `sourceRoot` is not inside a Git checkout |
 | `git-unavailable` | The `git` command is missing or timed out |
 | `status-read-failed` | `git status` errored |
