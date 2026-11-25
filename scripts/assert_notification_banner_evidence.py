@@ -26,7 +26,7 @@ every relaunch of the app's activity, with its config-change mask (issue #2520).
 relaunch put the app back on its first tab mid-run, and the scenario failed on a selector miss that
 said nothing of it. The report states the relaunch and not its cause, since passing runs have
 carried one too. The one seen came with the late handling of the app's own install, which `adb.Env`'s
-`install` waits out.
+`install` waits for.
 """
 
 from __future__ import annotations

@@ -3112,11 +3112,31 @@ def test_install_waits_for_its_own_broadcasts() -> None:
     assert calls == [adb.install_cmd("U", "a.apk"), adb.await_broadcasts_cmd("U")]
 
 
-def test_the_broadcast_wait_is_bounded_and_covers_devices_without_the_barrier() -> None:
-    script = adb.await_broadcasts_cmd("U")[-1]
-    barrier, idle = script.split(" || ")
-    assert barrier == "timeout 60 am wait-for-broadcast-barrier"
-    assert idle == "timeout 60 am wait-for-broadcast-idle"
+@pytest.mark.parametrize(
+    ("barrier", "idle", "code", "ran"),
+    [
+        (0, 1, 0, ["barrier"]),
+        (124, 0, 124, ["barrier"]),  # out of time: the bound is not spent twice
+        (255, 0, 0, ["barrier", "idle"]),  # no such command before API 34
+        (255, 124, 124, ["barrier", "idle"]),
+    ],
+)
+def test_the_broadcast_wait_falls_back_only_where_the_barrier_is_missing(
+    barrier: int, idle: int, code: int, ran: list[str]
+) -> None:
+    # The script itself under a real shell, with the device's `timeout` standing in for both waits.
+    stub = (
+        'timeout() { [ "$1" = 60 ] || return 99; case "$4" in '
+        f"*-barrier) echo barrier >&2; return {barrier};; *-idle) echo idle >&2; return {idle};; "
+        "esac; }; "
+    )
+    done = subprocess.run(
+        ["sh", "-c", stub + adb.await_broadcasts_cmd("U")[-1]],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (done.returncode, done.stderr.split()) == (code, ran)
 
 
 def test_a_broadcast_wait_that_runs_out_is_logged_not_raised(
@@ -3124,12 +3144,13 @@ def test_a_broadcast_wait_that_runs_out_is_logged_not_raised(
 ) -> None:
     def run(argv: list[str]) -> str:
         if argv == adb.await_broadcasts_cmd("U"):
-            raise subprocess.CalledProcessError(124, argv)
+            raise subprocess.CalledProcessError(124, argv, stderr="Terminated\n")
         return ""
 
     with caplog.at_level(logging.WARNING):
         adb.Env("U", run=run).install("a.apk")
-    assert "not confirmed delivered (exit 124)" in caplog.text
+    assert "U: the install's broadcasts were not confirmed" in caplog.text
+    assert "(exit 124: Terminated)" in caplog.text
 
 
 def test_a_failed_install_never_waits() -> None:

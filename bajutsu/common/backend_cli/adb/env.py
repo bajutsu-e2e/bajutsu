@@ -124,20 +124,23 @@ class Env:
         self._run(pm_clear_cmd(self.serial, package))
 
     def install(self, apk_path: str) -> None:
-        """Install an APK, and wait until the device has delivered the install's own broadcasts.
+        """Install an APK, and wait for the broadcasts the device has queued by then.
 
-        `adb install` returns before they are. The overlay manager updates the new package's asset
-        paths on one of them, and an app already launched by then is relaunched, losing its screen
-        (issue #2520). A wait that fails or runs out is logged, not raised: the app is installed.
+        `adb install` returns before they are delivered. In issue #2520 the overlay manager's update
+        came after the launch instead of before it, and the system relaunched the app then, losing its
+        screen. The wait narrows that window; it cannot cover a broadcast queued later. One that fails
+        or runs out is logged, not raised: the app is installed.
         """
         self._run(install_cmd(self.serial, apk_path))
         try:
             self._run(await_broadcasts_cmd(self.serial))
         except subprocess.CalledProcessError as exc:
             logger.warning(
-                "the install's broadcasts were not confirmed delivered (exit %s); "
+                "%s: the install's broadcasts were not confirmed delivered (exit %s%s); "
                 "a late one can relaunch the app mid-run",
+                self.serial,
                 exc.returncode,
+                f": {exc.stderr.strip()}" if exc.stderr else "",
             )
 
     def uninstall(self, package: str) -> None:

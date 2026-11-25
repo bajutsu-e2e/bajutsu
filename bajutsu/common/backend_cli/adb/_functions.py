@@ -120,8 +120,8 @@ PUSH_RESULT_FAILED = 5
 # broadcast alone runs under a bound (the clipboard and location receivers answer at once).
 PUSH_BROADCAST_TIMEOUT_S = 10
 
-# How long `install` waits for the device to deliver the broadcasts the install queued. On a loaded CI
-# emulator one took 23 seconds (issue #2520).
+# How long `install` waits for the device to deliver the broadcasts the install queued. In issue
+# #2520's failing run, the overlay manager committed its update 23 seconds after the install.
 BROADCAST_WAIT_TIMEOUT_S = 60
 
 # A property that reads "1" on an emulator image and is unset on a physical device: recent images set
@@ -952,12 +952,17 @@ def install_cmd(serial: str, apk_path: str) -> list[str]:
 def await_broadcasts_cmd(serial: str) -> list[str]:
     """Wait for the broadcasts already queued on the device, within a device-side bound.
 
-    The barrier (API 34) ignores broadcasts queued after it, so a busy device cannot hold it open. An
-    older device has no such command, and waits for every queue to go idle instead.
+    The barrier (API 34) ignores broadcasts queued after it, so a busy device cannot hold it open. A
+    device without it waits for every queue to go idle instead, but a barrier that ran out (124) does
+    not, since the stricter condition would only spend the bound again. `cmd activity` rather than its
+    `am` wrapper: `timeout` signals its own child alone, and the wrapper's child would outlive it.
     """
-    bound = f"timeout {BROADCAST_WAIT_TIMEOUT_S} am"
+    wait = f"timeout {BROADCAST_WAIT_TIMEOUT_S} cmd activity wait-for-broadcast"
     return _adb(
-        serial, "shell", f"{bound} wait-for-broadcast-barrier || {bound} wait-for-broadcast-idle"
+        serial,
+        "shell",
+        f"{wait}-barrier --flush-broadcast-loopers >/dev/null; s=$?; "
+        f"[ $s -eq 0 ] || [ $s -eq 124 ] && exit $s; {wait}-idle >/dev/null",
     )
 
 
