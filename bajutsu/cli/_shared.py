@@ -952,7 +952,7 @@ def _start_hooks_or_exit(
     # Nothing at all for a target that declares no hook command — not even a writer. Constructing
     # one creates its run directory, so building it before this check left every `record`, `crawl`
     # and `repl` invocation with an empty `runs/<id>/` it never wrote to.
-    if not phases_of({eff.target: eff}):
+    if not phases_of({eff.target: eff}, scenario_targets):
         return None
     # A writer even for a command that keeps no report: without one each command's log would be
     # written to the raw area and deleted unread by the teardown, so a failed hook's own error
