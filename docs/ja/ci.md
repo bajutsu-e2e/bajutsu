@@ -303,7 +303,7 @@ sheet/cover のフロー（`components`、`modals`）も、このレーンに限
 
 フローは Stable の起動タブ上で、デバイス制御ファミリのうち `setLocation` と `clipboard` の両方を動かします。`cmd clipboard` は実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリしかクリップボードを触れません。そのためクリップボードは、showcase が `BajutsuAndroid` から組み込むアプリ内レシーバを経由します（BE-0233）。この書き込みと読み戻しは、強い assertion です。
 
-位置のフロー（`location_android`）もこのレーンに加わります（BE-0481）。`e2e` はエミュレータ自身の serial でこのフローを走らせ、その経路は `emu geo fix` を使います。別の **location over adb connect (adb)** ジョブが `e2e-location-connect` を使い、`adb connect` で接続したエミュレータで同じフローを走らせ直します。
+位置のフロー（`location_android`）もこのレーンに加わります（BE-0481）。`e2e` はエミュレータ自身の serial でこのフローを走らせ、その経路は `emu geo fix` を使います。別の **location over adb connect (adb)** ジョブが、同じフローを走らせ直します。このジョブは `e2e-location-connect` を使い、`adb connect` で接続したエミュレータで走ります。
 
 このジョブは、実行履歴がたまるまで `E2E (android)` の `needs:` に含めない PR ごとのシグナルです。`golden` や `app-crash` と同じ扱いです。`<host>:<port>` の serial には、adb から届くコンソールがありません。そのため `setLocation` は、BajutsuAndroid のアプリ内の位置レシーバを通ります。実機が通るのと同じ経路です。
 
