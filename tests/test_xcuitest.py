@@ -3365,16 +3365,28 @@ _COPY_PROBE = ("POST", "/isHittable", {"handle": "h-copy"})
 
 def _hittable_refusal(
     refuse_hittable: tuple[str, int] | None,
+    refuse_tap: tuple[str, int] | None,
     refused: dict[str, int],
     path: str,
     handle: object,
 ) -> _Reply | None:
     """The runner's answer while an edit-menu item is still animating in; None once it has landed.
 
-    Each hittability probe advances the animation a frame. Until it lands the item is refused as a
-    tap as well, which is what issue #2521 is: a driver that tapped on existence alone then fails
-    the way the issue reports rather than on a mismatched call sequence.
+    Each hittability probe `refuse_hittable` counts advances the animation a frame. Until it lands
+    the item is refused as a tap as well, which is what issue #2521 is: a driver that tapped on
+    existence alone then fails the way the issue reports rather than on a mismatched call sequence.
+
+    `refuse_tap` instead refuses only the tap, with probes answering `ok` throughout: the narrower
+    window between a probe and the tap that follows it, which spans a whole `/elements` dump.
     """
+    if (
+        refuse_tap is not None
+        and path == "/tap"
+        and handle == refuse_tap[0]
+        and refused["taps"] < refuse_tap[1]
+    ):
+        refused["taps"] += 1
+        return _Reply(status="not-hittable")
     if refuse_hittable is None or handle != refuse_hittable[0]:
         return None
     if refused["n"] >= refuse_hittable[1]:
@@ -3392,6 +3404,7 @@ def _edit_menu_transport(
     menu: str | None = None,
     app: list[dict[str, Any]] | None = None,
     refuse_hittable: tuple[str, int] | None = None,
+    refuse_tap: tuple[str, int] | None = None,
 ) -> tuple[TransportFn, list[tuple[str, str, Mapping[str, Any] | None]]]:
     """A runner that models the iOS 26.5 edit menu on the coupon field (BE-0493).
 
@@ -3402,11 +3415,12 @@ def _edit_menu_transport(
 
     `refuse_hittable=(handle, times)` models the menu still animating in: the item is in the tree,
     but XCTest refuses it — both a hittability probe and a tap — until that many probes have gone
-    by (issue #2521).
+    by. `refuse_tap=(handle, times)` refuses that many taps alone, the probe answering `ok`
+    throughout (issue #2521). A refused call leaves the menu as it was, having not happened.
     """
     sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
     state: dict[str, str | None] = {"menu": menu}
-    refused = {"n": 0}
+    refused = {"n": 0, "taps": 0}
     items = {
         "caret": [_SELECT_ALL_ITEM, _PASTE_ITEM],
         "selection": [_menu_item("h-cut", "Cut"), _COPY_ITEM, _PASTE_ITEM],
@@ -3420,7 +3434,7 @@ def _edit_menu_transport(
         sent.append((method, path, body))
         fields = body or {}
         handle = fields.get("handle")
-        refusal = _hittable_refusal(refuse_hittable, refused, path, handle)
+        refusal = _hittable_refusal(refuse_hittable, refuse_tap, refused, path, handle)
         if refusal is not None:
             return refusal
         if path == "/tap" and handle == "h-field":
@@ -3534,6 +3548,41 @@ def test_select_all_waits_for_the_menu_item_to_become_hittable(
         _SELECT_ALL_PROBE,
         _SELECT_ALL_TAP,
     ]
+
+
+def test_select_all_retries_a_tap_the_menu_refused_after_the_probe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The probe and the tap are two round trips with a whole `/elements` dump between them, so the
+    # menu can refuse in that window — the same race the probe absorbs, so the tap is retried to the
+    # same deadline instead of surfacing as the failure #2521 reports. Two reads per wait, untimed.
+    monkeypatch.setattr(base, "deadline_ticks", lambda *_a, **_k: iter([None, None]))
+    transport, sent = _edit_menu_transport(refuse_tap=("h-select-all", 1))
+    _driver(transport).select_all({"id": "form.coupon"})
+    assert sent == [
+        _FIELD_TAP,
+        _FIELD_PRESS,
+        _SELECT_ALL_PROBE,
+        _SELECT_ALL_TAP,  # refused, so the menu stays up and the item stays on screen
+        # `tap`'s own refusal path reads the screen size, once for the run, to rule out a target
+        # past the screen edge before it looks for a redirect target; a menu item has none.
+        ("GET", "/screen", None),
+        _SELECT_ALL_PROBE,
+        _SELECT_ALL_TAP,
+    ]
+
+
+def test_select_all_keeps_the_runners_own_refusal_as_the_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A tap the menu refuses on every attempt ends in the wait's own failure; the runner's wording
+    # stays in the traceback as its cause rather than being dropped (issue #2521).
+    monkeypatch.setattr(base, "deadline_ticks", lambda *_a, **_k: iter([None, None]))
+    transport, _sent = _edit_menu_transport(refuse_tap=("h-select-all", 99))
+    with pytest.raises(base.ElementNotTappable, match="never became hittable") as caught:
+        _driver(transport).select_all({"id": "form.coupon"})
+    assert isinstance(caught.value.__cause__, base.ElementNotTappable)
+    assert "element resolved but not hittable" in str(caught.value.__cause__)
 
 
 def test_select_all_fails_loudly_when_the_menu_item_never_becomes_hittable(

@@ -1296,15 +1296,24 @@ class XcuitestDriver:
             ElementNotTappable: The item never became hittable. Said distinctly from the menu
                 showing no new item at all, since the two point at different causes.
         """
+        refusal: base.ElementNotTappable | None = None
         for _ in base.deadline_ticks(_EDIT_MENU_TIMEOUT, 0.1, 0.5):
-            if self.is_tappable({"label": label}):
+            if not self.is_tappable({"label": label}):
+                continue
+            try:
                 self.tap({"label": label})
+            except base.ElementNotTappable as exc:
+                # The probe and the tap are two round trips, with a whole `/elements` dump between
+                # them, so the menu can refuse in that window. That is the same race the probe
+                # absorbs, so it is retried to the same deadline rather than surfaced.
+                refusal = exc
+            else:
                 return
         raise base.ElementNotTappable(
             f"{step}: the edit menu's {item} item ({label!r}) never became hittable within "
             f"{_EDIT_MENU_TIMEOUT:g}s (something covering the menu, or a menu that left while the "
             f"wait ran); edit-menu labels on screen: {self._edit_menu_labels_on_screen()}"
-        )
+        ) from refusal
 
     def _edit_menu_label_counts(self) -> Counter[str]:
         """How many on-screen elements carry each edit-menu label the driver taps, right now."""
