@@ -127,8 +127,8 @@ with the existing docs workflow.
 - **Landing page only, no docs portal.** Lower effort, but the already-written bilingual `docs/`
   would stay unpublished, and it is the largest source of value here. Rejected, because the portal is
   the point.
-- **Make the site the canonical home for docs (move `docs/` into a site-only structure).** This is
-  a larger restructuring that would break the GitHub-readable source layout and the bilingual mirror
+- **Make the site the canonical home for docs (move `docs/` into a site-only structure).** The move
+  is a larger restructuring that would break the GitHub-readable source layout and the bilingual mirror
   convention. The chosen path *publishes* `docs/` while keeping the in-repo source readable.
 - **Reuse the BE-0015 / BE-0016 hosting work.** Those items host the `serve` *application* (a
   control-plane ⇄ macOS-worker service), which is unrelated to a static project website. The two

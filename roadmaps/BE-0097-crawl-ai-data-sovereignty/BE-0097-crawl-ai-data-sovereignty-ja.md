@@ -66,7 +66,7 @@ serve 経路を確認することです。
   `record` ／ `triage` と揃います。
 - **serve の継承を明示する。** serve が起動する `crawl` は、ローカル CLI と同じく束縛された config の
   `defaults.ai` ／ `targets.<name>.ai` を読むため、上の crawl 経路がそれらを尊重すれば、
-  プロバイダ設定と秘匿化を自動的に受け取ります。serve 固有の穴は一つ残ります。UI のキー設定と
+  プロバイダ設定と秘匿化を自動的に受け取ります。この項目は serve 固有の穴を一つ塞ぎます。UI のキー設定と
   `_spawn_env` が、有効な config の `keyEnv`（既定は `ANTHROPIC_API_KEY`）が指す環境変数を設定するようにし、非既定の `keyEnv` も
   serve 下で動くようにします。
 

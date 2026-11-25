@@ -66,10 +66,10 @@ guarantees through the crawl path and confirms the serve path.
   round-trip to a hosted default. This matches `record` / `triage`.
 - **Serve inheritance, made explicit.** A serve-spawned `crawl` reads `defaults.ai` /
   `targets.<name>.ai` from the bound config like the local CLI. The spawned `crawl` thus picks
-  up the provider config and redaction for free once the crawl path above honours them. One
-  serve-specific gap remains. The UI key affordance and `_spawn_env` should set the env var named
-  by the active config's `keyEnv` (defaulting to `ANTHROPIC_API_KEY`), so a non-default `keyEnv`
-  works under serve too.
+  up the provider config and redaction for free once the crawl path above honours them. This item
+  also closes the one serve-specific gap: the UI key affordance and `_spawn_env` should set the env
+  var named by the active config's `keyEnv` (defaulting to `ANTHROPIC_API_KEY`), so a non-default
+  `keyEnv` works under serve too.
 
 The deterministic `run` / CI gate is untouched. The work is entirely Tier-1 (crawl exploration's guide
 and serve's authoring jobs), pass/fail stays machine-only, and no model is added to the gate. The
