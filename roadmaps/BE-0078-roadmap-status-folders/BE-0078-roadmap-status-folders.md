@@ -15,7 +15,7 @@
 
 ## Introduction
 
-A roadmap item's `Status` already takes one of **four** values: `Proposal`, `Proposal (deferred)`, `Accepted, in progress`, and `Implemented`. The repository files every item under **two** folders, `roadmaps/proposals/` and `roadmaps/implemented/`. The folder axis is two notches too coarse. Two distinctions that the metadata already records are lost the moment an item is written to disk:
+A roadmap item's `Status` already takes one of **four** values: `Proposal`, `Proposal (deferred)`, `Accepted, in progress`, and `Implemented`. The repository files every item under only **two** folders, `roadmaps/proposals/` and `roadmaps/implemented/`. The folder axis is two notches too coarse. Two distinctions that the metadata already records are lost the moment an item is written to disk:
 
 - An item *being built* sits in `proposals/` next to one that is merely *proposed*.
 - A *parked* (deferred) proposal sits there too, indistinguishable from a live one.
@@ -137,7 +137,7 @@ The change is documentation, two generator/checker scripts, and their gate tests
 ## Alternatives considered
 
 - **Keep two folders; only rename the status and regroup the index visually.** Rejected: the folder coarseness *is* the friction. Leaving in-progress and deferred items physically under `proposals/` keeps the exact flattening this item exists to remove.
-- **Add an `in-progress/` folder alone, and keep deferred inside `proposals/`** (three folders). This is the smaller change, and it is defensible: a deferred item *is* a parked proposal, so it could share the proposals folder. This item rejects it in favour of the full bijection. Giving every `Status` its own folder lets a reader find "what's parked" directly, on disk and in the index, without opening files. The rule also stays uniform (one status, one folder). No status needs a special case that shares another's home.
+- **Add an `in-progress/` folder only, and keep deferred inside `proposals/`** (three folders). This is the smaller change, and it is defensible: a deferred item *is* a parked proposal, so it could share the proposals folder. This item rejects it in favour of the full bijection. Giving every `Status` its own folder lets a reader find "what's parked" directly, on disk and in the index, without opening files. The rule also stays uniform (one status, one folder). No status needs a special case that shares another's home.
 - **Keep the `Accepted, in progress` label.** Rejected: a folder named `in-progress/` paired with a status reading "Accepted, in progress" reintroduces the name/concept seam this item removes. `In progress` makes the status, the folder, and the heading read alike.
 - **Keep `Track`, expanded to four values**, instead of deriving the bucket from `Status`. This option has lower churn for the generator, which stays keyed on `(track, topic)`. It also keeps the metadata schema that BE-0074 pinned. Not recommended: with four buckets, `Track` is a pure duplicate of `Status`. It reintroduces the hand-maintained drift surface that the *folder-from-Status* invariant already avoids. It also still requires editing the `Track` value on every item. Deriving from `Status` is the cleaner end-state. This option is the conservative fallback if the schema change is judged too large for one PR.
 

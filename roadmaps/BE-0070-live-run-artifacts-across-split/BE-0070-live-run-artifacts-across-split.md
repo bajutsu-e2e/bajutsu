@@ -38,7 +38,7 @@ The missing piece is the **live crawl graph**. It relies on a shared filesystem,
 
 **The gap, concretely.** A crawl writes `runs/<id>/screenmap.json` *incrementally*. The engine fires an `on_event` callback after every discovery, and the callback rewrites the file (`bajutsu/cli/commands/crawl.py`). The browser polls `GET /runs/<id>/screenmap.json` on each SSE log line and redraws (`bajutsu/templates/serve.js`, `loadGraph`). In **local** mode this works, because the process that writes the file and the server that serves it share one filesystem.
 
-In **server** mode it breaks. The worker writes `screenmap.json` to *its own* disk, but artifacts reach the object store at job end. `_upload_runs` runs after `run_job` returns, which means after the crawl subprocess has already exited (`bajutsu/serve/server/worker_job.py`). While the crawl runs, the control plane's `ObjectStorageArtifactStore.get` finds no key and returns **404**. The browser's poll fails, and the graph stays empty **until the crawl finishes**.
+In **server** mode it breaks. The worker writes `screenmap.json` to *its own* disk, but artifacts reach the object store only at job end. `_upload_runs` runs after `run_job` returns, which means after the crawl subprocess has already exited (`bajutsu/serve/server/worker_job.py`). While the crawl runs, the control plane's `ObjectStorageArtifactStore.get` finds no key and returns **404**. The browser's poll fails, and the graph stays empty **until the crawl finishes**.
 
 **Root cause.** Logs have a transport that crosses the split (the LogBus). In-progress artifacts have none. The artifact store uploads at the end and reads per request. That design suits a report, but it does not suit a file that the UI **reads while the file is still changing**. The crawl graph is the first such "live artifact", and nothing carries it across the split.
 
@@ -48,7 +48,7 @@ In **server** mode it breaks. The worker writes `screenmap.json` to *its own* di
 
 ### Scope of live artifacts
 
-A **live artifact** is a file that a run updates *during* execution and that the UI reads *mid-run*. A terminal artifact (the report, evidence) differs: the UI reads it after the run. Exactly one live artifact exists today: `screenmap.json`.
+A **live artifact** is a file that a run updates *during* execution and that the UI reads *mid-run*. A terminal artifact (the report, evidence) differs: the UI reads it only after the run. Exactly one live artifact exists today: `screenmap.json`.
 
 The design names a small, explicit **allowlist of live-artifact paths**. The allowlist keeps the mechanism general, so a future live progress file can reuse it. It also avoids turning every artifact into a streamed one.
 
@@ -73,13 +73,13 @@ The Linux gate verifies these invariants with an in-memory (fake) object store. 
 
 ### Prime-directive fit
 
-This change is **Tier-1 `crawl` and serve plumbing** alone. No LLM enters the `run` / CI gate ([DESIGN §2](../../DESIGN.md)). Determinism holds, because the change alters *when bytes become visible* and never *what the crawl explores*. A crawl's traversal stays a pure function of the element tree. The mechanism is app-agnostic: it moves a file, whatever the target app.
+This change is **Tier-1 `crawl` and serve plumbing only**. No LLM enters the `run` / CI gate ([DESIGN §2](../../DESIGN.md)). Determinism holds, because the change alters *when bytes become visible* and never *what the crawl explores*. A crawl's traversal stays a pure function of the element tree. The mechanism is app-agnostic: it moves a file, whatever the target app.
 
 ## Alternatives considered
 
 - **Push graph events on the bus (deltas over SSE) instead of polling a file.** This is the more general "progress channel". The worker emits each new node or edge as a structured event. The control plane relays the event over SSE alongside the log lines, and the browser updates from the payload without polling. The option is attractive because it unifies on the transport that already crosses the split (the LogBus), and a delta is far smaller than re-fetching the whole map. **Deferred**, not rejected: it is a larger change. It needs a new event type, moves the UI's data path from polling to events, and must handle both local and server modes. Incremental upload preserves the existing seam and the existing UI. A future progress channel can subsume the polling once it earns its keep.
 - **Worker → control-plane artifact proxy.** The control plane would read in-progress files from the worker over HTTP. **Rejected**: workers are **pull-based** and lease jobs from Redis, so they are not addressable servers. Making the worker serve files inverts the lease model. It adds network and security surface for no gain over uploading.
-- **Accept a terminal-only graph in server mode (do nothing).** **Rejected**: the live graph is the primary UX of crawl, and the hosted topology is the one users deploy. A feature that works in local dogfooding alone is a silent production regression.
+- **Accept a terminal-only graph in server mode (do nothing).** **Rejected**: the live graph is the primary UX of crawl, and the hosted topology is the one users deploy. A feature that works only in local dogfooding is a silent production regression.
 - **Upload on every event (no throttle).** **Rejected**: a chatty crawl would produce unbounded PUTs. Coalescing at the poll cadence gives the same UX.
 
 ## Progress

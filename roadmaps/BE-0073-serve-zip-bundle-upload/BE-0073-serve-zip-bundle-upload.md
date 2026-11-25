@@ -85,8 +85,8 @@ Uploading a binary and executing it on the host means, by construction, "run cod
 
 ### Determinism, the gate, and app-agnosticism
 
-- **No LLM, no effect on the verdict.** The change is acquisition and extraction before the deterministic `run`. Pass/fail is still computed from machine assertions alone. Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
-- **Linux-testable.** Extraction, zip-slip rejection, the resource bounds, and the path-base resolution are pure packaging and plumbing. They unit-test on the existing Linux gate against fixture zips, with no Simulator. The actual app *install and run* needs a Mac, exactly as for any iOS run.
+- **No LLM, no effect on the verdict.** The change is acquisition and extraction before the deterministic `run`. Pass/fail is still computed only from machine assertions. Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
+- **Linux-testable.** Extraction, zip-slip rejection, the resource bounds, and the path-base resolution are pure packaging and plumbing. They unit-test on the existing Linux gate against fixture zips, with no Simulator. Only the actual app *install and run* needs a Mac, exactly as for any iOS run.
 - **App-agnostic.** Per-app differences stay in the bundled config (`apps.<name>`). The tool, the drivers, and the runner do not branch per bundle.
 
 ### Backend scope (iOS first; web noted)
@@ -103,9 +103,9 @@ The **web (Playwright)** backend has no "app binary". Its analogue is bundling a
 
 ## Alternatives considered
 
-- **Git source alone ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)).** Rejected as a complete substitute. Git carries the *text* well but not the *built binary*, which [DESIGN §1](../../DESIGN.md) says Bajutsu consumes. Forcing the binary through Git means either committing build products or running a full build on the host. An upload avoids both. The two options complement each other and are not redundant.
+- **Git source only ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)).** Rejected as a complete substitute. Git carries the *text* well but not the *built binary*, which [DESIGN §1](../../DESIGN.md) says Bajutsu consumes. Forcing the binary through Git means either committing build products or running a full build on the host. An upload avoids both. The two options complement each other and are not redundant.
 - **Hand-place files on the host and use the existing file-browser picker.** This works on a local Mac. It gives a *browser* user of a hosted serve no way to bring their own suite — the same gap that [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) closes for the download direction.
-- **Upload the config YAML alone, not the tree.** Rejected for the reason given in BE-0063: the config's `scenarios` and `appPath` are relative paths, so a config without its tree and its binary cannot run.
+- **Upload only the config YAML, not the tree.** Rejected for the reason given in BE-0063: the config's `scenarios` and `appPath` are relative paths, so a config without its tree and its binary cannot run.
 - **A bespoke multi-part bundle format with its own manifest.** Rejected: the working local checkout *is* the format. Treating the zip as "a tree to materialize" reuses the config's existing relative paths and BE-0063's path-base mechanism, and invents nothing.
 - **A tarball instead of a zip.** Rejected for symmetry and reach. An `.ipa` and a zipped `.app` are already zips. Stdlib `zipfile` is the foundation that [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md) uses for export. A zip opens by double-click on every OS.
 - **Persist uploads as a reusable library.** Deferred: that is versioned storage, which Git ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md)) already provides. Uploads stay ephemeral.

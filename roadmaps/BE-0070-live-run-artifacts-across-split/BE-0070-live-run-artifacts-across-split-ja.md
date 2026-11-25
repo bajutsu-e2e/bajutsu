@@ -38,7 +38,7 @@ run 中、ブラウザは 3 つのライブな面を表示します。
 
 **ギャップの具体。** crawl は `runs/<id>/screenmap.json` を*逐次*書き出します。エンジンは発見のたびに `on_event` コールバックを発火し、コールバックがファイルを書き換えます（`bajutsu/cli/commands/crawl.py`）。ブラウザは SSE のログ行が来るたびに `GET /runs/<id>/screenmap.json` をポーリングして再描画します（`bajutsu/templates/serve.js` の `loadGraph`）。**local** モードでは、ファイルを書くプロセスと配信するサーバが 1 つのファイルシステムを共有するので、この仕組みが成立します。
 
-**server** モードでは壊れます。worker は `screenmap.json` を*自分の*ディスクに書きます。しかしアーティファクトがオブジェクトストレージに届くのは job の終了時です。`_upload_runs` は `run_job` が返った後、つまり crawl のサブプロセスがすでに終了した後に走ります（`bajutsu/serve/server/worker_job.py`）。crawl の進行中、制御プレーンの `ObjectStorageArtifactStore.get` はキーを見つけられず **404** を返します。ブラウザのポーリングは失敗し、グラフは **crawl が終わるまで**空のままです。
+**server** モードでは壊れます。worker は `screenmap.json` を*自分の*ディスクに書きます。しかしアーティファクトがオブジェクトストレージに届くのは job の終了時だけです。`_upload_runs` は `run_job` が返った後、つまり crawl のサブプロセスがすでに終了した後に走ります（`bajutsu/serve/server/worker_job.py`）。crawl の進行中、制御プレーンの `ObjectStorageArtifactStore.get` はキーを見つけられず **404** を返します。ブラウザのポーリングは失敗し、グラフは **crawl が終わるまで**空のままです。
 
 **根因。** ログには、分割を越える伝送路（LogBus）があります。実行中アーティファクトには、その伝送路がありません。アーティファクトストアは、終了時にアップロードし、要求のたびに読む作りです。この作りはレポートには合いますが、**変化している最中に UI が読む**ファイルには合いません。crawl グラフが最初の「live artifact」であり、分割の向こうへ運ぶ仕組みはまだありません。
 
@@ -48,7 +48,7 @@ run 中、ブラウザは 3 つのライブな面を表示します。
 
 ### スコープ：live artifact
 
-**live artifact** は、run が実行*中*に更新し、UI が*途中で*読むファイルです。終端アーティファクト（レポート、証跡）は別物で、UI は run 後に読みます。live artifact は今、`screenmap.json` の 1 つだけです。
+**live artifact** は、run が実行*中*に更新し、UI が*途中で*読むファイルです。終端アーティファクト（レポート、証跡）は別物で、UI は run 後にだけ読みます。live artifact は今、`screenmap.json` の 1 つだけです。
 
 本設計は、**live artifact のパスを明示した小さな allowlist** を置きます。allowlist のおかげで、仕組みは一般化されます。将来のライブな進捗ファイルも再利用できます。一方で、すべてのアーティファクトをストリーム対象にする事態は避けられます。
 

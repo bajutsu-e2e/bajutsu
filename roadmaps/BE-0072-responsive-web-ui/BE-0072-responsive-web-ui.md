@@ -71,7 +71,7 @@ The tap targets that survive are the top tabs, the per-view switcher, the run an
 
 ### Crawl graph: the one interactive change
 
-The crawl graph is the one place that needs real `serve.js` work instead of CSS. Its pan is bound to `mousedown` and `clientX`, and its zoom to `wheel`. Neither fires from a touch. The change adds touch support that reuses the existing pan/zoom math. The view is already a translate-plus-`zoom` model, so the mapping is unchanged:
+The crawl graph is the only place that needs real `serve.js` work instead of CSS. Its pan is bound to `mousedown` and `clientX`, and its zoom to `wheel`. Neither fires from a touch. The change adds touch support that reuses the existing pan/zoom math. The view is already a translate-plus-`zoom` model, so the mapping is unchanged:
 
 - `touchstart` and `touchmove` drive a single-finger pan.
 - A pinch (two-finger distance) maps onto the existing `zoomBy`.
@@ -90,7 +90,7 @@ The embedded report already ships its own `@media` rules in `report.css`. This i
 
 ### Determinism, app-agnosticism, and the gate
 
-* **No LLM, no verdict touched.** The UI shells out to the deterministic `run` / `record`. This change rearranges pixels and adds a touch handler. Pass/fail is never computed here, so prime directives 1 and 2 hold by construction.
+* **No LLM, no verdict touched.** The UI only shells out to the deterministic `run` / `record`. This change rearranges pixels and adds a touch handler. Pass/fail is never computed here, so prime directives 1 and 2 hold by construction.
 * **App-agnostic.** Layout depends on the viewport, not on any app. Nothing here reads `apps.<name>`, the drivers, or the runner.
 * **Linux-testable.** The verification path is the existing web backend, which runs on the Linux gate (below). The change needs no Simulator and no macOS.
 
@@ -116,7 +116,7 @@ Extending the BE-0058 net this way keeps the determinism-first contract intact. 
 * **Adopt a CSS framework (Tailwind / Bootstrap) for its grid and breakpoints.** Rejected: `serve` is stdlib-only, with hand-written inlined CSS and no asset build step (BE-0011, *Alternatives considered*). Plain `@media` queries deliver the responsiveness without a framework dependency or a build pipeline. The tool stays installable from a fresh clone.
 * **Leave it desktop-only and rely on the browser's pinch-zoom and pan.** Rejected: that is exactly the status quo this item exists to fix. The user must zoom and pan around a shrunk desktop, and the graph cannot be panned at all, because no touch handler exists.
 * **Make the panes user-collapsible/resizable on desktop too (a general layout overhaul).** Out of scope here. This item is the small-screen reflow. A broader resizable/collapsible-pane redesign for desktop, if wanted, is a separate proposal and must not block the narrow-viewport fix.
-* **Convert the mouse drag handlers to pointer events to get touch "for free".** Tempting, but a uniform pointer model would also bring the drag-to-split tiling and gutter-resize to touch. Both are awkward and pointless on a small screen. The conversion is also a larger, riskier change to a working desktop interaction. The smaller, safer change hides those affordances at the narrow tier. It adds a focused touch path for the graph alone, the one thing that genuinely needs to move under a finger.
+* **Convert the mouse drag handlers to pointer events to get touch "for free".** Tempting, but a uniform pointer model would also bring the drag-to-split tiling and gutter-resize to touch. Both are awkward and pointless on a small screen. The conversion is also a larger, riskier change to a working desktop interaction. The smaller, safer change hides those affordances at the narrow tier. It adds a focused touch path only for the graph, the one thing that genuinely needs to move under a finger.
 
 ## Progress
 

@@ -31,7 +31,7 @@ The Web backend that landed with [BE-0041](../BE-0041-web-playwright-backend/BE-
 - `bajutsu/drivers/playwright.py` starts the browser through `_start_chromium`, which calls `pw.chromium.launch(...)`.
 - `bajutsu/backends.py` `ensure_web_runtime` installs the `chromium` browser and no other.
 
-BE-0041's own seam table promised a "headless, **cross-browser**" actuator. The shipped v1 slice reaches Chromium/Blink alone. The engine is not exposed anywhere the user can choose it.
+BE-0041's own seam table promised a "headless, **cross-browser**" actuator. The shipped v1 slice reaches only Chromium/Blink. The engine is not exposed anywhere the user can choose it.
 
 ### Engine-specific breakage is exactly an E2E concern
 
@@ -66,7 +66,7 @@ Determinism (#2) is preserved. Each per-engine run is an independent determinist
 2. **Resolution into `Effective`.** A `browser: str = "chromium"` field on the frozen `Effective` dataclass is populated in `resolve()` straight from `a.browser`. It is a per-target knob like `headless`, not a `defaults`-merged one.
 3. **Flag override.** A `--browser <engine>` option on `run` / `record` applies `eff = replace(eff, browser=<engine>)` when set. The shape is exactly that of today's `--headed` override. The option validates against the same three-engine set, so an unknown value exits 2 and never reaches Playwright.
 
-**Threading it through the one seam.** Engine selection touches the web backend's construction path alone. The deterministic core is untouched: `base.resolve_unique` / `find_all`, the `query()` snapshot, and the orchestrator. Today the engine is fixed three layers down. `PlaywrightDriver.__init__` defaults `starter: Starter = _start_chromium`, where `Starter = Callable[[bool], _Started]`. `_start_chromium(headless)` calls `pw.chromium.launch(...)`. The change generalizes that one closure over the engine name.
+**Threading it through the one seam.** Engine selection touches only the web backend's construction path. The deterministic core is untouched: `base.resolve_unique` / `find_all`, the `query()` snapshot, and the orchestrator. Today the engine is fixed three layers down. `PlaywrightDriver.__init__` defaults `starter: Starter = _start_chromium`, where `Starter = Callable[[bool], _Started]`. `_start_chromium(headless)` calls `pw.chromium.launch(...)`. The change generalizes that one closure over the engine name.
 
 | Seam | Today | Change |
 |---|---|---|
