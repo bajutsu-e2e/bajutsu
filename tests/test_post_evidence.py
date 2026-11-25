@@ -142,10 +142,32 @@ def test_scenario_level_failure_without_failed_step() -> None:
 def test_old_schema_version_gets_a_notice(tmp_path: Path) -> None:
     run = _make_run(tmp_path, [_failing()])
     m = json.loads((run / "manifest.json").read_text())
-    m["schemaVersion"] = 1
+    m["schemaVersion"] = "unknown"
     (run / "manifest.json").write_text(json.dumps(m))
     body = pe.render(pe.load_runs(run), _cfg())
     assert "does not understand" in body and "no such id" not in body
+
+
+def test_oldest_schema_version_still_renders_failure_blocks(tmp_path: Path) -> None:
+    run = _make_run(tmp_path, [_failing()])
+    m = json.loads((run / "manifest.json").read_text())
+    m["schemaVersion"] = 1
+    (run / "manifest.json").write_text(json.dumps(m))
+    body = pe.render(pe.load_runs(run), _cfg())
+    assert "does not understand" not in body and "no such id" in body
+
+
+def test_runs_sharing_a_run_id_stage_and_resolve_separately(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    _make_run(tmp_path / "a", [_failing()]).rename(root / "shard-a")
+    _make_run(tmp_path / "b", [_failing()]).rename(root / "shard-b")
+    runs = pe.load_runs(root)
+    assert [r.key for r in runs] == ["shard-a", "shard-b"]
+    stage = tmp_path / "stage"
+    pe.stage_runs(runs, stage, 1024, 500)
+    assert (stage / "shard-a").is_dir() and (stage / "shard-b").is_dir()
+    assert pe.run_root_of(runs, "shard-b/x.png") == root / "shard-b"
 
 
 def test_min_schema_never_exceeds_current() -> None:
@@ -343,6 +365,30 @@ def test_stage_with_upload_false_stages_nothing(
     outputs = dict(line.split("=", 1) for line in out.read_text().splitlines())
     assert outputs["upload-zip"] == "" and outputs["screenshot-1"] == ""
     assert not (tmp_path / "tmp" / "post-evidence-stage").exists()
+
+
+def test_stage_crash_warns_and_exits_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run = _make_run(tmp_path, [_failing()])
+    _env(monkeypatch, tmp_path, run)
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(pe.shutil, "copytree", boom)
+    assert pe.main(["x", "stage"]) == 0
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_publish_crash_warns_and_exits_zero(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run = _make_run(tmp_path, [_failing()])
+    _env(monkeypatch, tmp_path, run)
+    monkeypatch.setattr(pe, "render", lambda *a, **k: 1 / 0)
+    assert pe.main(["x", "publish"]) == 0
+    assert "::warning::" in capsys.readouterr().out
 
 
 def test_usage_error() -> None:

@@ -24,13 +24,17 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# The lowest manifest schemaVersion whose scenario/step/artifact fields this renderer reads. A
-# lower or unrecognized version makes the comment say so instead of rendering an empty block.
-MIN_SCHEMA_VERSION = 18
+# The lowest manifest schemaVersion whose scenario/step/artifact fields this renderer reads: a
+# scenario's scenario/ok/failure/sid, a step's index/action/ok/reason, and an artifact's kind/name
+# are all original fields; every bump through v18 added optional ones this script never touches
+# (see bajutsu/common/report/manifest.py's version log). A lower or unrecognized version makes the
+# comment say so instead of rendering an empty block.
+MIN_SCHEMA_VERSION = 1
 
 SLOTS = 3
 MAX_COMMENT_CHARS = 60_000
@@ -120,10 +124,13 @@ def _read_json(path: Path) -> dict[str, Any] | None:
 
 
 def _read_run(path: Path, rel: str) -> RunView | None:
+    # The directory name, never the manifest's `runId`: a run id is a second-resolution UTC
+    # timestamp, so two runs collected under one root can share one, which would collide in
+    # `stage_runs` and make `run_root_of` resolve a slot to the wrong run. It also keeps
+    # manifest text out of the staged path join.
+    key = path.resolve().name or "run"
     manifest = _read_json(path / "manifest.json")
     if manifest is not None:
-        run_id = manifest.get("runId")
-        key = run_id if isinstance(run_id, str) and run_id else path.name
         entries = [e for e in manifest.get("scenarios") or [] if isinstance(e, dict)]
         return RunView(key, path, rel, manifest, [_scenario_view(e) for e in entries])
     results = sorted(path.glob("*/result.json"))
@@ -135,7 +142,7 @@ def _read_run(path: Path, rel: str) -> RunView | None:
         entry = body.get("scenario") if body else None
         if isinstance(entry, dict):
             views.append(_scenario_view(entry))
-    return RunView(path.name, path, rel, None, views)
+    return RunView(key, path, rel, None, views)
 
 
 def load_runs(run_dir: Path) -> list[RunView]:
@@ -451,6 +458,10 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(f"PE_{name}", default)
 
 
+def _upload_enabled() -> bool:
+    return _env("UPLOAD", "true") == "true"
+
+
 def _int(name: str, default: int) -> int:
     try:
         return int(_env(name, str(default)))
@@ -473,14 +484,14 @@ def _state_path() -> Path:
     return Path(os.environ.get("RUNNER_TEMP", ".")) / _STATE_FILE
 
 
-def cmd_stage() -> int:
+def _stage() -> int:
     """Stage the run, pick the slots, and expose them as step outputs."""
     runs = load_runs(Path(_env("RUN_DIR", "runs")))
     stage_dir = Path(os.environ.get("RUNNER_TEMP", ".")) / "post-evidence-stage"
     state: dict[str, Any] = {"truncated": [], "bytes": 0, "skipZip": False}
-    if _env("UPLOAD", "true") == "true" and runs:
+    if _upload_enabled() and runs:
         state = stage_runs(runs, stage_dir, _int("LOG_TAIL_KB", 1024), _int("SIZE_WARN_MB", 500))
-    slots = select_slots(runs) if _env("UPLOAD", "true") == "true" else []
+    slots = select_slots(runs) if _upload_enabled() else []
     # A non-zipped upload names the artifact after the file, so each slot file is copied under a
     # unique name: three failing steps would otherwise all upload an `after.png`.
     slot_dir = Path(os.environ.get("RUNNER_TEMP", ".")) / "post-evidence-slots"
@@ -499,7 +510,7 @@ def cmd_stage() -> int:
             _out(f"{kind}-{i + 1}", out)
     _out("stage-dir", str(stage_dir))
     _out("artifact-name", prefix)
-    _out("upload-zip", "true" if runs and not state["skipZip"] and _env("UPLOAD") == "true" else "")
+    _out("upload-zip", "true" if runs and not state["skipZip"] and _upload_enabled() else "")
     state["slots"] = slots
     _state_path().write_text(json.dumps(state), encoding="utf-8")
     return 0
@@ -514,7 +525,7 @@ def _zip_status(upload: bool, state: dict[str, Any]) -> str:
     return "ok" if outcome == "success" else ("none" if outcome == "skipped" else "failed")
 
 
-def cmd_publish() -> int:
+def _publish() -> int:
     """Render, write the job summary, and post the sticky comment (never failing the job)."""
     runs = load_runs(Path(_env("RUN_DIR", "runs")))
     try:
@@ -525,7 +536,7 @@ def cmd_publish() -> int:
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     run_id = os.environ.get("GITHUB_RUN_ID", "")
     run_url = f"{server}/{repo}/actions/runs/{run_id}" if repo and run_id else ""
-    upload = _env("UPLOAD", "true") == "true"
+    upload = _upload_enabled()
     status = _zip_status(upload, state)
     artifact_url = _env("ZIP_URL") if upload else _env("ARTIFACT_URL")
     cfg = RenderConfig(
@@ -568,6 +579,29 @@ def cmd_publish() -> int:
     except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
         _warn(f"could not post the evidence comment ({type(exc).__name__}: {exc}); summary only")
     return 0
+
+
+def _guarded(name: str, fn: Callable[[], int]) -> Callable[[], int]:
+    """Turn any crash into a warning: this action never changes the job's result."""
+
+    def run() -> int:
+        try:
+            return fn()
+        except Exception as exc:
+            _warn(f"post-evidence {name} failed ({type(exc).__name__}: {exc}); continuing")
+            return 0
+
+    return run
+
+
+def cmd_stage() -> int:
+    """Stage the run, pick the slots, and expose them as step outputs (never failing the job)."""
+    return _guarded("stage", _stage)()
+
+
+def cmd_publish() -> int:
+    """Render, write the job summary, and post the sticky comment (never failing the job)."""
+    return _guarded("publish", _publish)()
 
 
 def main(argv: list[str]) -> int:

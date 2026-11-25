@@ -92,6 +92,9 @@ runs:
     # Inputs reach the shell and the script through env:, never an inline ${{ }} (BE-0123).
     - name: Stage evidence
       id: stage
+      # A crash while staging must not change the job's result (this action's contract). The
+      # script already degrades to a warning; the publish step below runs under `always()`.
+      continue-on-error: true
       shell: bash
       env:
         PYTHON: ${{ steps.py.outputs.python-path }}
@@ -176,6 +179,7 @@ runs:
     - name: Post evidence comment
       id: publish
       if: always()
+      continue-on-error: true
       shell: bash
       env:
         PYTHON: ${{ steps.py.outputs.python-path }}

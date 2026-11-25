@@ -638,7 +638,8 @@ to the repository, because artifact URLs require sign-in.
 
 - **The action never changes the job's result.** A broken upload, a read-only token (a pull request
   from a fork), or an API error produces a warning and the job summary. The test step's own exit code
-  decides pass or fail.
+  decides pass or fail. The staging and comment steps also run with `continue-on-error`, so an
+  unexpected crash in the script degrades to a warning too.
 - **A run stopped partway leaves no manifest.** The comment then says the run did not complete.
 - **Truncation does not mask secrets.** The staged copy of a device log over `log-tail-kb` keeps the
   log's end, and its first line records the original size. No upload holds the full log. The staged
@@ -649,5 +650,6 @@ to the repository, because artifact URLs require sign-in.
   fork's code.
 - **An evidence base URL** renders each screenshot in the comment and links `<base>/report.html`.
   The action never uploads there. A signed URL leaves a broken image once it expires.
-- **Manifest version.** The renderer reads `schemaVersion` 18 and newer. An older manifest produces
-  a notice in place of scenario details.
+- **Manifest version.** The renderer reads only fields present since the first `schemaVersion`, so any
+  recorded version renders. A manifest with a missing or unrecognized version produces a notice in
+  place of scenario details.
