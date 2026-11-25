@@ -222,9 +222,15 @@ BajutsuKit のアプリ内 `URLProtocol` が、モックされた `POST /post` �
 
 ### `android-e2e.yml`：Android（adb）バックエンドのレーン
 
-この workflow は **Android（adb）バックエンド**のレーンです（BE-0208）。iOS や web のレーンのジョブ分割にならった、観点ごとの 8 ジョブから成ります。各ジョブが、自前の x86_64 API 34 の Android Virtual Device（AVD）を KVM のもとで起動します。起動には `reactivecircus/android-emulator-runner` を使います。これに加えて、AVD を起動しない9つ目の **warm gradle cache (adb)** ジョブがあります。
+この workflow は **Android（adb）バックエンド**のレーンです（BE-0208）。iOS や web のレーンのジョブ分割にならった、観点ごとの 12 ジョブから成ります。各ジョブが、自前の x86_64 API 34 の Android Virtual Device（AVD）を KVM のもとで起動します。起動には `reactivecircus/android-emulator-runner` を使います。これに加えて、AVD を起動しない13番目の **warm gradle cache (adb)** ジョブがあります。
 
 このレーンは **Mac / Simulator 不要**です。iOS と web の e2e レーンに並ぶ、3 つ目のバックエンドの Linux 版にあたります。`changes` 検出ジョブがパスゲートします（`scripts/e2e_changes.py`、`E2E_LANE=android`）。ジョブは、必須の集約ジョブ `E2E (android)` に集約します（BE-0279）。
+
+#### Android エミュレータのパッケージ
+
+AVD を起動する各ジョブは、最初のエミュレータのステップより前に、Android Emulator とシステムイメージをインストールします。使うのは [`install-android-emulator-sdk`](../../.github/actions/install-android-emulator-sdk/action.yml) の composite action です。
+
+`sdkmanager` は、ダウンロードしたアーカイブを展開できなくても警告を出し、終了コード 0 で終わります。そのため、壊れたダウンロードは後続の `adb` の `Connection refused` としてしか現れませんでした。この action はインストールを 1 回だけ再試行します。再び失敗したら、パッケージ名を示してステップを失敗させます（`scripts/install_android_sdk_packages.sh`）。
 
 #### Android の Gradle キャッシュ先行ビルド
 

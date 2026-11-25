@@ -201,9 +201,13 @@ Each of these jobs surfaces a drift or a flake as a signal on its own job. None 
 
 ### `android-e2e.yml`: the Android (adb) backend lane
 
-This workflow is the **Android (adb) backend** lane (BE-0208). It runs eight per-concern jobs that mirror the iOS and web lanes' job splits. Each job boots its own x86_64 API 34 Android Virtual Device (AVD) under KVM. It uses `reactivecircus/android-emulator-runner`. A ninth job, **warm gradle cache (adb)**, has no AVD.
+This workflow is the **Android (adb) backend** lane (BE-0208). It runs twelve per-concern jobs that mirror the iOS and web lanes' job splits. Each job boots its own x86_64 API 34 Android Virtual Device (AVD) under KVM. It uses `reactivecircus/android-emulator-runner`. A thirteenth job, **warm gradle cache (adb)**, has no AVD.
 
 The lane needs **no Mac / Simulator**. The lane is the third backend's Linux twin of the iOS and web e2e lanes. A `changes` detector path-gates it (`scripts/e2e_changes.py`, `E2E_LANE=android`). The detector feeds the required `E2E (android)` aggregator (BE-0279).
+
+#### Android emulator packages
+
+Every job that boots an AVD installs two packages before its first emulator step. They are the Android Emulator and the system image. It uses the [`install-android-emulator-sdk`](../.github/actions/install-android-emulator-sdk/action.yml) composite action. The `sdkmanager` command exits 0 with a warning when it cannot unpack a downloaded archive. A damaged download thus used to surface as a later `adb` `Connection refused` error. The `scripts/install_android_sdk_packages.sh` script retries the install once. A second unsuccessful attempt stops the step and names the package.
 
 #### Android Gradle warm-up
 
