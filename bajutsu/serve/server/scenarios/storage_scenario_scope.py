@@ -55,7 +55,9 @@ class StorageScenarioScope:
         if text is None:
             return None
         rel = f"{_WORKSPACE_SCENARIOS}/{name}"
-        return Runnable(arg=rel, materials={rel: text})
+        return Runnable(
+            arg=rel, materials={rel: text}, client_written=not self._storage.config_tree
+        )
 
     def authored(self, name: str) -> Authored:
         # No filesystem here: pick a safe ref, stamp it if taken (don't clobber), and tell the

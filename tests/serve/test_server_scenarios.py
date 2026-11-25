@@ -30,6 +30,8 @@ SCENARIO = "- name: a\n  steps: []\n"
 class FakeScenarioStorage:
     """Per-project scenario storage, in memory: {app: {ref: yaml}}."""
 
+    config_tree = True
+
     def __init__(self, projects: dict[str, dict[str, str]]) -> None:
         self._projects = projects
 
@@ -74,6 +76,8 @@ def test_list_read_save_delegate_to_storage() -> None:
 
 class PermissiveStorage:
     """A storage that would return for *any* ref — so a leak proves the scope didn't pre-reject."""
+
+    config_tree = True
 
     def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
         return True
@@ -263,3 +267,30 @@ def test_local_tree_storage_drives_the_scenario_store_seam(tmp_path: Path) -> No
     assert runnable is not None
     assert runnable.arg == "scenarios/smoke.yaml"
     assert runnable.materials == {"scenarios/smoke.yaml": SCENARIO}
+
+
+def test_a_set_labels_each_scenario_from_the_read_it_ships(tmp_path: Path) -> None:
+    # BE-0501: one resolution gives both, so a scenario deleted between two reads cannot ship its
+    # text under the config's own source.
+    from bajutsu.serve.operations.dispatch import _run_intents
+    from bajutsu.serve.scenarios import Runnable
+
+    calls: list[str] = []
+
+    class Scope:
+        def runnable(self, name: str) -> Runnable:
+            calls.append(name)
+            return Runnable(arg=f"scenarios/{name}", materials={name: "x"}, client_written=True)
+
+    requests, sources, err = _run_intents(
+        Scope(),  # type: ignore[arg-type]
+        ["a.yaml", "b.yaml"],
+        bundle_dir=tmp_path,
+        target="t",
+        config_arg="c.yaml",
+        platform="web",
+        app_path="",
+    )
+    assert err is None and len(requests) == 2
+    assert sources == {"a.yaml": "uploaded", "b.yaml": "uploaded"}
+    assert calls == ["a.yaml", "b.yaml"]

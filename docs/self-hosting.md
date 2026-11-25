@@ -180,6 +180,24 @@ terminal or CI run labels its config `operator`, because the person who started 
 The worker passes the label to each `run`, `record`, or `crawl` it spawns. It also passes its own
 `--worker-config` to each of them.
 
+### The source of a scenario
+
+A scenario can declare [commands of its own](scenarios.md#hooks-external-commands-around-one-scenario).
+Most often the scenario comes with the config, and its commands take the config's source. A client
+can write the scenario apart from the config in two cases:
+
+- A `scenariosArtifact` replaces the scenarios of one job.
+- A store holds saved scenarios apart from the config's own tree.
+
+In both cases the scenario's commands take the source `uploaded`. The config's commands keep the
+config's source. `serve` puts the label in the job, and the worker passes it to the `run` it spawns
+as `--scenario-source`. A label in the job's command line has no effect. A job from a server that
+predates the label reads as `uploaded` too, when it ships its scenario.
+
+A scenario saved into the config's own tree takes the config's source. Anyone who may save there can
+thus run commands under that source's mode. Set that mode to `named` or `deny` where you do not trust
+everyone who may save.
+
 ### The `commandExecution` block
 
 The `commandExecution` block in `worker.yaml` sets one mode per source:
@@ -283,7 +301,8 @@ The worker advertises its policy as routing tokens
 
 A job whose config declares a `hooks.*` command line requires `command-execution:<source>` for its
 source. One that uses a named command requires `named-execution:<source>` and that script's own
-`named-command:<name>`. A build adds no token, because `serve` cannot know whether a worker already
+`named-command:<name>`. The commands of a job's scenario files add the same tokens, under the
+scenario's source. A build adds no token, because `serve` cannot know whether a worker already
 holds the binary. A job keeps waiting while no connected worker matches it. Workers older than BE-0492
 advertise none of these tokens, and they never lease such a job.
 

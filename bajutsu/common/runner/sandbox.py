@@ -362,6 +362,12 @@ class SandboxRuntime:
         inside.pop("BAJUTSU_RUN_DIR", None)  # the run directory has no mount inside the container
         if (out := inside.get("BAJUTSU_OUTPUT")) is not None:
             inside["BAJUTSU_OUTPUT"] = self.in_container(Path(out))
+        if (source := inside.get("BAJUTSU_SCENARIO_FILE")) is not None:
+            # Dropped, like the run directory, when the container mounts no such file.
+            if Path(source).resolve().is_relative_to(self.bundle_cwd.resolve()):
+                inside["BAJUTSU_SCENARIO_FILE"] = self.in_bundle(Path(source))
+            else:
+                del inside["BAJUTSU_SCENARIO_FILE"]
         container_cwd = self.in_bundle(cwd) if cwd is not None else None
         return build_exec_argv(self.container, argv, env={**inside, **declared}, cwd=container_cwd)
 

@@ -63,6 +63,7 @@ def test_dispatch_enqueues_a_serializable_job_spec(tmp_path: Path) -> None:
         "rebuild": False,
         "build_platform": None,
         "config_source": "operator",  # the operator's own config (BE-0492)
+        "scenario_source": "",  # the scenario came from the config's own source (BE-0501)
         "governed_build": None,
         "withhold_runner_build": False,
         "materials": {},  # no materials for a local-built job
@@ -551,6 +552,8 @@ def test_start_run_passes_safe_backfilled_flags_and_withholds_host_paths(tmp_pat
 
 class FakeScenarioStorage:
     """Per-project scenario storage, in memory: {app: {ref: yaml}} (for the start_run test)."""
+
+    config_tree = True
 
     def __init__(self, projects: dict[str, dict[str, str]]) -> None:
         self._projects = projects

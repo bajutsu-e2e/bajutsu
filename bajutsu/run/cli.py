@@ -98,9 +98,9 @@ from bajutsu.common.runner import (
 )
 from bajutsu.common.runner.build import BuildError, build_app
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
-from bajutsu.common.runner.hook_commands import hook_refusal
 from bajutsu.common.runner.hook_session import HookSession, phases_of, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
+from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     ComponentResolver,
@@ -361,6 +361,7 @@ def _expand_file(
     plan_sources: dict[str, ScenarioPlanSource] = {}
     for s in scenarios:
         s.set_source_stem(path.stem)
+        s.set_source_path(path)
         s.preconditions.resolve_seed_photos(lambda ref: str(contained_ref(root, base_dir, ref)))
         base_name = declared_name(s.name)
         plan = plan_by_name.get(base_name)
@@ -1141,29 +1142,13 @@ def _reject_unknown_hook_tokens(
     `beforeScenario` entry of a target the scenario drives would otherwise fail halfway through the
     suite, and so would one naming a `beforeScenario` entry the scenario skips through
     `preconditions.inheritSetup: false`. Whether each *key* was written can only be known once the
-    command has run, which the run loop checks per scenario.
+    command has run, which the run loop checks per scenario. A hook name two visible entries share
+    fails the same way (BE-0501).
     """
-    from bajutsu.common.runner.hook_commands import unknown_hook_tokens
-    from bajutsu.common.scenario.interp import find_tokens
+    from bajutsu.common.runner.scenario_hooks import scenario_hook_error
 
     for s in scenarios:
-        names = s.target_names if s.targets else [primary]
-        readable: set[str] = set()
-        skipped: set[str] = set()
-        for name in names:
-            eff = target_effs.get(name)
-            if eff is None:
-                continue
-            readable |= {e.name for e in eff.hooks.before_run if e.name is not None}
-            scenario_level = {e.name for e in eff.hooks.before_scenario if e.name is not None}
-            if s.preconditions.inherit_setup:
-                readable |= scenario_level
-            else:
-                skipped |= scenario_level
-        why = unknown_hook_tokens(
-            find_tokens(s.model_dump(by_alias=True)), readable, skipped=skipped
-        )
-        if why is not None:
+        if (why := scenario_hook_error(s, target_effs, primary)) is not None:
             typer.echo(f"scenario {s.name!r}: {why}")
             raise typer.Exit(2)
 
@@ -2349,8 +2334,9 @@ def _hook_session_or_exit(
     worker: WorkerCapability | None,
     secret_values: list[str],
     base_dir: Path | None,
+    scenario_targets: set[str],
 ) -> HookSession | None:
-    """The run's hook session, or None when no target declares a hook command (BE-0491).
+    """The run's hook session, or None when nothing in this run declares a hook command (BE-0491).
 
     The session's artifact writer is the run's own, so each command's log is copied into the run
     directory with `${secrets.*}` and every `mask: true` output value replaced. Two targets sharing
@@ -2361,7 +2347,7 @@ def _hook_session_or_exit(
     from bajutsu.common.evidence.sink import RunArtifactWriter
     from bajutsu.common.runner.pipeline import _union_redact
 
-    if not phases_of(target_effs):
+    if not phases_of(target_effs, scenario_targets):
         return None
     writer = RunArtifactWriter(
         runs_dir / run_id, Redactor(_union_redact(target_effs.values()), values=secret_values)
@@ -2376,6 +2362,7 @@ def _hook_session_or_exit(
             writer=writer,
             named_commands=worker.named_commands if worker is not None else None,
             base_dir=base_dir,
+            scenario_targets=scenario_targets,
         )
     except ValueError as e:
         typer.echo(str(e))
@@ -3235,6 +3222,13 @@ def run_body(
     config_origin: str = typer.Option(
         "operator", "--config-source", hidden=True, help=CONFIG_SOURCE_HELP
     ),
+    scenario_source: str = typer.Option(
+        "",
+        "--scenario-source",
+        hidden=True,
+        help="where the scenario files came from when not the config's own source: a label the "
+        "worker sets, which judges the scenario's own hook commands (BE-0501)",
+    ),
     # --- Config sourcing ---
     config: str = typer.Option(DEFAULT_CONFIG),
     label: str = typer.Option(
@@ -3417,13 +3411,18 @@ def run_body(
     # Before any build: the worker's command policy decides whether the config's builds, server, and
     # runner build run here (BE-0492).
     gate = _install_command_gate_or_exit(
-        config_origin, worker, config_dir=loaded.root or eff.base_dir, secret_values=secret_values
+        config_origin,
+        worker,
+        config_dir=loaded.root or eff.base_dir,
+        secret_values=secret_values,
+        scenario_source=scenario_source,
     )
     # A hook command the policy refuses — or one it sandboxes with no `hooks.sandbox` block to run
     # it in — fails the run here, before any build or device reservation, rather than after every
     # target's device is held (BE-0492, BE-0491). Every declared entry is checked, whether or not
     # its `on` will match the verdict.
-    if (refusal := hook_refusal(phases_of({**target_effs, target_name: eff}), gate)) is not None:
+    effs = {**target_effs, target_name: eff}
+    if (refusal := run_hook_refusal(scenarios, effs, target_name, gate)) is not None:
         _fail_before_scenarios(
             _UnstartedRun(
                 eff=eff,
@@ -3446,7 +3445,7 @@ def run_body(
     # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
     _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
-    _reject_unknown_hook_tokens({**target_effs, target_name: eff}, all_scenarios, target_name)
+    _reject_unknown_hook_tokens(effs, all_scenarios, target_name)
     # Built only now, once `--tag` / `--exclude` and the worker check have settled the primary: an
     # inferred primary of a scenario selected away is never built (an iOS app on a Linux lane).
     rebuilt: set[str] = set()
@@ -3543,6 +3542,7 @@ def run_body(
             worker=worker,
             secret_values=secret_values,
             base_dir=loaded.root or eff.base_dir,
+            scenario_targets=sandbox_targets(scenarios, target_name),
         )
         # Answer a `SIGTERM` by asking the run to stop at its next safe boundary instead of dying
         # where it stands, leaving no manifest, no report, and no history row (BE-0370). The window

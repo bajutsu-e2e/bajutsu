@@ -9,7 +9,7 @@ outputs `beforeRun` wrote stay visible to each scenario's own hooks and to `afte
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -40,13 +40,14 @@ from bajutsu.common.runner.sandbox import (
 _logger = logging.getLogger(__name__)
 
 
-def phases_of(effs: Mapping[str, Effective]) -> dict[str, HookPhases]:
+def phases_of(effs: Mapping[str, Effective], also: Collection[str] = ()) -> dict[str, HookPhases]:
     """Each target's hook lists, keyed by target name, keeping the declared order.
 
     Only the targets that declare a command at all, so a run of targets that declare none carries no
-    hook phase and reaches its first scenario exactly as it did before BE-0491.
+    hook phase and reaches its first scenario exactly as it did before BE-0491. A target named in
+    *also* is kept whatever it declares: a scenario's own commands run in its container (BE-0501).
     """
-    return {name: eff.hooks for name, eff in effs.items() if eff.hooks.any_command}
+    return {name: eff.hooks for name, eff in effs.items() if eff.hooks.any_command or name in also}
 
 
 @dataclass
@@ -155,8 +156,12 @@ def start_session(
     writer: RunArtifactWriter | None = None,
     named_commands: Mapping[str, NamedCommand] | None = None,
     base_dir: Path | None = None,
+    scenario_targets: Collection[str] = (),
 ) -> HookSession | None:
-    """The hook session for this run, or None when no target declares a hook command.
+    """The hook session for this run, or None when neither a target nor a scenario declares one.
+
+    *scenario_targets* names the targets whose container a scenario's own commands may run in
+    (BE-0501), which is non-empty exactly when some scenario declares a command.
 
     Returns None rather than an empty session, so every call site can tell at a glance that a run
     without hooks does no hook work at all.
@@ -165,7 +170,7 @@ def start_session(
         ValueError: Two targets of this run share a hook `name`, which would leave a
             `${hooks.<name>.<key>}` token ambiguous.
     """
-    phases = phases_of(effs)
+    phases = phases_of(effs, scenario_targets)
     if not phases:
         return None
     if (clash := duplicate_hook_name(phases)) is not None:
@@ -186,7 +191,9 @@ def start_session(
         # running in another working directory can still reach.
         run_dir=run_dir.resolve() if run_dir is not None else None,
         outputs=HookOutputs(),
-        sandboxes=_sandboxes(phases, gate=gate, raw_dir=raw, base_dir=base_dir),
+        sandboxes=_sandboxes(
+            phases, gate=gate, raw_dir=raw, base_dir=base_dir, scenario_targets=scenario_targets
+        ),
     )
 
 
@@ -196,8 +203,12 @@ def _sandboxes(
     gate: CommandGate | None,
     raw_dir: Path,
     base_dir: Path | None,
+    scenario_targets: Collection[str],
 ) -> dict[str, SandboxRuntime]:
     """One container per target whose command lines the worker's policy sandboxes (BE-0492).
+
+    A scenario's own commands are judged by the scenario's source, so a target may need a container
+    for them alone (BE-0501).
 
     A target that declares no `hooks.sandbox` block gets none, and its first sandboxed entry then
     fails naming that block — the same message the pre-flight raises before any device work, for a
@@ -205,9 +216,9 @@ def _sandboxes(
     """
     from bajutsu.common.capability import command_gate as gate_module
 
-    policy = (gate if gate is not None else gate_module.current()).policy
-    if policy.action("command") != "sandbox":
-        return {}
+    judge = gate if gate is not None else gate_module.current()
+    own = judge.policy.action("command") == "sandbox"
+    scenario = judge.for_scenario().policy.action("command") == "sandbox"
     return {
         target: SandboxRuntime(
             sandbox=phase.sandbox,
@@ -220,4 +231,5 @@ def _sandboxes(
         )
         for target, phase in phases.items()
         if phase.sandbox is not None
+        and ((own and phase.any_command) or (scenario and target in scenario_targets))
     }

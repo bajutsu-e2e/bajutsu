@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import socket
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 from run_cli import invoke
@@ -175,3 +177,85 @@ def test_a_sandboxed_config_without_a_sandbox_block_names_it() -> None:
     gate = CommandGate(policy=CommandPolicy("uploaded", CommandExecution(uploaded="sandbox")))
     refusal = hook_refusal(phases_of({"web": eff}), gate)
     assert refusal is not None and "hooks.sandbox" in refusal
+
+
+# --- a scenario's own commands (BE-0501) ---
+
+
+def _run_scenario(
+    tmp_path: Path, modes: str, source: str, hooks: str, text: str = "x", extra: Sequence[str] = ()
+) -> int:
+    cfg, _, worker = _project(tmp_path, modes)
+    cfg.write_text(cfg.read_text(encoding="utf-8").split("    hooks:")[0], encoding="utf-8")
+    scenario = tmp_path / "flows" / "pay.yaml"
+    scenario.parent.mkdir()
+    scenario.write_text(
+        f"- name: pay\n  hooks: {hooks}\n"
+        f"  steps:\n    - type: {{text: '{text}', into: {{id: a}}}}\n",
+        encoding="utf-8",
+    )
+    argv = ["run", "--target", "site", "--scenario", str(scenario), "--backend", "fake"]
+    argv += ["--config", str(cfg), "--worker-config", str(worker), "--config-source", source]
+    result = invoke(runner, app, [*argv, *extra, "--runs-dir", str(tmp_path / "runs")])
+    (tmp_path / "output.txt").write_text(result.output, encoding="utf-8")
+    return result.exit_code
+
+
+def _manifest(tmp_path: Path) -> dict[str, object]:
+    [manifest] = (tmp_path / "runs").glob("*/manifest.json")
+    data: dict[str, object] = json.loads(manifest.read_text(encoding="utf-8"))
+    return data
+
+
+def test_a_refused_scenario_command_fails_before_any_device_is_reserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.run.cli as run_cli
+
+    def reserved(*_a: object, **_k: object) -> object:
+        raise AssertionError("a refused run reserved a device")
+
+    monkeypatch.setattr(run_cli, "_acquire_targets", reserved)
+    hooks = "{beforeScenario: [{name: card, cmd: 'false'}]}"
+    assert _run_scenario(tmp_path, "{uploaded: deny}", "uploaded", hooks) == 2
+    provenance: Any = _manifest(tmp_path)["provenance"]
+    [entry] = provenance["commandExecutions"]
+    assert entry["field"] == "scenario.hooks.beforeScenario[card].cmd"
+    assert entry["decision"] == "refused"
+
+
+def test_a_run_whose_only_commands_sit_in_a_scenario_runs_them_beside_it(tmp_path: Path) -> None:
+    seen = tmp_path / "seen.txt"
+    script = tmp_path / "seed.sh"
+    script.write_text(f"#!/bin/sh\npwd > {seen}\necho seeded\n", encoding="utf-8")
+    script.chmod(0o755)
+    hooks = f"{{beforeScenario: [{{name: card, cmd: '{script}'}}]}}"
+    _run_scenario(tmp_path, "{}", "operator", hooks)
+    assert seen.read_text().strip() == str((tmp_path / "flows").resolve())
+    [log] = (tmp_path / "runs").glob("*/hooks/beforeScenario/_scenario/00/card.log")
+    assert log.read_text() == "seeded\n"
+    provenance: Any = _manifest(tmp_path)["provenance"]
+    assert provenance["hooks"][0]["declaredBy"] == "pay"
+
+
+def test_an_unknown_hook_token_stops_the_run_at_load(tmp_path: Path) -> None:
+    hooks = "{beforeScenario: [{name: card, cmd: 'false'}]}"
+    assert _run_scenario(tmp_path, "{}", "operator", hooks, "${hooks.nope.x}") == 2
+    assert "names no hook" in (tmp_path / "output.txt").read_text()
+    assert not list((tmp_path / "runs").glob("*/manifest.json"))
+
+
+def test_a_scenario_from_elsewhere_answers_to_its_own_source(tmp_path: Path) -> None:
+    # The operator's config may run commands; the scenario a client wrote may not.
+    hooks = "{beforeScenario: [{name: card, cmd: 'false'}]}"
+    extra = ["--scenario-source", "uploaded"]
+    assert _run_scenario(tmp_path, "{uploaded: deny}", "operator", hooks, extra=extra) == 2
+    provenance: Any = _manifest(tmp_path)["provenance"]
+    [entry] = provenance["commandExecutions"]
+    assert (entry["source"], entry["mode"], entry["decision"]) == ("uploaded", "deny", "refused")
+
+
+def test_an_unknown_scenario_source_is_a_usage_error(tmp_path: Path) -> None:
+    extra = ["--scenario-source", "elsewhere"]
+    assert _run_scenario(tmp_path, "{}", "operator", "{}", extra=extra) == 2
+    assert "--scenario-source 'elsewhere'" in (tmp_path / "output.txt").read_text()

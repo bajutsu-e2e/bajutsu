@@ -11,6 +11,8 @@ import shutil
 import tempfile
 import uuid
 import zipfile
+import zlib
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -19,12 +21,10 @@ import yaml
 
 from bajutsu.common.capability.command_policy import (
     HOOKS_FIELD,
-    NAMED_COMMAND_PREFIX,
     OPERATOR,
     ConfigSource,
-    command_requirement,
-    named_requirement,
 )
+from bajutsu.common.capability.route_tokens import hook_command_needs
 from bajutsu.common.capability.worker_capability import APPIUM
 from bajutsu.common.cloud.devicefarm import (
     DeviceFarmError,
@@ -46,7 +46,9 @@ from bajutsu.serve.capabilities import (
 from bajutsu.serve.commands import _float, _int, crawl_command, record_command, run_command
 from bajutsu.serve.helpers import (
     group_capabilities,
+    merge_needs,
     request_backend_error,
+    scenario_command_needs,
     scenario_route_needs,
     target_batch_info,
     target_build_info,
@@ -109,24 +111,10 @@ def _command_needs(cfg: Path, target: str, binding: ConfigBinding) -> dict[str, 
         return {}
     source = _config_source(binding)
     needs: dict[str, list[str]] = {}
-    spelled = sorted(
-        name for name, entries in eff.hooks.lists.items() if any(e.cmd is not None for e in entries)
-    )
-    if spelled:
-        where = ", ".join(f"{HOOKS_FIELD}.{name}" for name in spelled)
-        needs[command_requirement(source)] = [f"its {source} config declares {where}"]
-    # A `use:` entry needs a worker that runs named commands from this source, and one that has
-    # installed that very script — two separate tokens, since a worker may run named commands and
-    # still not have the one this config asks for.
-    used = sorted({e.use for _, _, e in eff.hooks.entries() if e.use is not None})
-    if used:
-        needs[named_requirement(source)] = [
-            f"its {source} config runs the named command(s) {', '.join(used)}"
-        ]
-        for name in used:
-            needs[f"{NAMED_COMMAND_PREFIX}{name}"] = [
-                f"its {source} config runs the named command {name!r}"
-            ]
+    for name, entries in eff.hooks.lists.items():
+        where = f"its {source} config declares {HOOKS_FIELD}.{name}"
+        for token, why in hook_command_needs(entries, source, where).items():
+            needs.setdefault(token, []).extend(why)
     return needs
 
 
@@ -412,6 +400,27 @@ def _artifact_overrides(
     ), None
 
 
+# A scenario larger than this is not read for routing; the worker's own check still judges it.
+_MAX_ROUTED_SCENARIO = 1_000_000
+
+
+def _zip_text(archive: zipfile.ZipFile, entry: str) -> str | None:
+    """The text of one zip entry, or None when it is too large, unreadable, or not text."""
+    if archive.getinfo(entry).file_size > _MAX_ROUTED_SCENARIO:
+        return None
+    try:
+        return archive.read(entry).decode("utf-8")
+    except (UnicodeDecodeError, RuntimeError, OSError, zipfile.BadZipFile, zlib.error):
+        # An encrypted or oddly compressed member (`NotImplementedError` is a `RuntimeError`), or
+        # corrupt data: read for routing alone, so it degrades to "unread" and the worker judges it.
+        return None
+
+
+def _scenario_source(runnable: Runnable) -> ConfigSource | None:
+    """Where *runnable*'s text came from when that is not the config's own source (BE-0501)."""
+    return "uploaded" if runnable.client_written else None
+
+
 def _override_runnable(
     state: ServeState, org: str, cfg: Path, target: str, sha: str, scenario: str
 ) -> tuple[Runnable | None, tuple[Any, int] | None]:
@@ -446,7 +455,9 @@ def _override_runnable(
     wanted = str(rel / name)
     try:
         with zipfile.ZipFile(path) as archive:
-            listed = {str(PurePosixPath(entry)) for entry in archive.namelist()}
+            listed = {str(PurePosixPath(entry)): entry for entry in archive.namelist()}
+            # Read for routing alone (BE-0501): the worker still places the whole artifact.
+            text = _zip_text(archive, listed[wanted]) if wanted in listed else None
         strays = scenarios_zip_strays(path, rel)
     except zipfile.BadZipFile:
         return None, ({"error": "scenariosArtifact is not a readable zip"}, 400)
@@ -455,7 +466,9 @@ def _override_runnable(
             {"error": f"scenariosArtifact entries must all sit under {rel}/: {strays[:3]}"},
             400,
         )
-    return (Runnable(arg=wanted) if wanted in listed else None), None
+    if wanted not in listed:
+        return None, None
+    return Runnable(arg=wanted, client_written=True, text=text), None
 
 
 def _provenance(
@@ -516,6 +529,7 @@ def start_run(  # noqa: C901, PLR0911
         return {
             "error": "scenario must be an existing .yaml inside the target's scenarios dir"
         }, 400
+    scenario_source = _scenario_source(runnable)
     backend, udid, err = _target_device_args(cfg, target, body)
     if err:
         return err
@@ -612,7 +626,17 @@ def start_run(  # noqa: C901, PLR0911
         overrides,
         grid_capabilities,
         rebuild_platform=build_platform if rebuild else None,
-        command_needs=_command_needs(cfg, target, binding),
+        command_needs=merge_needs(
+            _command_needs(cfg, target, binding),
+            scenario_command_needs(
+                runnable.text
+                if overrides is not None and overrides.scenarios is not None
+                else _scenario_text(state, org, session, target, body, overrides),
+                scenario_source or _config_source(binding),
+                tags=str(body.get("tag") or ""),
+                exclude=str(body.get("exclude") or ""),
+            ),
+        ),
     )
     if route_err:
         return route_err
@@ -626,6 +650,7 @@ def start_run(  # noqa: C901, PLR0911
             rebuild=rebuild,
             build_platform=build_platform,
             materials=materials,
+            scenario_source=scenario_source or "",
             # An uploaded bundle ships its own baselines and runs from its own tree, so the org's
             # stored baselines must not be materialized over them — `_download_baselines` clears the
             # destination dir first, which would delete the bundle's. Same reasoning that omits
@@ -672,35 +697,50 @@ def _run_intents(
     config_arg: str,
     platform: str,
     app_path: str,
-) -> tuple[list[tuple[RunIntent, dict[str, str]]], tuple[Any, int] | None]:
-    """Resolve every named scenario to a `RunIntent` and the materials it ships, or the refusal.
+) -> tuple[
+    list[tuple[RunIntent, dict[str, str]]],
+    dict[str, ConfigSource | None],
+    tuple[Any, int] | None,
+]:
+    """Resolve every named scenario to a `RunIntent`, the materials it ships, and its own source.
 
     Paths are relative to the job's bundle directory (BE-0448): a scenario that travels as materials
     already names its place in the worker's workspace, and one on disk is made relative to
-    *bundle_dir*, the config's own directory. All-or-nothing, so `start_run_set` never dispatches a
-    partial fan-out for a set that names one bad scenario.
+    *bundle_dir*, the config's own directory. The source (BE-0501) comes off the one resolution that
+    also gave the materials, so a scenario's label and the text it ships never disagree. All-or-nothing,
+    so `start_run_set` never dispatches a partial fan-out for a set that names one bad scenario.
     """
     requests: list[tuple[RunIntent, dict[str, str]]] = []
+    sources: dict[str, ConfigSource | None] = {}
     for name in names:
         runnable = scope.runnable(name)
         if runnable is None:
-            return [], (
-                {
-                    "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
-                },
-                400,
+            return (
+                [],
+                {},
+                (
+                    {
+                        "error": f"scenario '{name}' must be an existing .yaml inside the target's scenarios dir"
+                    },
+                    400,
+                ),
             )
         scenario_arg = (
             runnable.arg if runnable.materials else os.path.relpath(runnable.arg, bundle_dir)
         )
         if _escapes(scenario_arg):
-            return [], (
-                {"error": f"scenario '{name}' is not under the config's directory"},
-                400,
+            return (
+                [],
+                {},
+                (
+                    {"error": f"scenario '{name}' is not under the config's directory"},
+                    400,
+                ),
             )
         # Judged on the resolved path, since a scope may resolve two spellings to one file (BE-0484).
         if any(r.scenario == scenario_arg for r, _ in requests):
-            return [], ({"error": f"scenario '{name}' is named more than once"}, 400)
+            return [], {}, ({"error": f"scenario '{name}' is named more than once"}, 400)
+        sources[name] = _scenario_source(runnable)
         requests.append(
             (
                 RunIntent(
@@ -713,7 +753,7 @@ def _run_intents(
                 dict(runnable.materials),
             )
         )
-    return requests, None
+    return requests, sources, None
 
 
 def _batch_application(
@@ -920,6 +960,7 @@ def _group_routes(
     scope: ScenarioScope,
     names: list[str],
     command_needs: dict[str, list[str]],
+    sources: Mapping[str, ConfigSource],
 ) -> tuple[list[list[str]], tuple[Any, int] | None]:
     """Each named scenario's routing tokens, or the refusal naming one no live worker can run.
 
@@ -931,16 +972,17 @@ def _group_routes(
     base = [*group_capabilities(cfg, target), RUN_INTENT_CAPABILITY]
     live = list(state.repository.live_worker_capabilities())
     directory = scope.directory()
-    needs_of: dict[str | None, dict[str, list[str]]] = {}
+    needs_of: dict[tuple[str | None, ConfigSource], dict[str, list[str]]] = {}
     routes: list[list[str]] = []
     for name in names:
         text = scope.read(name)
-        if text not in needs_of:
-            needs_of[text] = {
+        key = (text, sources[name])
+        if key not in needs_of:
+            needs_of[key] = {
                 **scenario_route_needs(cfg, target, "", text, directory),
-                **command_needs,
+                **merge_needs(command_needs, scenario_command_needs(text, sources[name])),
             }
-        needs = needs_of[text]
+        needs = needs_of[key]
         capabilities = sorted({*base, *needs})
         if missing := route_refusal(capabilities, live):
             lines = [f"{token} (needed by {'; '.join(needs.get(token, []))})" for token in missing]
@@ -1145,7 +1187,7 @@ def start_run_set(  # noqa: C901, PLR0911
     config_arg = os.path.relpath(cfg, binding.cwd)
     if _escapes(config_arg):
         return {"error": f"config is not under its bundle directory {binding.cwd}"}, 400
-    requests, requests_err = _run_intents(
+    requests, sources, requests_err = _run_intents(
         scope,
         names,
         bundle_dir=binding.cwd,
@@ -1157,7 +1199,13 @@ def start_run_set(  # noqa: C901, PLR0911
     if requests_err:
         return requests_err
     routes, route_err = _group_routes(
-        state, cfg, target, scope, names, _command_needs(cfg, target, binding)
+        state,
+        cfg,
+        target,
+        scope,
+        names,
+        _command_needs(cfg, target, binding),
+        {name: source or _config_source(binding) for name, source in sources.items()},
     )
     if route_err:
         return route_err
@@ -1184,7 +1232,7 @@ def start_run_set(  # noqa: C901, PLR0911
     app_digest = _app_digest(batch_app, bundle, binding)
     config_source = _source_flag(binding)
     jobs: list[Job] = []
-    for (request, materials), capabilities in zip(requests, routes, strict=True):
+    for name, (request, materials), capabilities in zip(names, requests, routes, strict=True):
         if materials:
             # The scenario store ships the scenario text, so the worker has no project on disk: the
             # config travels too, at the bundle-relative path the request names.
@@ -1192,6 +1240,7 @@ def start_run_set(  # noqa: C901, PLR0911
         job = Job(
             intent=replace(request, config_source=config_source),
             materials=materials,
+            scenario_source=sources[name] or "",
             materialize_baselines=binding.upload is None,
             provenance=_provenance(binding, None),
             actor=actor,

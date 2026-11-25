@@ -101,6 +101,8 @@ from bajutsu.common.runner.recovery import (
     _default_crash_retries,
     _default_run_crash_recovery_budget,
 )
+from bajutsu.common.runner.sandbox import SandboxRuntime
+from bajutsu.common.runner.scenario_hooks import driven_targets, nested, own_phases
 from bajutsu.common.runner.types import AlertGuardFor, Lease, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     CleanupRule,
@@ -117,6 +119,7 @@ from bajutsu.common.scenario import (
     redact_totp_secrets,
 )
 from bajutsu.common.scenario.interp import find_tokens
+from bajutsu.common.scenario.models.hook_command import SCENARIO_LEVEL
 
 # Re-exported from `recovery` (BE-0334): the crash-retry count/budget bookkeeping now lives there so
 # the on-device conformance harness drives the same recovery and the two cannot drift. Kept importable
@@ -529,21 +532,27 @@ class _ScenarioRunner:
         A scenario with `preconditions.inheritSetup: false` drives none: the two scenario lists form
         a pair, and an `afterScenario` script typically tears down what a `beforeScenario` script
         created, so running it alone would act on outputs that were never written. The target's
-        `cleanup` still runs, as it does today.
+        `cleanup` still runs, as it does today. The scenario's own entries are not shared, so they
+        sit innermost either way (BE-0501).
         """
-        if self.hooks is None or not s.preconditions.inherit_setup:
+        if self.hooks is None:
             return {}
-        names = s.target_names if s.targets else [self.eff.target]
-        return {name: phase for name in names if (phase := self.hooks.phases.get(name)) is not None}
+        names = driven_targets(s, self.eff.target) if s.preconditions.inherit_setup else []
+        return nested(
+            {name: phase for name in names if (phase := self.hooks.phases.get(name)) is not None},
+            own_phases(s),
+        )
 
     def _hook_context(self, s: Scenario, sid: str, **extra: object) -> Callable[[str], HookContext]:
         """Builds one target's hook context for this scenario."""
         assert self.hooks is not None
         index = int(sid.split("-", 1)[0]) if sid.split("-", 1)[0].isdigit() else None
-        return lambda target: self.hooks.context(  # type: ignore[union-attr]
-            target,
+        first = driven_targets(s, self.eff.target)[0]
+        return lambda key: self.hooks.context(  # type: ignore[union-attr]
+            first if key == SCENARIO_LEVEL else key,
+            level=key if key == SCENARIO_LEVEL else None,
             scenario=s.name,
-            scenario_file=s.source_stem,
+            scenario_file=str(s.source_path) if s.source_path is not None else None,
             worker=self.worker_index.current(),
             scenario_index=index,
             log_prefix=self.evidence_prefix,
@@ -594,6 +603,18 @@ class _ScenarioRunner:
             return None
         return float(time.monotonic() + cancelled_teardown_seconds(grace_seconds()))
 
+    def _hook_sandboxes(self, s: Scenario) -> dict[str, SandboxRuntime]:
+        """Each level's container; the scenario's own entries use its first target's (BE-0501)."""
+        assert self.hooks is not None
+        boxes = dict(self.hooks.sandboxes)
+        if (box := boxes.get(driven_targets(s, self.eff.target)[0])) is not None:
+            boxes[SCENARIO_LEVEL] = box
+        return boxes
+
+    def _hook_cwd_bases(self, s: Scenario) -> dict[str, Path]:
+        """Where the scenario's own entries resolve `cwd`: its file's directory (BE-0501)."""
+        return {SCENARIO_LEVEL: s.source_path.parent} if s.source_path is not None else {}
+
     def _before_scenario(self, s: Scenario, sid: str) -> HookPhaseResult | None:
         """Run every declared target's `beforeScenario`, or None when there is nothing to run.
 
@@ -608,7 +629,8 @@ class _ScenarioRunner:
             phases,
             self._hook_context(s, sid),
             inherited=self.hooks.outputs,
-            sandboxes=self.hooks.sandboxes,
+            sandboxes=self._hook_sandboxes(s),
+            cwd_bases=self._hook_cwd_bases(s),
         )
 
     def _after_scenario(
@@ -616,15 +638,19 @@ class _ScenarioRunner:
         s: Scenario,
         sid: str,
         result: RunResult,
-        outputs: HookOutputs | None = None,
+        before: HookPhaseResult | None,
     ) -> None:
         """Run `afterScenario` for the verdict this scenario reached, and fold in its failures.
 
         The rule a scenario's own `cleanup` follows: a teardown failure becomes the verdict on a
         passing scenario, and is appended behind an existing failure. Every declared target is
-        visited, in reverse declared order, and a rule still runs after an earlier one failed.
+        visited, in reverse declared order, and a rule still runs after an earlier one failed. A
+        target-level `beforeScenario` failure skips the scenario's own list, whose preparation never
+        began (BE-0501).
         """
         phases = self._scenario_phases(s)
+        if before is not None and not before.ok and SCENARIO_LEVEL not in before.reached:
+            phases.pop(SCENARIO_LEVEL, None)
         if not phases or self.hooks is None:
             return
         verdict = "success" if result.ok else "failure"
@@ -636,8 +662,9 @@ class _ScenarioRunner:
             # What this scenario's own `beforeScenario` wrote, not just the run-level outputs: a
             # teardown script reads the very value its `beforeScenario` counterpart created, which
             # is the shape the item's own example has (delete the user that was just created).
-            inherited=outputs if outputs is not None else self.hooks.outputs,
-            sandboxes=self.hooks.sandboxes,
+            inherited=before.outputs if before is not None else self.hooks.outputs,
+            sandboxes=self._hook_sandboxes(s),
+            cwd_bases=self._hook_cwd_bases(s),
             deadline=self._teardown_deadline(),
         )
         self.hooks.records += after.records
@@ -659,6 +686,20 @@ class _ScenarioRunner:
         # never runs — so it must not seed data and tear it down either.
         if (skip := self._never_runs(i, s, sid)) is not None:
             return skip
+        if self.hooks is None and own_phases(s) is not None:
+            # Running the steps without the preparation they were written against would judge a
+            # state the scenario never described, so it fails rather than skipping its commands.
+            result = RunResult(
+                scenario=s.name,
+                ok=False,
+                steps=[],
+                backend=self.actuator or "",
+                sid=sid,
+                failure="the scenario declares `hooks`, but this run was started without a hook "
+                "session to run them (BE-0501)",
+            )
+            self._write_result(s, sid, result)
+            return result
         before = self._before_scenario(s, sid)
         if before is not None:
             self.hooks.records += before.records  # type: ignore[union-attr]
@@ -671,7 +712,7 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=before.reason,
             )
-            self._after_scenario(s, sid, result, before.outputs)
+            self._after_scenario(s, sid, result, before)
             self._write_result(s, sid, result)
             return result
         outputs = (before.outputs if before is not None else None) or (
@@ -692,7 +733,7 @@ class _ScenarioRunner:
                 sid=sid,
                 failure=why,
             )
-            self._after_scenario(s, sid, result, outputs)
+            self._after_scenario(s, sid, result, before)
             self._write_result(s, sid, result)
             return result
         if outputs is not None:
@@ -717,10 +758,10 @@ class _ScenarioRunner:
                     sid=sid,
                     failure=f"the scenario raised before it produced a verdict: {exc}",
                 ),
-                outputs,
+                before,
             )
             raise
-        self._after_scenario(s, sid, result, outputs)
+        self._after_scenario(s, sid, result, before)
         # Every consumer from here on — result.json, the manifest and reports, CI annotations, a
         # webhook — reads these fields, so masking them once here covers each (BE-0472).
         mask_derived_text(result, Redactor(None).with_values(derived.values))

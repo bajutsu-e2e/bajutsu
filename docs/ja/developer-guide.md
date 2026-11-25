@@ -862,6 +862,7 @@ iOS と Android と web を 1 つのインターフェースで動かせます�
 | `recovery.py` | `RetryDecision`、`CrashRecoveryBudget`、`RunCrashRecoveryBudget` | クラッシュした backend に再試行を与えるか、回復に何秒まで費やせるかを決めます。 |
 | `launch.py` | `launch_driver` | ドライバを組み立て、アプリを立ち上げます。 |
 | `hook_commands.py`・`hook_session.py` | `HookRunner`・`HookSession` | run と各シナリオの前後で、ターゲットの外部 hook コマンドを実行します（BE-0491）。 |
+| `scenario_hooks.py` | `nested`・`scenario_hook_error` | シナリオ自身の hook コマンドをターゲットのコマンドの内側に置き、名前とトークンを検査します（BE-0501）。 |
 | `mailbox.py` | 転送方式のレジストリ | `email` ステップの転送方式を種類で解決します。 |
 
 **`_ScenarioRunner`** は、1 回の run が共有する文脈を持つ凍結 dataclass です。解決済みの設定、
