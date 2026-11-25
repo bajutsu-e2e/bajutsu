@@ -322,7 +322,7 @@ run は、出会った統制対象のコマンドを記録します。記録は 
 | `field` | config がコマンドを宣言した場所。例は `hooks.beforeRun[server].cmd` です |
 | `cmd` | コマンドライン。`${secrets.*}` の値はマスクします |
 | `source`、`mode` | config の出所と、適用したモード |
-| `decision` | `ran`、`sandboxed`、`refused` のいずれか |
+| `decision` | `ran`、`sandboxed`、`refused`、`skipped` のいずれか。`skipped` は、[`when`](configuration.md#一部のシナリオでだけエントリを実行するwhenbe-0497) が一致しなかった hook のエントリです |
 | `exitCode` | コマンドを実行したときの終了コード |
 | `sha256` | コマンドラインのハッシュ。実行ファイルが config のディレクトリの中にあれば、そのファイルのハッシュも記録します |
 

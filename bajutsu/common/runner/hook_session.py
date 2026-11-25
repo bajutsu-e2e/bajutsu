@@ -9,7 +9,7 @@ outputs `beforeRun` wrote stay visible to each scenario's own hooks and to `afte
 from __future__ import annotations
 
 import logging
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -36,6 +36,7 @@ from bajutsu.common.runner.sandbox import (
     SandboxRuntime,
     grant_container_access,
 )
+from bajutsu.common.scenario import Scenario
 
 _logger = logging.getLogger(__name__)
 
@@ -48,6 +49,20 @@ def phases_of(effs: Mapping[str, Effective], also: Collection[str] = ()) -> dict
     *also* is kept whatever it declares: a scenario's own commands run in its container (BE-0501).
     """
     return {name: eff.hooks for name, eff in effs.items() if eff.hooks.any_command or name in also}
+
+
+def run_tags(scenarios: Iterable[Scenario], primary: str) -> dict[str, tuple[tuple[str, ...], ...]]:
+    """The tags of the scenarios that drive each target, which a run-level `when` reads (BE-0497).
+
+    Args:
+        scenarios: The run's selected scenarios, after expansion, `--tag`, and `--exclude`.
+        primary: The target a scenario that declares none drives.
+    """
+    driven: dict[str, list[tuple[str, ...]]] = {}
+    for s in scenarios:
+        for target in s.target_names or [primary]:
+            driven.setdefault(target, []).append(tuple(s.tags))
+    return {target: tuple(tags) for target, tags in driven.items()}
 
 
 @dataclass
@@ -65,6 +80,9 @@ class HookSession:
     run_dir: Path | None = None
     outputs: HookOutputs = field(default_factory=HookOutputs)
     records: list[HookRecord] = field(default_factory=list)
+    # Per target, the tags a run-level `when` reads (`run_tags`). Fixed when the session starts, so
+    # `afterRun` decides on the set `beforeRun` saw, whatever the run did in between (BE-0497).
+    tags: Mapping[str, Sequence[Sequence[str]]] = field(default_factory=dict)
     # The `afterRun` outcome, kept so the phase is idempotent: the pipeline runs it before it
     # assembles the report, and the command's own `finally` backstops the paths the pipeline never
     # reached (a device failure, a cancellation). Running a teardown twice would undo more than it
@@ -81,7 +99,7 @@ class HookSession:
             run_id=self.run_id,
             target=target,
             run_dir=self.run_dir,
-            **extra,  # type: ignore[arg-type]
+            **{"scenario_tags": self.tags.get(target, ()), **extra},  # type: ignore[arg-type]
         )
 
     def before_run(self) -> HookPhaseResult:
@@ -157,6 +175,7 @@ def start_session(
     named_commands: Mapping[str, NamedCommand] | None = None,
     base_dir: Path | None = None,
     scenario_targets: Collection[str] = (),
+    tags: Mapping[str, Sequence[Sequence[str]]] | None = None,
 ) -> HookSession | None:
     """The hook session for this run, or None when neither a target nor a scenario declares one.
 
@@ -191,6 +210,7 @@ def start_session(
         # running in another working directory can still reach.
         run_dir=run_dir.resolve() if run_dir is not None else None,
         outputs=HookOutputs(),
+        tags=tags or {},
         sandboxes=_sandboxes(
             phases, gate=gate, raw_dir=raw, base_dir=base_dir, scenario_targets=scenario_targets
         ),

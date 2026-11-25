@@ -352,6 +352,69 @@ def _effective_for(loaded: LoadedConfig, target_name: str) -> Effective:
         raise typer.Exit(2) from None
 
 
+def _reject_unmet_hook_conditions(
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    primary: str,
+    *,
+    selected: Collection[Scenario],
+) -> None:
+    """Exit 2 on a scenario that reads the output of a hook its own tags skip (BE-0497).
+
+    Given every expanded scenario, not the selected ones alone: the mismatch is a defect in the
+    files, so a run that selects a different subset reports it too. A scenario that names no target
+    drives whatever `--target` says, so while deselected it is a defect only if no target of the
+    config lets it run.
+    """
+    from bajutsu.common.runner.hook_commands import unmet_hook_condition
+    from bajutsu.common.runner.scenario_hooks import own_phases
+    from bajutsu.common.scenario.interp import find_tokens
+
+    effs = {name: resolve(loaded.config, name) for name in loaded.config.targets}
+    phases = {name: eff.hooks for name, eff in effs.items()}
+
+    def body(s: Scenario) -> dict[str, object]:
+        # Not its own `hooks`: a token in a command is refused outright (BE-0501), so the reader is
+        # told to use the variable instead, whatever the tags.
+        return s.model_dump(by_alias=True, exclude={"hooks"})
+
+    def unmet(s: Scenario, driven: list[str]) -> str | None:
+        # A target's setup and cleanup steps fold into the scenario, so it reads their tokens too.
+        folded = [
+            step.model_dump(by_alias=True)
+            for name in driven
+            if name in effs
+            for step in (
+                *(effs[name].run_defaults.setup if s.preconditions.inherit_setup else ()),
+                *effs[name].run_defaults.cleanup,
+            )
+        ]
+        referenced = find_tokens([body(s), *folded])
+        return unmet_hook_condition(referenced, phases, driven, s.tags, own_phases(s))
+
+    def runs_under(s: Scenario, target: str) -> bool:
+        """Whether *target* declares every hook *s* reads and *s* meets each one's condition."""
+        own = own_phases(s)
+        readable = {*phases[target].named(), *(own.named() if own is not None else ())}
+        names = {
+            t.removeprefix("hooks.").partition(".")[0]
+            for t in find_tokens(body(s))
+            if t.startswith("hooks.")
+        }
+        return names <= readable and unmet(s, [target]) is None
+
+    chosen = {id(s) for s in selected}
+    for s in scenarios:
+        why = unmet(s, list(s.target_names) or [primary])
+        if why is None:
+            continue
+        floating = not s.target_names and id(s) not in chosen
+        if floating and any(runs_under(s, target) for target in phases):
+            continue
+        typer.echo(f"scenario {s.name!r}: {why}")
+        raise typer.Exit(2)
+
+
 def _refuse_out_in_checkout(out_path: Path, checkout_root: Path | None) -> None:
     """Refuse a generated artifact path that lands inside a read-only Git checkout (BE-0063).
 
@@ -922,6 +985,7 @@ def _start_hooks_or_exit(
     on_error: Callable[[], None] | None = None,
     teardown_at_exit: bool = False,
     scenario_targets: Collection[str] = (),
+    scenarios: Sequence[Scenario] = (),
 ) -> HookSession | None:
     """Run the target's `beforeRun` hooks if it declares any, or exit 2 (BE-0491).
 
@@ -942,12 +1006,14 @@ def _start_hooks_or_exit(
             calls `after_run` itself, since it knows the verdict.
         scenario_targets: The targets a scenario's own commands may need a container of (BE-0501);
             non-empty exactly when some scenario declares a command.
+        scenarios: The set a run-level `when` reads (BE-0497): what `audit` replays, and empty for
+            the commands that run no scenario file, where no condition matches.
 
     Returns:
         The session, or None when neither the target nor a scenario declares a hook command.
     """
     from bajutsu.common.evidence.sink import RunArtifactWriter
-    from bajutsu.common.runner.hook_session import phases_of, start_session
+    from bajutsu.common.runner.hook_session import phases_of, run_tags, start_session
 
     # Nothing at all for a target that declares no hook command — not even a writer. Constructing
     # one creates its run directory, so building it before this check left every `record`, `crawl`
@@ -972,6 +1038,7 @@ def _start_hooks_or_exit(
             named_commands=worker.named_commands if worker is not None else None,
             base_dir=eff.base_dir,
             scenario_targets=scenario_targets,
+            tags=run_tags(scenarios, eff.target),
         )
     except ValueError as e:  # two targets sharing a hook name
         typer.echo(str(e))

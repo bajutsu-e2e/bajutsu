@@ -96,7 +96,7 @@ flowchart TB
 | `common/drivers/web_network.py` | web のネットワーク観測です。Playwright 側の `Collector` が、`requestfinished` を iOS 側と同じ `NetworkExchange` モデルへ橋渡しします。`page.route` によるプロセス内 mock スタブも持ちます。 | [drivers](drivers.md#playwrightweb) |
 | `common/drivers/webview` | `web:` ブロックが WebView の DOM を読む経路です。iOS では BajutsuKit ブリッジのクライアント（`WebViewBridge`）で、DOM 取得と tap 発行を HTTP 経由で実施します。Android では Chrome DevTools Protocol のソース（`CdpDomSource`、BE-0482）で、WebView 自身の DevTools ソケットを `adb` で転送します。 | [drivers](drivers.md) |
 | `common/drivers/zorder` | z 順応答クライアントです。BajutsuKit の `nativeZ` チャネルの Python 側です（BE-0355）。 | [drivers](drivers.md) |
-| `common/scenario/` | シナリオスキーマ（pydantic 厳格検証）と YAML 読込 / 書出です。パッケージの構成は `models` / `load` / `load_expanded` / `expand` / `select` / `serialize` / `edit` です。 | [scenarios](scenarios.md) |
+| `common/scenario/` | シナリオスキーマ（pydantic 厳格検証）と YAML 読込 / 書出です。パッケージの構成は `models` / `load` / `load_expanded` / `expand` / `select` / `serialize` / `edit` です。`tags` は、シナリオの選択と hook の `when` が共有するタグの規則を持ちます（BE-0497）。 | [scenarios](scenarios.md) |
 | `common/assertions/` | 機械アサーション評価です。総関数であり、例外を投げません。パッケージの構成は `evaluate` / `network` / `visual` / `schema` / `_common` です（BE-0250）。 | [selectors](selectors.md#アサーション評価) |
 | `common/orchestrator/` | 決定的 Tier 2 run ループ（act → wait → verify）です。パッケージの構成は `loop` / `waits` / `substitution` / `evidence_rules` / `actions` / `control_channel` です。 | [run-loop](run-loop.md) |
 | `common/cancellation.py` | 協調的キャンセル（BE-0370）です。orchestrator の wait ループと runner がポーリングする、読み取り専用の `CancelSource` を持ちます。あわせて、poll ループが安全な境界まで巻き戻すために投げる `RunCancelled` 例外と、`bajutsu run` のエントリポイントが組み込む `SIGTERM` → イベントのブリッジを持ちます。Bajutsu の他モジュールを一切 import しないため、決定的コア、CLI、`serve` のいずれからも参照できます。 | [run-loop](run-loop.md) |

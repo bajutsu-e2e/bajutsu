@@ -321,7 +321,7 @@ provenance of `manifest.json`. Each entry holds these fields:
 | `field` | where the config declared the command, such as `hooks.beforeRun[server].cmd` |
 | `cmd` | the command line, with `${secrets.*}` values masked |
 | `source`, `mode` | the config source and the mode that applied |
-| `decision` | `ran`, `sandboxed`, or `refused` |
+| `decision` | `ran`, `sandboxed`, `refused`, or `skipped` (a hook entry whose [`when`](configuration.md#running-an-entry-for-some-scenarios-when-be-0497) did not match) |
 | `exitCode` | the command's exit code, when it ran |
 | `sha256` | the hash of the command line, and of the executable when that file sits inside the config's directory |
 

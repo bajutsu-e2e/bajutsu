@@ -36,6 +36,7 @@ from bajutsu.cli._shared import (
     _load_device_worker_or_exit,
     _precondition_checks,
     _refuse_bad_preconditions,
+    _reject_unmet_hook_conditions,
     _resolve_browser,
     _select_actuator_or_exit,
     _start_hooks_or_exit,
@@ -208,6 +209,7 @@ def _repeat_audit(
         raise typer.Exit(2)
     loaded = _load_config_with_source(config)  # exits 2 on a missing config
     eff = _effective_for(loaded, target_name)  # exits 2 on an unknown target
+    _reject_unmet_hook_conditions(loaded, scenarios, target_name, selected=scenarios)
     # The same precondition checks `run` applies before any device work, against the same targets
     # (BE-0452). Audit has no `--erase`, so each scenario's own erase, then the target's, decides.
     _refuse_bad_preconditions(
@@ -266,6 +268,7 @@ def _repeat_audit(
         run_dir=audit_run_dir,
         on_error=shutdown,
         scenario_targets=sandbox_targets(scenarios, eff.target),
+        scenarios=[s for s, *_ in runs],
     )
     teardown: HookPhaseResult | None = None
     try:

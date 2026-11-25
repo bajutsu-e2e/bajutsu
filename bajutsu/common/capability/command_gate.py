@@ -100,6 +100,10 @@ class CommandGate:
             field_name, cmd, "sandboxed" if sandboxed else "ran", exit_code=exit_code, cwd=cwd
         )
 
+    def record_skip(self, field_name: str, cmd: str, *, cwd: Path | None = None) -> None:
+        """Record a hook command whose `when` did not match, so it never ran (BE-0497)."""
+        self._append(field_name, cmd, "skipped", cwd=cwd)
+
     def _append(
         self,
         field_name: str,

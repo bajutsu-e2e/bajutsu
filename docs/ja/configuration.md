@@ -500,6 +500,7 @@ targets:
 | `timeout` | すべて | コマンドに許す秒数です。既定は 300 です |
 | `on` | `afterRun`、`afterScenario` | `always`、`success`、`failure` のいずれかです。既定は `always` です。シナリオの `cleanup` ルールと同じ語を使います |
 | `mask` | すべて | true にすると、このエントリの出力値を `${secrets.*}` の値と同じようにエビデンスでマスクします。既定は false です |
+| `when` | すべて | このエントリを実行するシナリオのタグです。`{ tags, exclude }` と書きます（[下記](#一部のシナリオでだけエントリを実行するwhenbe-0497)）。省略すると、すべてのシナリオで実行します |
 
 #### 実行の順序とライフサイクル
 
@@ -537,6 +538,74 @@ hooks を実行します。各リストの中では、シナリオが宣言し�
 （[scenarios](scenarios.md#hooks1-本のシナリオの前後で実行する外部コマンド)、
 [BE-0501](../../roadmaps/BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md)）。ターゲットの
 すべてのシナリオが必要とするコマンドを、ここに書きます。
+
+#### 一部のシナリオでだけエントリを実行する（`when`、BE-0497）
+
+準備が必要なのは、スイートの一部のシナリオだけということがよくあります。エントリの `when` ブロックには、
+そのエントリを実行するシナリオのタグを書きます。タグが一致しなければ、Bajutsu はエントリをスキップします。
+
+```yaml
+hooks:
+  beforeRun:
+    - name: mock
+      cmd: "./scripts/start-mock.sh"
+      when: { tags: [offline] }            # run が offline のシナリオを選んだときに起動する
+  afterRun:
+    - cmd: "./scripts/stop-mock.sh"
+      when: { tags: [offline] }
+  beforeScenario:
+    - name: account
+      cmd: "./scripts/create-payment-account.sh"
+      when: { tags: [payments], exclude: [readonly] }
+  afterScenario:
+    - cmd: "./scripts/delete-payment-account.sh"
+      when: { tags: [payments], exclude: [readonly] }
+```
+
+| フィールド | 意味 |
+|---|---|
+| `when.tags` | このタグのどれか 1 つ以上を持つシナリオに一致します。省略または空のときは、何も制約しません |
+| `when.exclude` | このタグのどれか 1 つでも持つシナリオには一致しません。`exclude` は `tags` より優先します |
+
+一致の規則は、`bajutsu run` の `--tag` と `--exclude` がシナリオを選ぶ規則と同じです。タグは文字列全体で
+比較し、大文字と小文字を区別します。両方のリストが空の `when` は、読み込みに失敗します。
+
+条件は、コンポーネントとデータを展開した後のタグを読みます。そのため、`tags` に `${row.*}` を書けば、
+データの行ごとに異なるタグを持てます。
+
+エントリがどのシナリオを読むかは、リストによって決まります。
+
+- **`beforeScenario` と `afterScenario`**：前後に実行する対象のシナリオを読みます。`afterScenario` の
+  エントリは、`when` と `on` の両方を満たしたときに実行します。
+- **`beforeRun` と `afterRun`**：run のシナリオ集合を読み、どれか 1 つが一致すれば実行します。`when` に
+  空でない `tags` がなければ、config の読み込みに失敗します。
+
+シナリオ集合には、エントリのターゲットを駆動するシナリオが入ります。
+
+| コマンド | シナリオ集合 |
+|---|---|
+| `run` | `--tag` と `--exclude` を適用して残ったシナリオ。その run のすべての worker レーンにまたがります |
+| `serve` が worker に渡すジョブ | そのジョブ自身のシナリオ。複数のファイルをまとめて実行すると、シナリオファイルごとに 1 つのジョブになり、各ジョブが 1 回の run になります |
+| `audit` | `audit` が再生するシナリオ |
+| `record`、`crawl`、`repl` | 空。これらのコマンドはシナリオファイルを実行しません |
+
+空の集合は、どの条件にも一致しません。`record`、`crawl`、`repl` でも必要なサーバには、`when` を
+付けません。Bajutsu は、最初の `beforeRun` エントリの前に集合を確定します。`afterRun` のエントリは、
+キャンセル後も同じ集合で判断します。
+
+Bajutsu は、`beforeScenario` のエントリと、それを片付ける `afterScenario` のエントリを結び付けません。
+両方に同じ `when` を書きます。条件の広い片付けのエントリは、そのまま実行されます。片付けの
+エントリからは、スキップしたエントリの `BAJUTSU_HOOK__<name>__<key>` 変数は未設定に見えます。
+
+`${hooks.<name>.<key>}` を読むシナリオは、読む先のエントリの `when` に一致しなければなりません。`run` と
+`audit` は、`--tag` と `--exclude` の選択に関係なく、展開後のすべてのシナリオを検査します。一致しない
+シナリオがあれば、終了コード 2 になります。エラーは、エントリ、条件、シナリオのタグを示します。選択されず、
+`targets` も書いていないシナリオは、実行できるターゲットが config に 1 つもないときだけ失敗します。検査は、
+ターゲットの `setup` と `cleanup` のステップにあるトークンにも及びます。
+
+スキップしたエントリは、ログファイルも出力ファイルも書きません。レポートは、エントリを `skipped (when)` と
+条件で表示します。[`commandExecutions`](self-hosting.md#コマンドの記録) には `skipped` の判断が残ります。
+worker のコマンドポリシーは、条件に一致しないエントリも検査します。
 
 #### 失敗と判定
 
