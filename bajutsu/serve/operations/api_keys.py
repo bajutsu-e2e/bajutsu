@@ -129,7 +129,9 @@ def _audit(
     detail: dict[str, Any],
 ) -> None:
     """Record a key's issue or revocation in both the operations log and the audit trail."""
-    oplog.log_event(_logger, action, f"{action} {key_id} for org {slug!r}", org=slug)
+    # The audit row is what names the key. Left out of this line so nothing read off an issue reply,
+    # which carries the secret too, reaches a log message (CodeQL's clear-text-logging query).
+    oplog.log_event(_logger, action, f"{action} for org {slug!r}", org=slug)
     detail = {**detail, "org": slug, "apiKey": key_id}
     if actor is None and state.repository is not None:
         # The shared token names nobody, which `_record_audit` skips. A key is a new credential, so
