@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-run-code-identity-ja.md)
+**English** · [日本語](BE-0506-run-code-identity-ja.md)
 
-# BE-XXXX — Record the app build and source commit a run exercised
+# BE-0506 — Record the app build and source commit a run exercised
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-run-code-identity.md) |
+| Proposal | [BE-0506](BE-0506-run-code-identity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0506") |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
