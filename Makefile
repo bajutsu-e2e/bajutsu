@@ -97,7 +97,7 @@ preflight:
 
 # Shell scripts the gate lints. pre-push/pre-commit/prepare-commit-msg have no .sh suffix, so
 # they're listed explicitly.
-SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/check_worktree_config.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/install-no-verify-guard.sh scripts/collect_android_diagnostics.sh scripts/android_pin_display_cutout.sh scripts/android_pool_e2e.sh scripts/repl_attach_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh
+SHELL_SCRIPTS := .githooks/pre-push .githooks/commit-msg .githooks/pre-commit .githooks/prepare-commit-msg scripts/serve.sh scripts/install.sh scripts/worktree.sh scripts/preflight.sh scripts/worktree_cleanup.sh scripts/check_worktree_config.sh scripts/merge-uv-lock.sh scripts/merge-apm-generated.sh scripts/install-no-verify-guard.sh scripts/collect_android_diagnostics.sh scripts/android_pin_display_cutout.sh scripts/android_pool_e2e.sh scripts/install_android_sdk_packages.sh scripts/repl_attach_e2e.sh .claude/hooks/session-start.sh demos/tour/demo.sh demos/serve-ui/scripts/start-inner-serve.sh demos/serve-ui/scripts/stop-inner-serve.sh
 
 # Modules whose public surface has migrated to the Google-style docstring standard (BE-0065),
 # enforced by `lint-docstrings`. This list GROWS module-by-module as more migrate; keep it the
@@ -111,7 +111,7 @@ DOCSTRING_PATHS := bajutsu/common/ai bajutsu/common/drivers/base bajutsu/common/
 # The JSON report is a gitignored side artifact two later steps read — `lint-coverage-floors` below,
 # and CI's job summary (scripts/coverage_summary.py).
 test:
-	uv run pytest -q --cov=bajutsu --cov-report=term-missing:skip-covered --cov-report=json:coverage.json
+	uv run pytest -q --cov=bajutsu --cov=.github/actions/post-evidence --cov-report=term-missing:skip-covered --cov-report=json:coverage.json
 
 # The whole-tree roadmap date test (`roadmap_dates` marker) is excluded from `test`/the gate: it
 # git-logs every roadmap item twice, so its runtime grows with the tree and once dominated the whole
@@ -169,7 +169,7 @@ format-check:
 # `bajutsu/` too, which `tests` imports. Nesting the second cache under `.mypy_cache/` keeps
 # `.gitignore` as is.
 typecheck:
-	uv run mypy bajutsu demos scripts
+	uv run mypy bajutsu demos scripts .github/actions/post-evidence/post_evidence.py
 	uv run mypy --cache-dir=.mypy_cache/tests --allow-untyped-defs tests
 
 # BE-0388: the same strict mypy, over `tests/`, with the two settings a pytest suite conventionally

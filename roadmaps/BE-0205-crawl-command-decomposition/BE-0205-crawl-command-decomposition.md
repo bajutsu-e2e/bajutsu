@@ -15,27 +15,27 @@
 
 ## Introduction
 
-`bajutsu/cli/commands/crawl.py`'s `crawl` function runs hundreds of lines beyond its option
-declarations (currently ~250). BE-0143 already solved this exact problem for the `run` command — a frozen plan
-record plus small `_resolve_*` helpers, leaving a thin readable sequence — and shipped it. This
-item applies the same, now-established pattern to `crawl`, behavior unchanged.
+The `crawl` function in `bajutsu/cli/commands/crawl.py` runs hundreds of lines beyond its option
+declarations (currently ~250). BE-0143 already solved the same problem for the `run` command and
+shipped the fix: a frozen plan record plus small `_resolve_*` helpers, which leave a thin, readable
+sequence. This item applies that established pattern to `crawl`, with behavior unchanged.
 
 ## Motivation
 
-The body mixes several self-contained phases that today share one function scope:
+The body mixes several self-contained phases, which today share one function scope:
 
 - **Warm-start resolution** (lines ~190–232): `_load_base_map` plus the resume/continue
-  branching that produces `(base_map, seed_path, seed_ops)` — clear inputs and outputs, its own
-  error handling.
+  branching that produces `(base_map, seed_path, seed_ops)`. It has clear inputs and outputs and
+  its own error handling.
 - **Lane planning** (~234–247), **progress/persist callbacks** (~295–310), and **alert-guard
-  wiring** (~327–339) — each a small unit with an obvious name.
+  wiring** (~327–339): each is a small unit with an obvious name.
 
-`run.py` after BE-0143 shows both the target shape and the constraint: the ~135-line typer
-option signature stays inline (serve introspects the exact typer metadata via the BE-0134 flag
-mirror — `serve/helpers.py`'s `crawl_command` builds `python -m bajutsu crawl …` argv the same
-way it does for run), while the body becomes a plan record and a helper sequence. The same
-constraint and the same solution apply here; the decomposition is mostly naming and moving, not
-redesign.
+`run.py` after BE-0143 shows both the target shape and the constraint. The ~135-line typer
+option signature stays inline, because serve introspects the exact typer metadata via the BE-0134
+flag mirror (`crawl_command` in `serve/helpers.py` builds the `python -m bajutsu crawl …` argv the
+same way it does for run). The body, in turn, becomes a plan record and a helper sequence. The same
+constraint and the same solution apply to `crawl`, so the decomposition is mostly naming and
+moving, not redesign.
 
 ## Detailed design
 
@@ -50,11 +50,11 @@ redesign.
 
 ## Alternatives considered
 
-- **Leave it.** The ~250-line body has the same costs BE-0143 documented for run: hard to read
-  end to end, testable only at whole-command granularity, and risky to edit because every line
-  can touch state built up hundreds of lines earlier.
-- **Share plan machinery with `run.py`.** The two plans have almost no common fields; a shared
-  abstraction would be forced. The shared thing is the *pattern*, not the code.
+- **Leave it.** The ~250-line body has the costs BE-0143 documented for run. The body is hard to read
+  end to end and testable merely at whole-command granularity. Editing it is also risky, because
+  every line can touch state built up hundreds of lines earlier.
+- **Share plan machinery with `run.py`.** The two plans have almost no common fields, so a shared
+  abstraction would be forced. What the two commands share is the *pattern*, not the code.
 
 ## Progress
 

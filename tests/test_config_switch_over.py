@@ -9,6 +9,7 @@ environment, and the loader's merge of `defaults` into a target.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -23,9 +24,16 @@ from bajutsu.common.capability.worker_capability import (
     WorkerCapabilityError,
     parse_worker_capability,
 )
-from bajutsu.common.config import DeviceProvider, Effective, load_config, resolve
+from bajutsu.common.config import (
+    DeviceProvider,
+    Effective,
+    HookCommand,
+    HookPhases,
+    load_config,
+    resolve,
+)
 from bajutsu.common.config.schema._merge import merge_defaults, merge_layer
-from bajutsu.common.scenario import Scenario
+from bajutsu.common.scenario import Redact, Scenario
 
 
 def _eff(text: str, name: str = "t") -> Effective:
@@ -232,18 +240,24 @@ def test_the_default_language_clears_the_override(monkeypatch: pytest.MonkeyPatc
     assert eff.ai is not None and eff.ai.language == ai_config.DEFAULT_LANGUAGE
 
 
-def test_a_launch_server_failure_exits_2_after_its_cleanup(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_a_before_run_hook_failure_exits_2_after_its_cleanup(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    def failing(*_a: Any, **_k: Any) -> Any:
-        raise RuntimeError("server never became ready")
-
-    monkeypatch.setattr(_shared, "start_launch_server", failing)
+    # The one caller that must tear down an already-created device pool before exiting runs its
+    # `on_error` first, and the run still exits 2 (BE-0491).
+    eff = replace(
+        _eff(_IOS),
+        hooks=HookPhases(before_run=[HookCommand(cmd="false")]),
+        base_dir=tmp_path,
+    )
     cleaned: list[bool] = []
     with pytest.raises(typer.Exit):
-        _shared._start_launch_server_or_exit(_eff(_IOS), on_error=lambda: cleaned.append(True))
+        _shared._start_hooks_or_exit(
+            eff, run_id="r1", runs_dir=tmp_path / "runs", on_error=lambda: cleaned.append(True)
+        )
     assert cleaned == [True]
-    assert "never became ready" in capsys.readouterr().out
+    # The reason already names the list and the entry, so nothing prefixes it again.
+    assert capsys.readouterr().out.startswith("beforeRun: ")
 
 
 # --- the scenario's inheritSetup --------------------------------------------------------------
@@ -802,3 +816,84 @@ def test_a_family_is_matched_on_a_real_device_but_not_on_a_remote_one() -> None:
     remote = replace(device, device_provider=DeviceProvider(kind="appium", endpoint="http://grid/"))
     (problem,) = remote_condition_problems(remote, remote.conditions)
     assert "runsOn.ios.family" in problem
+
+
+def test_a_hookless_target_starts_no_hook_session_and_writes_no_run_directory(
+    tmp_path: Path,
+) -> None:
+    # A target that declares no hook command does no hook work at all: the helper returns None, so
+    # every call site can tell at a glance (BE-0491). It must also leave no run directory behind —
+    # constructing the artifact writer creates one, and `record` / `crawl` / `repl` run this on
+    # every invocation, hookless target or not.
+    runs = tmp_path / "runs"
+    assert (
+        _shared._start_hooks_or_exit(
+            replace(_eff(_IOS), base_dir=tmp_path),
+            run_id="r1",
+            runs_dir=runs,
+            run_dir=runs / "r1",
+        )
+        is None
+    )
+    assert not runs.exists()
+
+
+def test_the_teardown_can_be_registered_at_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `record` / `crawl` / `repl` run no scenario file, so their teardown rides `atexit` rather than
+    # a verdict they do not have.
+    registered: list[Callable[[], object]] = []
+
+    def record(fn: Callable[[], object]) -> Callable[[], object]:
+        registered.append(fn)
+        return fn
+
+    monkeypatch.setattr("atexit.register", record)
+    marker = tmp_path / "torn.txt"
+    script = tmp_path / "stop.sh"
+    script.write_text(f"#!/bin/sh\ntouch {marker}\n", encoding="utf-8")
+    script.chmod(0o755)
+    eff = replace(
+        _eff(_IOS),
+        hooks=HookPhases(
+            before_run=[HookCommand(cmd="true")], after_run=[HookCommand(cmd=str(script))]
+        ),
+        base_dir=tmp_path,
+    )
+    session = _shared._start_hooks_or_exit(
+        eff, run_id="r1", runs_dir=tmp_path / "runs", teardown_at_exit=True
+    )
+    assert session is not None
+    assert len(registered) == 1
+    registered[0]()
+    assert marker.exists()
+
+
+_IOS_TARGET = "t"
+
+
+def test_the_scenario_less_commands_keep_their_hook_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Without a runs directory the log went to a temporary one the teardown deleted unread, so a
+    # failed hook under `record` / `crawl` / `repl` / `audit` reported only its exit code (BE-0491).
+    script = tmp_path / "say.sh"
+    script.write_text(
+        "#!/bin/sh\necho 'the seed endpoint refused the request'\nexit 1\n", encoding="utf-8"
+    )
+    script.chmod(0o755)
+    eff = replace(
+        _eff(_IOS),
+        hooks=HookPhases(before_run=[HookCommand(name="seed", cmd=str(script))]),
+        base_dir=tmp_path,
+        redact=Redact(),
+    )
+    runs = tmp_path / "runs"
+    with pytest.raises(typer.Exit):
+        _shared._start_hooks_or_exit(
+            eff, run_id="r1", runs_dir=runs, run_dir=runs / "r1", teardown_at_exit=True
+        )
+    # The command's own output survives in the run directory, which is what says *why* it failed.
+    log = runs / "r1" / "hooks" / "beforeRun" / _IOS_TARGET / "seed.log"
+    assert log.read_text().strip() == "the seed endpoint refused the request"

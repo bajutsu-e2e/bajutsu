@@ -199,6 +199,7 @@ def load_expanded_scenarios(
     )
     for s in expanded:
         s.set_source_stem(path.stem)
+        s.set_source_path(path)
         s.preconditions.resolve_seed_photos(lambda ref: str(contained_ref(root, base, ref)))
     return expanded
 

@@ -17,59 +17,59 @@
 ## Introduction
 
 A roadmap item records *what* to build and *why*, but not *how far along* the work is. The state of
-an item — which slices have shipped, what remains, what changed when — lives outside the file: in the
-`Implementing PR` row, in commit history, in a contributor's head. Two items
+an item lives outside the file: the `Implementing PR` row, commit history, and a contributor's head
+carry which slices have shipped, what remains, and what changed when. Two items
 ([BE-0087](../BE-0087-idb-action-settle/BE-0087-idb-action-settle.md),
 [BE-0052](../BE-0052-device-state-timezone-clipboard-shake/BE-0052-device-state-timezone-clipboard-shake.md))
-grew an ad-hoc `### Implementation status` subsection to fill the gap, but the shape was theirs alone
-and nothing kept it current.
+grew an ad-hoc `### Implementation status` subsection to fill the gap. Each shape was the item's own,
+and nothing kept the subsection current.
 
 This item proposes extending the canonical template
 ([BE-0074](../BE-0074-be-template-standardization/BE-0074-be-template-standardization.md))
 with one new section, **`## Progress`**, and two optional metadata fields, **`Related`** and
-**`Superseded by`**. The Progress section is a *living* section — a MECE checklist mirroring the work
-breakdown, plus a short chronological log — kept current as work proceeds. The metadata fields record
-cross-item links: the items this one builds on or relates to, and the item that invalidates it. It
-also pins a norm that already holds informally: **`Detailed design` enumerates the work MECE**. The
-whole change is documentation, a scaffolder, and a format check — no tool behaviour, no LLM on any
-path.
+**`Superseded by`**. The Progress section is a *living* section: a MECE checklist mirroring the work
+breakdown, plus a short chronological log, kept current as work proceeds. The metadata fields record
+cross-item links: the items this one builds on or relates to, and the item that invalidates it. The
+item also pins a norm that already holds informally: **`Detailed design` enumerates the work MECE**.
+The whole change is documentation, a scaffolder, and a format check. It changes no tool behaviour and
+puts no LLM on any path.
 
 ## Motivation
 
 The roadmap is the project's shared planning surface, but it answers "is this done?" only at the two
-extremes its `Status` encodes — `Approved` (nothing) and `Implemented` (everything). An item
-mid-flight has no structured place to say *which* part shipped. The consequences are concrete:
+extremes its `Status` encodes: `Approved` (nothing) and `Implemented` (everything). An item
+mid-flight has no structured place to say *which* part shipped. Three consequences follow:
 
 - **Progress is invisible or bespoke.** A reader cannot tell from an `In progress` item how much of
   it is real without reading the prose end to end and cross-referencing the PRs. The two items that
-  do record it invented their own `### Implementation status` subsection — useful, but unenforced and
-  inconsistent, so the next author has nothing to copy from.
+  do record it invented their own `### Implementation status` subsection. The subsection is useful
+  but unenforced and inconsistent, so the next author has nothing to copy from.
 - **The work is not always laid out as a complete set.** Some Detailed-design sections sketch an
   approach rather than enumerating the units of work, so there is no baseline to check progress
-  against — you cannot tick boxes that were never drawn.
+  against. A reader cannot tick boxes that were never drawn.
 - **Cross-item relationships live only in prose.** When a later item supersedes or relates to an
   earlier one, the link (if made at all) sits in a `References` bullet on one side only, so it is
   neither reciprocal nor machine-greppable.
 
 [BE-0074](../BE-0074-be-template-standardization/BE-0074-be-template-standardization.md)
-already established the project's answer to "the template drifts": pin the shape and gate it. That
-item fixed five sections and a metadata field set, and deliberately scoped progress *out*. This item
-adds the missing piece, on the same machinery, so "how far along" becomes a first-class, gate-checked
-part of every item.
+already established the project's answer to "the template drifts": pin the shape and gate it.
+BE-0074 fixed five sections and a metadata field set, and deliberately scoped progress *out*. This
+item adds the missing piece on the same machinery, so "how far along" becomes a first-class,
+gate-checked part of every item.
 
 ## Detailed design
 
-The implementation is four disjoint pieces — the template surface, the tooling, the prose, and the
+The implementation is four disjoint pieces: the template surface, the tooling, the prose, and the
 retrofit of existing items. **The retrofit is part of this item's implementation, done in the
 implementing PR — not in this proposal.**
 
 ### 1. The template: one new section and two new fields
 
 A sixth H2 section, **`## Progress`** (`## 進捗`), is inserted between `## Alternatives considered`
-and `## References` — after the design rationale, before the reference links. It holds, in order, a
-checklist mirroring the MECE work breakdown in `Detailed design` (one `- [ ]` box per unit of work,
-ticked `- [x]` as it lands), then a short chronological log of what changed and when (oldest first),
-linking the PRs. The seeded skeleton:
+and `## References`, after the design rationale and before the reference links. The section holds two
+parts in order. The first is a checklist mirroring the MECE work breakdown in `Detailed design`, with
+one `- [ ]` box per unit of work, ticked `- [x]` as the unit lands. The second is a short
+chronological log of what changed and when (oldest first), linking the PRs. The seeded skeleton:
 
 ```markdown
 ## Progress
@@ -82,10 +82,13 @@ linking the PRs. The seeded skeleton:
 ```
 
 Two optional metadata fields are added, in canonical order after `Topic` and before `Origin`:
-`Related` (`関連`) — items this one builds on or relates to — and `Superseded by` (`無効化`) — the
-item that invalidates this one (its successor). Both are links; both optional, so existing items need
-no field added. The link is **reciprocal**: the superseding item lists the other under `Related`, the
-superseded one names its successor under `Superseded by`.
+
+- `Related` (`関連`): items this one builds on or relates to.
+- `Superseded by` (`無効化`): the item that invalidates this one (its successor).
+
+Both fields hold links and both are optional, so existing items need no field added. The link is
+**reciprocal**: the superseding item lists the superseded one under `Related`, and the superseded
+item names its successor under `Superseded by`.
 
 ### 2. The norm: MECE work breakdown, a living Progress section
 
@@ -94,12 +97,12 @@ Two rules go into `CLAUDE.md`, `roadmaps/README.md` (+ `-ja`), and `docs/ai-deve
 - **`Detailed design` enumerates the work MECE** — mutually exclusive, collectively exhaustive — so
   the checklist has a complete, non-overlapping set to mirror.
 - **`Progress` is kept current as work proceeds.** Every PR that advances an item ticks its boxes and
-  adds a log entry in the same change, exactly as it fills the `Implementing PR` row. A
+  adds a log entry in the same change, exactly as the PR fills the `Implementing PR` row. A
   not-yet-started `Approved` item carries a single placeholder box; an `Implemented` item carries
   the all-done checklist pointing at its `Implementing PR`.
 
-These are review-enforced, not machine-enforced: a checker can confirm the section *exists* (below)
-but not that a prose breakdown is genuinely exhaustive or that the boxes are honest.
+Review enforces both rules; no machine does. A checker can confirm the section *exists* (below) but
+cannot confirm that a prose breakdown is genuinely exhaustive or that the boxes are honest.
 
 ### 3. The tooling
 
@@ -110,8 +113,8 @@ but not that a prose breakdown is genuinely exhaustive or that the boxes are hon
   Japanese labels) to the known optional metadata fields. The index generator reads metadata by field
   name, so the new optional fields do not affect it.
 
-Because the format check would then require the new section on *every* item, the test change and the
-retrofit (below) must land together in the implementing PR — the gate cannot go green with one
+The format check would then require the new section on *every* item, so the test change and the
+retrofit (below) must land together in the implementing PR. The gate cannot go green with one
 without the other.
 
 ### 4. The retrofit (implementing PR)
@@ -142,7 +145,7 @@ The change is documentation plus a deterministic scaffolder and checker. No LLM 
   scalar cannot carry a per-unit checklist or a log, and it invites a fake precision the checklist
   makes concrete.
 - **A machine-checked "is it current?" rule.** Rejected as infeasible: no deterministic check can
-  tell whether a prose breakdown is exhaustive or a box is honestly ticked. The gate checks the
+  tell whether a prose breakdown is exhaustive or a box is honestly ticked. The gate checks that the
   section *exists*; currency is a review norm, like docstring quality.
 - **Reconstructing a full timeline for shipped items.** Rejected on honesty grounds: inventing a
   retrospective day-by-day history for the implemented items would fabricate a record. They get a

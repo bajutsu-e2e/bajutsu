@@ -36,9 +36,10 @@ from bajutsu.cli._shared import (
     _load_device_worker_or_exit,
     _precondition_checks,
     _refuse_bad_preconditions,
+    _reject_unmet_hook_conditions,
     _resolve_browser,
     _select_actuator_or_exit,
-    _start_launch_server_or_exit,
+    _start_hooks_or_exit,
     _with_worker_device,
     read_manifests,
 )
@@ -49,7 +50,9 @@ from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all
+from bajutsu.common.runner.hook_commands import HookPhaseResult
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
+from bajutsu.common.runner.scenario_hooks import sandbox_targets, scenario_hook_error
 from bajutsu.common.runner.types import LeaseFn
 from bajutsu.common.scenario import Scenario, _scenarios_declaring_targets, load_expanded_scenarios
 from bajutsu.run.device_matrix import (
@@ -159,6 +162,14 @@ def _history_audit(history: str, as_json: bool) -> None:
         typer.echo(_audit.render_longitudinal(report))
 
 
+def _refuse_bad_hooks(scenarios: list[Scenario], eff: Effective) -> None:
+    """Exit 2 on a scenario whose hook names or tokens do not resolve, as `run` does (BE-0501)."""
+    for s in scenarios:
+        if (why := scenario_hook_error(s, {eff.target: eff}, eff.target)) is not None:
+            typer.echo(f"scenario {s.name!r}: {why}")
+            raise typer.Exit(2)
+
+
 def _repeat_audit(
     scenarios: list[Scenario],
     repeat: int,
@@ -198,6 +209,7 @@ def _repeat_audit(
         raise typer.Exit(2)
     loaded = _load_config_with_source(config)  # exits 2 on a missing config
     eff = _effective_for(loaded, target_name)  # exits 2 on an unknown target
+    _reject_unmet_hook_conditions(loaded, scenarios, target_name, selected=scenarios)
     # The same precondition checks `run` applies before any device work, against the same targets
     # (BE-0452). Audit has no `--erase`, so each scenario's own erase, then the target's, decides.
     _refuse_bad_preconditions(
@@ -215,6 +227,7 @@ def _repeat_audit(
     except ValueError as e:
         typer.echo(f"config-level before/after hook: {e}")
         raise typer.Exit(2) from None
+    _refuse_bad_hooks(scenarios, eff)
     # Mirror `run`/`doctor`: validate the backend before touching device CLIs, so an unknown /
     # unavailable actuator exits cleanly instead of crashing later.
     worker = _load_device_worker_or_exit(worker_config)
@@ -238,16 +251,26 @@ def _repeat_audit(
     runs, failed = _audit_runs(
         scenarios, eff, actuator, udids, udid, fake=_backends(backend, eff.backend) == ["fake"]
     )
-    pools = _RunPools(backends, runs_root() / new_run_id("audit-"))
+    audit_run_id = new_run_id("audit-")
+    audit_run_dir = runs_root() / audit_run_id
+    pools = _RunPools(backends, audit_run_dir)
     shutdown = pools.shutdown
 
-    # Bring up the target's `launchServer` (the web baseUrl host) if declared, like `run` does, so a
-    # web target with a server-backed baseUrl can be audited; reused if already serving, torn down
-    # in the finally below.
+    # Run the target's `beforeRun` hooks if declared, like `run` does, so a web target whose own
+    # host a hook brings up can be audited; the matching `afterRun` runs in the finally below.
     # Audit is a CLI-only longitudinal tool that no worker spawns, so its config is the operator's
-    # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down
-    # any device pool already created before exiting if the server fails to come up.
-    stop_server = _start_launch_server_or_exit(eff, on_error=shutdown)
+    # own and the default command gate applies (BE-0492). `on_error=shutdown` tears down any device
+    # pool already created before exiting if a hook fails.
+    hooks = _start_hooks_or_exit(
+        eff,
+        run_id=audit_run_id,
+        runs_dir=runs_root(),
+        run_dir=audit_run_dir,
+        on_error=shutdown,
+        scenario_targets=sandbox_targets(scenarios, eff.target),
+        scenarios=[s for s, *_ in runs],
+    )
+    teardown: HookPhaseResult | None = None
     try:
         # One run at a time, K times each (workers=1 keeps the K runs under identical
         # conditions — the point of the diff). run_dir=None: the audit compares outcomes, not
@@ -268,6 +291,10 @@ def _repeat_audit(
                         # an `appium` grid's endpoint audits against the live capability set,
                         # keeping preflight in lockstep with routing.
                         lease_udid_spec=udid,
+                        # Audit replays scenarios through `run_all`, so each repeat runs their own
+                        # `beforeScenario` / `afterScenario` and reads `${hooks.*}` (BE-0491) —
+                        # otherwise a scenario that depends on seeded data could not be audited.
+                        hooks=hooks,
                     )
                 ),
                 label,
@@ -280,17 +307,25 @@ def _repeat_audit(
         raise typer.Exit(2) from None
     finally:
         # Nested, like `run`'s own outer/inner split (BE-0342): `shutdown()` can now raise a lease's
-        # stashed end-of-lease wiring defect, and `stop_server()` must still run — or a defect on one
-        # audited scenario leaks the target's `launchServer` process for every audit after it.
+        # stashed end-of-lease wiring defect, and the `afterRun` teardown must still run — or a
+        # defect on one audited scenario leaks whatever a `beforeRun` hook started, for every audit
+        # after it.
         try:
             shutdown()
         finally:
-            stop_server()
+            if hooks is not None:
+                teardown = hooks.after_run("failure" if failed else "success")
 
     if as_json:
         typer.echo(json.dumps([dataclasses.asdict(r) for r in reports], indent=2))
     else:
         typer.echo("\n\n".join(_audit.render_repeat(r) for r in reports))
+    # A failed teardown exits 2, as it does for `run` (BE-0491): the audit's own verdict stands, and
+    # the precondition that did not hold is reported beside it rather than left to exit 0. Raised
+    # here rather than in the `finally` above, where it would mask an exception already in flight.
+    if teardown is not None and not teardown.ok:
+        typer.echo(f"afterRun failed: {teardown.reason}")
+        raise typer.Exit(2)
     if failed:
         raise typer.Exit(1)
 

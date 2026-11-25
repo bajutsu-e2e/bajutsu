@@ -419,3 +419,56 @@ def scenario_source_meta(scenarios, plan_sources=None) -> tuple[list[str | None]
 レポートは **run dir に保存されたデータの純粋なレンダリング**です。そのため、完了した run を再実行せずに現行テンプレでオフライン再描画できます。`manifest.json` が**バージョン付き**（`schemaVersion`）で無損失の render モデルで、`report.load` がその逆変換です。`results_from_manifest()` が `RunResult` を復元し、`load_run(run_dir)` が render モデル全体（outcome は `manifest.json`、シナリオの plan は `scenario.yaml`）を復元します。
 
 `bajutsu report <run>`（[cli](cli.md#report)）は、その render モデルを使って `report.html`、`junit.xml`、`ctrf.json` を書き直します。再描画は記録済みの outcome を再提示するだけで、assertion を再実行したり verdict を変えたりしません。古い run も、新しいバージョンにしかないセクションを捏造せず「not captured」と表示して描画します。
+
+## プルリクエストへの証跡の投稿（BE-0504）
+
+コンポジット action の `post-evidence` は、完了した run をプルリクエストまたは issue に投稿します。読むのは `manifest.json` だけで、manifest がない run では `<sid>/result.json` を読みます。Bajutsu のインストールも Bajutsu のコマンド呼び出しも要らないため、run ディレクトリを生成するリポジトリならどこでも使えます。
+
+コメントには、失敗したシナリオごとに、最初に失敗したステップと失敗理由を載せます。action が GitHub Actions のアーティファクトとしてアップロードした証跡へのリンクも付けます。再実行すると、コメントの先頭行にある隠しマーカーで同じコメントを見つけて更新します。そのため、ジョブごとにコメントは 1 つだけです。
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write   # 対象が issue の場合は issues: write
+steps:
+  - run: uv run bajutsu run --scenario scenarios/smoke.yaml --target web
+  - name: Post run evidence
+    if: always()
+    uses: bajutsu-e2e/bajutsu/.github/actions/post-evidence@<ref>
+```
+
+action は次の 3 種類のアーティファクトをアップロードします。
+
+- **run 全体の zip 1 つ。** 展開して `report.html` を開くと、オフラインでも動きます。
+- **失敗シナリオごとのスクリーンショット。** 失敗したシナリオのうち最初の 3 件が対象です。失敗したステップに `after.png` があればそれを選び、zip にせずアップロードします。
+- **失敗シナリオごとの動画。** 同じ 3 件が対象で、zip にせずアップロードします。
+
+zip にしないアップロードでは、ファイル名がそのままアーティファクト名になります。そこで action は、各ファイルを `<artifact-name>-screenshot-N` または `<artifact-name>-video-N` の名前にコピーします。ブラウザがこのファイルを表示するのか、ダウンロードするのかは、まだ確認できていません。どちらの場合でも、リンクからファイルは受け取れます。アーティファクトの URL はサインインを必要とするため、閲覧者にはリポジトリの読み取り権限が要ります。
+
+### 入力
+
+| 入力 | デフォルト | 意味 |
+|---|---|---|
+| `run-dir` | `runs` | run ディレクトリ 1 つ、または複数の run を含むルート。 |
+| `artifact-name` | ワークフロー名とジョブ名 | zip の名前であり、ほかのアーティファクトの接頭辞。マトリックスジョブでは matrix の値を加える。 |
+| `retention-days` | `14` | GitHub が各アーティファクトを保持する日数（1 から 90）。 |
+| `compression-level` | `6` | zip の zlib 圧縮レベル。ほとんどが動画の run では `0` にする。 |
+| `log-tail-kb` | `1024` | これより大きい `deviceLog` は、zip では末尾の `log-tail-kb` KB だけを残す。`0` ならログを丸ごと残す。 |
+| `size-warn-mb` | `500` | ステージしたサイズがこれを超えると、zip のアップロードを省く。`0` でこの保護を無効にする。 |
+| `upload` | `true` | `false` にすると何もアップロードせず、`artifact-url` をリンクする。 |
+| `artifact-url` | 空 | `upload` が `false` のときにリンクするアーティファクト。`bajutsu-e2e` action が出力する。 |
+| `issue-number` | プルリクエスト | 番号がなければ、action はジョブサマリーだけを書く。 |
+| `github-token` | `github.token` | コメントを書くトークン。 |
+| `comment-key` | ワークフロー名とジョブ名 | 固定コメントのキー。マトリックスジョブでは matrix の値を加える。 |
+| `comment-author` | `github-actions[bot]` | 固定コメントの所有者のログイン名。App のトークンでは App のログイン名にする。 |
+| `max-failures` | `10` | 全文を載せる失敗シナリオの数。 |
+| `evidence-base-url` | 空 | run ディレクトリを配信するベース URL。指定するとスクリーンショットがインラインで表示される。 |
+
+### 知っておく挙動
+
+- **action はジョブの結果を変えません。** アップロードの失敗、読み取り専用のトークン（フォークからのプルリクエスト）、API エラーは、警告とジョブサマリーになります。合否を決めるのは、テストステップ自身の終了コードです。ステージとコメントのステップは `continue-on-error` でも実行するので、スクリプトの想定外のクラッシュも警告に変わります。
+- **途中で打ち切られた run には manifest が残りません。** その場合、コメントは run が完了しなかったことを伝えます。
+- **切り詰めはマスキングではありません。** `log-tail-kb` を超えるデバイスログは末尾だけに切り詰められ、先頭行に元のサイズが記録されます。完全なログはどこにもアップロードされません。ステージしたコピーには、ログがもともと含んでいる文字列がそのまま残ります。コメント自体が載せるのは `manifest.json` が記録した文字列だけで、run がすでにマスキングしています。スクリーンショットや動画をジョブの外に出せない場合は、`upload: false` にします。
+- **`pull_request_target` は非対応です。** このトリガーは、フォークのコードを実行しなければならないジョブに書き込みトークンを渡してしまいます。
+- **証跡のベース URL** を指定すると、スクリーンショットがコメント内に表示され、`<base>/report.html` へのリンクが付きます。action がそこへアップロードすることはありません。署名付き URL は、期限が切れると画像が壊れます。
+- **manifest のバージョン。** レンダラーが読むのは最初の `schemaVersion` から存在するフィールドだけなので、記録されたどのバージョンでも描画できます。バージョンが欠けている、または認識できない manifest では、シナリオの詳細の代わりに通知が表示されます。

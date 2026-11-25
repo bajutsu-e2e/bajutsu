@@ -134,6 +134,7 @@ Scenario ::= {
   steps:           list(<Step>),            # 必須
   expect?:         list(<Assertion>),       # 既定 []  — 最終チェック
   cleanup?:        list(<CleanupRule>),     # 既定 []  — 判定が出たあとに走るティアダウンのルール（BE-0392）。宣言した各ターゲットの `hooks.cleanup` はこの後に続く
+  hooks?:          <ScenarioHooks>,         # このシナリオの前後に、アプリのセッションの外側で実行する外部コマンド（BE-0501）。{ beforeScenario?: list, afterScenario?: list } で、エントリはターゲットの hook と同じ
   capturePolicy?:  list(<CaptureRule>),     # 既定 []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # 既定 []

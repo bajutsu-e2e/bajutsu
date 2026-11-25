@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import Field, ValidationInfo, model_validator
 
+from bajutsu.common.scenario.models.hook_command import SCENARIO_LEVEL
+
 from ._merge import merge_defaults
 from ._model import _Model
 from ._templates import check_templates, expand_extends
@@ -55,6 +57,11 @@ class Config(_Model):
         config_path = context.get("config_path")
         root = context.get("suite_root")
         merged: dict[str, Any] = {}
+        if SCENARIO_LEVEL in targets:
+            raise ValueError(
+                f"targets.{SCENARIO_LEVEL}: the name is reserved; a scenario's own hook commands "
+                "write their logs where a target's name otherwise goes (BE-0501)"
+            )
         for name, raw in targets.items():
             # A target with neither defaults nor templates stays as written, so its `null` values
             # reach validation as they always have.

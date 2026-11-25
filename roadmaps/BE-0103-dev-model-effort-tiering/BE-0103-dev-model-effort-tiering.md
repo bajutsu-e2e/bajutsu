@@ -18,22 +18,22 @@
 
 Match the **model and reasoning effort** a Claude Code session spends to the **cognitive load of
 the task at hand**, so a session working *on this repository* stops paying top-tier tokens for
-mechanical chores. This is a **contributor-workflow** item, not a product feature: it is about how
-we develop Bajutsu with Claude Code, not about how Bajutsu itself calls Claude.
+mechanical chores. This item belongs to the **contributor workflow**. It concerns how we develop Bajutsu with
+Claude Code, not how Bajutsu itself calls Claude, and it adds no product feature.
 
-The deliverable is two-sided: (1) a documented **task → model/effort** convention in
+The deliverable has two parts: (1) a documented **task → model/effort** convention in
 [`docs/ai-development.md`](../../docs/ai-development.md) (bilingual), covering both work phases
 (exploration / chores → light; implementation / design → heavy) and how to pass an appropriate
 `model` when delegating to a subagent; and (2) **default `model:` frontmatter wired into the
 repo's own skills** (`.claude/skills/*`) so the right choice is the automatic one — no session has
-to remember to switch. It stays advisory (the human can always upshift for a hard instance); the
+to remember to switch. The convention stays advisory, because the human can always upshift for a hard instance. The
 deterministic `run` / CI gate is untouched and still calls no model.
 
 ## Motivation
 
 This repository is unusually agent-driven — `CLAUDE.md`, the skills (`ideation`, `implement-be`,
 `japanese-tech-writing`), and subagent fan-outs are all part of the daily workflow, run by many
-parallel sessions. Token spend is therefore a real, recurring cost, and today it is uniform:
+parallel sessions. Token spend is a real, recurring cost. Today the spend is uniform:
 
 1. **Nothing tells a session to downshift.** The harness already exposes every knob we need —
    per-skill and per-agent `model:` frontmatter, the Agent tool's `model` override, and the
@@ -45,20 +45,20 @@ parallel sessions. Token spend is therefore a real, recurring cost, and today it
    design decision genuinely needs a capable model at high effort. Regenerating the roadmap index,
    fixing doc links, a mechanical rename, or drafting a first-pass translation does not — a smaller
    model at low effort produces the same artifact for a fraction of the tokens. Running the light
-   tasks at full capability is pure waste.
+   tasks at full capability wastes tokens.
 
 3. **The failure mode is asymmetric and silent.** Over-provisioning wastes tokens invisibly (the
-   output still looks fine); under-provisioning shows up loudly as a bad result. So the natural
-   drift is toward *always-max*, which is exactly the waste to remove — but blindly downshifting
+   output still looks fine); under-provisioning shows up as a bad result. So the natural
+   drift is toward *always-max*, which is the waste to remove — but blindly downshifting
    everywhere risks quality on the hard tasks. The fix is a **deliberate, documented mapping** plus
    **sensible baked-in defaults**, not an ad-hoc per-session guess.
 
-Closing this turns "use a cheaper model for the easy stuff" from folklore a diligent session might
+Closing this turns "use a cheaper model for simple work" from folklore a diligent session might
 remember into a stated convention with defaults that apply themselves.
 
 ## Detailed design
 
-Contributor-workflow altitude; touches only `.claude/` skill metadata and docs. The work is MECE
+The design sits at the contributor-workflow altitude and touches only `.claude/` skill metadata and docs. The work is MECE
 along four pieces.
 
 ### 1. A task → capability classification (the matrix)
@@ -85,7 +85,7 @@ Add a `model:` field to each in-repo skill's `SKILL.md` frontmatter matching its
 — `implement-be` → heavy, `ideation` → medium, `japanese-tech-writing` → medium. The harness reads
 this directly when the skill runs, so the default takes effect with nothing to remember, and it is
 still overridable (a session can upshift for a genuinely hard instance). This is the "make the
-right choice automatic" half the user explicitly wanted over docs-only guidance.
+right choice automatic" half, which the user explicitly wanted over docs-only guidance.
 
 ### 3. Phase & subagent guidance in `docs/ai-development.md` (bilingual)
 
@@ -106,7 +106,7 @@ Point `CLAUDE.md` at the new section so it is discoverable from the working agre
 
 Which model a session used is **not recoverable from the diff**, so the gate can't verify it, and
 hard-pinning would remove the human's ability to upshift for a hard instance of an otherwise-light
-task. This ships as documented defaults + frontmatter, deliberately *not* a CI check. The one
+task. The item ships as documented defaults plus frontmatter, deliberately *not* a CI check. The one
 machine-checkable surface worth a light test is that each skill's `model:` value is a syntactically
 valid, known model id (so a typo fails locally rather than silently falling back) — the convention
 itself stays guidance, consistent with how the rest of the contributor workflow (BE-0069) is
@@ -114,7 +114,7 @@ itself stays guidance, consistent with how the rest of the contributor workflow 
 
 ### Prime-directive compliance
 
-Purely contributor-workflow. It edits only `.claude/` skill metadata and docs — no product code,
+The item is purely contributor workflow. It edits only `.claude/` skill metadata and docs — no product code,
 no `bajutsu/` change. The deterministic `run` / CI gate is untouched: it calls no model regardless
 of what a *development* session runs at, so this never brings an LLM near the judge role
 (directive 1), and it has nothing to do with determinism (directive 2) or app-agnosticism
@@ -123,14 +123,14 @@ of what a *development* session runs at, so this never brings an LLM near the ju
 ## Alternatives considered
 
 - **Do nothing — let each session pick manually.** Rejected: the silent-waste asymmetry means the
-  default drifts to always-max, and an unstated convention is not followed. This is the status quo
+  default drifts to always-max, and an unstated convention is not followed. The status quo is what
   the item exists to fix.
 - **Document only, no frontmatter defaults.** Considered and set aside by the author: a docs-only
   convention relies on every session (human or agent) remembering to switch. Baking the default
-  into the skill frontmatter makes the economical choice the automatic one, and the docs still
+  into the skill frontmatter makes the cheaper choice the automatic one, and the docs still
   carry the phase/subagent guidance the frontmatter can't express.
 - **Enforce model choice in the gate.** Rejected: the model used isn't recoverable from the diff,
-  and hard-pinning fights the human's judgment to upshift when a "light" task turns out hard.
+  and hard-pinning overrides the human's judgment to upshift when a "light" task turns out hard.
   Guidance + defaults captures most of the saving without the rigidity.
 - **Build a custom model router / automatic selector.** Rejected as over-engineering: the harness
   already exposes per-skill and per-subagent model selection and interactive effort control. The

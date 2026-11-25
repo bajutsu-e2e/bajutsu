@@ -15,12 +15,12 @@
 
 ## はじめに
 
-`bajutsu/serve/jobs.py`（797 行）には、性質の異なる 2 つの責務が同居しています。serve パッケージの
-大半が読む**状態コンテナ**（`ServeState`、`Job`、`StoreBundle`、`CaptureSession`）と、3 モジュール
-しか触らない**ジョブ実行エンジン**（`run_job`、`cancel_job`、プロセス起動、デバイスの起動、アプリの
-ビルド）です。本項目では状態側を `bajutsu/serve/state.py` に分離し、同じ凝集度の改善として、
-`serve/helpers.py` に紛れている CLI コマンドビルダー群を `bajutsu/serve/commands.py` に切り出します。
-どちらも挙動を変えない移動です。
+`bajutsu/serve/jobs.py`（797 行）には、性質の異なる 2 つの責務が同居しています。1 つは、serve
+パッケージの大半が読む**状態コンテナ**（`ServeState`、`Job`、`StoreBundle`、`CaptureSession`）です。
+もう 1 つは、3 モジュールしか触らない**ジョブ実行エンジン**（`run_job`、`cancel_job`、プロセス起動、
+デバイスの起動、アプリのビルド）です。本項目では状態側を `bajutsu/serve/state.py` に分離します。
+同じ凝集度の改善として、`serve/helpers.py` に紛れている CLI コマンドビルダー群も
+`bajutsu/serve/commands.py` に切り出します。どちらの移動も挙動を変えません。
 
 ## 動機
 
@@ -32,24 +32,24 @@ cancellation, device boot, and app build」）。2 つの半身の関係は一�
 だけを使い、`run_job` や `cancel_job` に触るのは `serve/executor.py`、`serve/server/worker_job.py`、
 `serve/__init__.py` の 3 つだけです。
 
-状態と実行を 1 モジュールに置いていることは、コメントで明示された 2 箇所の lazy import による回避策
-も強いています。`serve/executor.py:30`（「local import breaks the jobs↔executor cycle」）と、
+状態と実行を 1 モジュールに置いているため、コメントで明示された 2 箇所の lazy import による回避策も
+必要になっています。`serve/executor.py:30`（「local import breaks the jobs↔executor cycle」）と、
 `ServeState._env_var_for_secret` 内の `operations.config` の遅延 import です。この循環は、実行
-エンジンを import すると状態まで一緒に付いてくる現状の構造が生んでいます。状態が独立した
+エンジンを import すると状態まで一緒に付いてくる現状の構造から生じています。状態が独立した
 モジュールになれば、`executor` は状態をトップレベルで import でき、遅延させるのは `run_job` だけで
 済みます。
 
 `serve/helpers.py`（675 行）にも、規模は小さいものの同じ形の問題があります。コマンドビルダー群
 （`run_command`、`record_command`、`crawl_command`、`triage_command` と `_int` の約 240 行）は
-ファイル内の他の何も参照せず、依存は `serve/_cli_flags.flag_args` だけで、利用者も
+ファイル内の他の何も参照しません。依存は `serve/_cli_flags.flag_args` だけで、利用者も
 `operations/dispatch.py`、`operations/triage.py`、`serve/__init__.py` の 3 つに限られます。
 docstring が「クエリと検証のヘルパ」と説明するファイルの中に、自己完結した別の単位が
-紛れている状態です。
+紛れているのです。
 
 ## 詳細設計
 
 どちらの移動も `bajutsu.serve` の内側で完結するため、import 境界の契約（BE-0112）には影響しません。
-移行には BE-0127 が確立した再エクスポートのファサードパターンを使います。旧モジュールが
+移行には、BE-0127 が確立した再エクスポートのファサードパターンを使います。旧モジュールが
 再エクスポートを保持したまま利用側を移行し、最後にシムを取り除きます。
 
 1. `bajutsu/serve/state.py` を新設し、`Job`、`StoreBundle`、`CaptureSession`、`ServeState`、

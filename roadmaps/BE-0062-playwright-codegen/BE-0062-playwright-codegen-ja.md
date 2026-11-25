@@ -15,29 +15,33 @@
 
 ## はじめに
 
-`bajutsu codegen` は、成功したシナリオを、出力先フレームワークそのものの流儀に沿ったネイティブテストへ変換します。これにより、チームは bajutsu のランタイムも実行時の AI もなしに、同じフローを既存の CI で動かせます。現状 `--emit` が受け付けるのは `xcuitest` だけです。web（Playwright）バックエンドが入った今（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、シナリオはブラウザに対して `run` できますが、そのフローをネイティブのブラウザテストとして受け渡す手段がありません。本項目は `--emit playwright` を追加します。シナリオを Playwright テストとして描き出す、純粋に構造的な 2 つめの出力ターゲットです。
+`bajutsu codegen` は、成功したシナリオを、出力先フレームワークの流儀で書かれたネイティブテストへ変換します。チームは同じフローを、bajutsu のランタイムも実行時の AI も使わずに、既存の継続的インテグレーション（CI）で動かせます。現状、`--emit` が受け付けるのは `xcuitest` だけです。
 
-> **用語の区別。** Playwright には `codegen`（`playwright codegen`）という同名のツールがあります。これは新しいブラウザセッションを観察し、見えた操作からコードを書き起こす *レコーダ* です。bajutsu の `codegen` はこれとは別物で、*すでに成功しているシナリオ* を構造的にマッピングするものです。シナリオは git でレビューされる唯一の真実であり続けます。本項目が扱うのは後者（シナリオ → Playwright テスト）であって、Playwright のレコーダを包むことではありません。
+web（Playwright）バックエンドが入ったので（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、シナリオはブラウザに対して `run` できます。しかし、そのフローをネイティブのブラウザテストとして受け渡す手段はありません。本項目は `--emit playwright` を追加します。シナリオを Playwright テストとして出力する、2 つめの出力ターゲットです。このターゲットは純粋に構造的です。
+
+> **用語の区別。** Playwright には `codegen`（`playwright codegen`）という同名のツールがあります。これは新しいブラウザセッションを観察し、見えた操作からコードを書き起こす *レコーダ* です。bajutsu の `codegen` は別物で、*すでに成功しているシナリオ* を構造的に写像します。シナリオは、git でレビューされる唯一の真実であり続けます。本項目が扱うのはシナリオから Playwright テストへの写像であり、Playwright のレコーダを包むことではありません。
 
 ## 動機
 
-`codegen` は、成功したシナリオが bajutsu のランタイムを離れ、チームのネイティブ CI で生きられるようにするために存在します。その約束は、いまのところ iOS 限定です。web バックエンドは Mac なしの Linux 上でシナリオを決定的に `run` できますが、受け渡す成果物は XCUITest 止まりです。web バックエンドを採用したチームには `codegen` の経路がまったくなく、ここが iOS と web の物語が目に見えて分かれる唯一の箇所になっています。
+`codegen` は、成功したシナリオを bajutsu のランタイムから切り離し、チームのネイティブ CI で動かせるようにします。この約束が成り立つのは、現状では iOS だけです。web バックエンドは Mac なしの Linux 上でシナリオを決定的に `run` できますが、受け渡す成果物は XCUITest で止まります。web バックエンドを採用したチームには `codegen` の経路がまったくありません。iOS と web の状況が目に見えて分かれるのは、この一点です。
 
-このマッピングが収まりよく成立する理由は、XCUITest のときと同じです。
+この写像が収まりよく成り立つ理由は、XCUITest の場合と同じです。
 
-- **純粋に構造的** です。シナリオの構成要素から Playwright の呼び出しへの固定的な対応で、生成時にモデルを参照しません。`run`／CI ゲート（[DESIGN §2](../../DESIGN.md)）には触れず、どこにも LLM を足しません。
-- web の識別子規約（`data-testid`）と ARIA の `role`／名前は、すでに `Selector` の各フィールドに対応づいています（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。そのため各構成要素には自然な Playwright の対応物があり、これこそ XCUITest の生成器を小さな全域関数に保っている性質です。
+- 写像は**純粋に構造的**です。シナリオの構成要素から Playwright の呼び出しへの固定的な対応であり、生成時にモデルを参照しません。`run`／CI ゲート（[DESIGN §2](../../DESIGN.md)）には触れず、どこにも LLM を足しません。
+- web の識別子規約（`data-testid`）と ARIA の `role` および名前は、すでに `Selector` の各フィールドに対応づいています（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。そのため、各構成要素には自然な Playwright の対応物があります。この性質が、XCUITest の生成器を小さな全域関数に保っています。
 
 ## 詳細設計
 
 ### 生成テストが Playwright の *セマンティックな* locator を使う理由
 
-web の `run` ドライバ（[`drivers/playwright.py`](../../bajutsu/drivers/playwright.py)）は、Playwright のセマンティックな locator を意図的に **使いません**。DOM を走査して `Element` へ正規化し、共有の `base.resolve_unique` を通して解決した frame の中心を座標クリックします。こうしてマッチングを iOS とバイト単位で同一に保ちます。生成されるテストはその **逆** で、`page.getByTestId(...)` / `getByRole(...)` と web-first アサーション（要素が条件を満たすまで自動で再試行するアサーション）を使います。これは矛盾ではなく、正しい選択です。
+web の `run` ドライバ（[`drivers/playwright.py`](../../bajutsu/drivers/playwright.py)）は、Playwright のセマンティックな locator を意図的に**使いません**。DOM を走査して `Element` に正規化し、共有の `base.resolve_unique` で解決した frame の中心を座標クリックします。そのため、マッチングは iOS とバイト単位で同一です。
 
-- 出力先フレームワークそのものがランタイムです。生成テストは bajutsu が存在しないチーム自身の Playwright CI で動くため、Playwright の流儀で語らねばならず、間に挟む共有リゾルバもありません。
-- これは XCUITest の生成器がすでにやっていることそのものです。実行時に idb は座標タップしますが、出力される XCUITest は `el(id).tap()` と `waitForExistence`、つまり出力先のセマンティックな API とネイティブの待機を使います。受け渡す成果物の決定性は、出力先フレームワークが担います（XCUITest は hittable になるまで待ち、Playwright は自動待機して web-first アサーションがタイムアウトまで再試行します）。bajutsu の決定性コアが律するのは `run` であって、それが出力するコードではありません。
+生成されるテストは、その**逆**です。`page.getByTestId(...)`、`getByRole(...)`、web-first アサーション（要素が条件を満たすまで自動で再試行するアサーション）を使います。この 2 つの選択は矛盾しません。理由は 2 つあります。
 
-したがってセマンティックな locator と web-first アサーションが正しいターゲットであり、生成テストを読みやすく、かつレイアウト変更に強く保ちます。これは `data-testid` の識別子規約が果たすのと同じ狙いです。
+- 出力先フレームワークそのものがランタイムです。生成テストは、bajutsu のないチーム自身の Playwright CI で動きます。Playwright の流儀で書く必要があり、間に挟む共有リゾルバもありません。
+- XCUITest の生成器がすでに同じ方式です。実行時に idb は座標タップしますが、出力される XCUITest は `el(id).tap()` と `waitForExistence` を使います。これらは出力先のセマンティックな API とネイティブの待機です。受け渡す成果物の決定性は、出力先フレームワークが担います。XCUITest は hittable になるまで待ち、Playwright は自動待機したうえで web-first アサーションがタイムアウトまで再試行します。bajutsu の決定性コアが律するのは `run` であり、`codegen` が出力するコードではありません。
+
+したがって、セマンティックな locator と web-first アサーションが正しいターゲットです。生成テストは読みやすく、レイアウト変更にも強くなります。`data-testid` の識別子規約も、同じ狙いを果たしています。
 
 ### CLI と出力の形
 
@@ -45,7 +49,9 @@ web の `run` ドライバ（[`drivers/playwright.py`](../../bajutsu/drivers/pla
 bajutsu codegen <scenario.yaml> --app <name> --emit playwright [-o <out.spec.ts>]
 ```
 
-v1 の言語は **TypeScript（`@playwright/test`）** です。Playwright で最も広く使われている形で、web-first アサーションを第一級で備えます。シナリオ群は 1 つの `test.describe` ブロックになり、**1 シナリオ = 1 つの `test(...)`** です（1 つの `XCTestCase`／1 つのテストメソッドに対応します）。各テストはアプリのベース URL（`run` と同じく config から読みます。web の `launch` 相当は `page.goto(baseURL)` です）へ遷移し、続けて各ステップと `expect` ブロックを出力します。
+v1 の言語は **TypeScript（`@playwright/test`）** です。Playwright で最も広く使われている形で、web-first アサーションを第一級で備えます。シナリオ群は 1 つの `test.describe` ブロックになります。**1 シナリオ = 1 つの `test(...)`** で、1 つの `XCTestCase` や 1 つのテストメソッドに相当します。
+
+各テストは、アプリのベース URL へ遷移します。ベース URL は `run` と同じく config から読みます。web で `launch` に相当するのは `page.goto(baseURL)` です。続けて、各ステップと `expect` ブロックを出力します。
 
 ```ts
 // Generated by bajutsu — do not edit by hand. Re-generate with `bajutsu codegen`.
@@ -66,7 +72,7 @@ test.describe('Components', () => {
 
 ### selector のマッピング
 
-ドライバがすでに使っている `Selector` → web 属性の対応を踏襲します（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
+ドライバがすでに使っている `Selector` から web 属性への対応を踏襲します（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。
 
 | `Selector` のフィールド | Playwright の locator |
 |---|---|
@@ -92,7 +98,7 @@ test.describe('Components', () => {
 | `relaunch` | `await page.goto(BASE_URL)` |
 | `pinch` / `rotate` | `// TODO`（multiTouch が必要。web v1 は駆動しない。ドライバと同じ扱い） |
 
-### アサーションのマッピング（web-first `expect`）
+### web-first な `expect` によるアサーションのマッピング
 
 | アサーション | Playwright |
 |---|---|
@@ -105,25 +111,29 @@ test.describe('Components', () => {
 
 ### 生成テストにおける決定性
 
-*待機* はすべて Playwright のネイティブな自動待機を使います。web-first アサーションはテストのタイムアウトまで再試行するので、同期のための固定 sleep はありません。出力に現れる固定時間は **ジェスチャの長さ** だけです（`longPress` の `delay` と座標 swipe）。これはジェスチャに内在するもので、XCUITest の `press(forDuration:)` や idb バックエンドの短いドラッグ duration と本質的に同じです。iOS の経路と同様、ここは正直に明示します。
+*待機* はすべて、Playwright のネイティブな自動待機を使います。web-first アサーションはテストのタイムアウトまで再試行するので、同期のための固定 sleep はありません。出力に現れる固定時間は**ジェスチャの長さ**だけで、`longPress` の `delay` と座標 swipe が該当します。どちらもジェスチャに内在する時間です。XCUITest の `press(forDuration:)` や、idb バックエンドの短いドラッグ duration と本質的に同じです。iOS の経路と同様に、この固定時間も明示します。
 
 ### 変更の形
 
-`to_xcuitest` に並ぶ `to_playwright(scenarios, …)` を追加し（独立したモジュール、例えば `codegen_playwright.py`、あるいは `codegen.py` 内の新しい関数）、[`cli/commands/codegen.py`](../../bajutsu/cli/commands/codegen.py) で `--emit` により振り分けます。XCUITest の経路はバイト単位で不変のままです。2 つの生成器は同じ構造的な走査（シナリオ → ステップ → アサーション、未対応は `// TODO`）を共有します。この走査を小さな emitter の継ぎ目の背後にくくり出すか、2 つの並列な全域関数として保つかは実装の細部で、ターゲットが 2 つの段階では過剰な抽象化を避けるため、まずは並列関数の形を推奨します。ドキュメントは [codegen.md](../../docs/ja/codegen.md)（と英語版）に `--emit playwright` ターゲットとそのマッピング表を加えます。
+`to_xcuitest` に並べて `to_playwright(scenarios, …)` を追加します。置き場所は、独立したモジュール（例：`codegen_playwright.py`）か、`codegen.py` 内の新しい関数です。`--emit` による振り分けは [`cli/commands/codegen.py`](../../bajutsu/cli/commands/codegen.py) で行います。XCUITest の経路は、バイト単位で変わりません。
+
+2 つの生成器は、同じ構造的な走査を共有します。走査はシナリオ、ステップ、アサーションの順に進み、未対応の構成要素は `// TODO` にします。この走査を小さな emitter の継ぎ目の背後にくくり出す案と、2 つの並列な全域関数のまま保つ案があります。どちらにするかは実装の細部です。ターゲットが 2 つの段階で過剰に抽象化することを避けるため、まずは並列関数の形を推奨します。
+
+ドキュメントも変わります。[codegen.md](../../docs/ja/codegen.md)（と英語版）に、`--emit playwright` ターゲットとそのマッピング表を加えます。
 
 ### prime directive との整合
 
-- **AI は判定しない。** 生成器は固定的な構造マッピングで、モデルを参照せず、`run`／CI ゲートに触れません。生成テストは bajutsu のランタイムも AI も持ちません。
-- **決定性を最優先。** 同期は Playwright の自動待機で行い、固定時間はジェスチャの長さだけ、それも明示します。
-- **アプリ非依存。** ベース URL と `launchEnv` は config 由来で、出力コードは既存の `el` / `byLabel` ヘルパと同様、アプリをまたいで同一です。
+- **AI は判定しない。** 生成器は固定的な構造マッピングです。モデルを参照せず、`run`／CI ゲートに触れません。生成テストは、bajutsu のランタイムと AI を持ちません。
+- **決定性を最優先。** 同期は Playwright の自動待機で行います。固定時間はジェスチャの長さだけで、その旨を明示します。
+- **アプリ非依存。** ベース URL と `launchEnv` は config 由来です。出力コードは、既存の `el` / `byLabel` ヘルパと同様に、アプリをまたいで同一です。
 
-`launchEnv` → web の正確な対応（query param か、seed した `localStorage` か、cookie か。[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) が挙げる経路です）は **TBD** とします。v1 は既定で `page.addInitScript` により `localStorage` を seed し、別の経路を期待するアプリには `// TODO` を出力します。アプリごとの差を生成器ではなく config 側に置く方針です。
+`launchEnv` から web への正確な対応は **TBD** とします。候補の経路は、query param、seed した `localStorage`、cookie で、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) が挙げています。v1 は既定で、`page.addInitScript` により `localStorage` を seed します。別の経路を期待するアプリには `// TODO` を出力します。こうして、アプリごとの差を生成器ではなく config 側に置きます。
 
 ## 検討した代替案
 
-- **run ドライバを正確に写し取り、座標ベースの Playwright（frame 中心を mouse クリック）を出力する。** 却下：生成テストは壊れやすく読みにくくなり、Playwright 自身の決定性の道具であるセマンティックな locator と自動待機を捨ててしまいます。`codegen` が bajutsu 内部の解決ではなく出力先の流儀を狙うことは、XCUITest の生成器がすでに確立しています。
-- **v1 の言語を TypeScript ではなく Python（`pytest-playwright`）にする。** 却下ではなく保留：`@playwright/test`（TypeScript）が最も広く使われる形で、web-first アサーションを第一級で備えます。Python ターゲットは、同じ構造的な走査を再利用する `--emit` の 2 つめの値として後から追加できます。
-- **Playwright 自身の `codegen` レコーダを包む。** 却下：これは新しいブラウザセッションを記録する *別のオーサリング経路* で、真実の出どころを既存の成功シナリオから分岐させてしまいます（その識別子、アサーション、git でレビュー可能な履歴を失います）。bajutsu の `codegen` の契約はシナリオ → ネイティブテストであり、シナリオを真実に保ちます。
+- **run ドライバを正確に写し取り、座標ベースの Playwright（frame 中心を mouse クリック）を出力する。** 却下です。生成テストは壊れやすく読みにくくなり、Playwright 自身の決定性の道具であるセマンティックな locator と自動待機を捨てることになります。`codegen` が狙うのは出力先の流儀であり、bajutsu 内部の解決ではありません。この点は、XCUITest の生成器がすでに確立しています。
+- **v1 の言語を TypeScript ではなく Python（`pytest-playwright`）にする。** 却下ではなく保留です。`@playwright/test`（TypeScript）が最も広く使われる形で、web-first アサーションを第一級で備えます。Python ターゲットは、同じ構造的な走査を再利用する `--emit` の 2 つめの値として、後から追加できます。
+- **Playwright 自身の `codegen` レコーダを包む。** 却下です。このレコーダは新しいブラウザセッションを記録する*別のオーサリング経路*です。真実の出どころを、既存の成功シナリオから分岐させてしまいます。シナリオの識別子、アサーション、git でレビュー可能な履歴も失います。bajutsu の `codegen` の契約はシナリオからネイティブテストへの変換であり、シナリオを真実に保ちます。
 
 ## 進捗
 

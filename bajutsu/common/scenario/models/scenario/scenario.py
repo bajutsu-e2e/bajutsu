@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Self
 
 from pydantic import (
@@ -34,6 +35,7 @@ from ._navigate_urls import _check_navigate_urls
 from ._open_urls import _check_open_urls
 from ._targets import _check_target_requirements, _expand_target_groups
 from .preconditions import Preconditions
+from .scenario_hooks import ScenarioHooks
 
 # The grant/revoke actions a `permissions` entry may take (BE-0276); the service side of the
 # vocabulary (`PERMISSION_SERVICES`) lives in `drivers.base` since every backend's capability
@@ -102,6 +104,9 @@ class Scenario(_Model):
     # Merged scenario-then-config, the reverse of `setup`: this scenario's own cleanup releases what
     # it created before the app-wide one tears down around it. Named `after` until BE-0452.
     cleanup: list[CleanupRule] = Field(default_factory=list)
+    # External commands that run around this scenario, outside the app session (BE-0501): what only
+    # this scenario needs seeded, nested inside the target's own `beforeScenario` / `afterScenario`.
+    hooks: ScenarioHooks | None = None
     capture_policy: list[CaptureRule] = Field(default_factory=list, alias="capturePolicy")
     network: Network | None = None
     mocks: list[Mock] = Field(default_factory=list)
@@ -109,6 +114,8 @@ class Scenario(_Model):
     # Load-time provenance (BE-0417), set by a file loader after parsing. A `PrivateAttr` rather
     # than an ordinary field so it never leaks into `model_dump()` as part of the authored schema.
     _source_stem: str | None = PrivateAttr(default=None)
+    # The file itself, whose directory a hook entry's relative `cwd` resolves against (BE-0501).
+    _source_path: Path | None = PrivateAttr(default=None)
     # The primary in force after the last top-level step, which a `setPrimaryTarget` may have moved
     # (BE-0447); recorded by the target walk, never authored.
     _final_primary: str | None = PrivateAttr(default=None)
@@ -172,6 +179,18 @@ class Scenario(_Model):
     def set_source_stem(self, stem: str) -> None:
         """Record the stem of the file this scenario was loaded from (BE-0417)."""
         self._source_stem = stem
+
+    @property
+    def source_path(self) -> Path | None:
+        """The file this scenario was loaded from, or `None` outside a file loader."""
+        return self._source_path
+
+    def set_source_path(self, path: Path) -> None:
+        """Record the file this scenario was loaded from (BE-0501).
+
+        Made absolute here, since a hook command that receives it runs in a directory of its own.
+        """
+        self._source_path = path.absolute()
 
     @model_validator(mode="before")
     @classmethod

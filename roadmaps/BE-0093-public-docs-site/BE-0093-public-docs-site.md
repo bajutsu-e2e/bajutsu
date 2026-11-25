@@ -15,37 +15,38 @@
 
 ## Introduction
 
-Bajutsu has no public-facing website. The project's story — what it is, why determinism-first
-matters, how to get started — is told only in the repository `README` and the `docs/` tree, which a
-reader reaches by browsing GitHub. The one thing that *is* published as a site is the generated API
-reference ([BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)),
-and even that is not live yet: GitHub Pages is not enabled on the repository and its deploy job is
-gated to a manual run.
+Bajutsu has no public-facing website. The project's story (what Bajutsu is, why determinism-first
+matters, how to get started) lives only in the repository `README` and the `docs/` tree, which a
+reader reaches by browsing GitHub. The generated API reference
+([BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
+is the one page set published as a site, and even that is not live yet: GitHub Pages is not enabled
+on the repository, and the deploy job is gated to a manual run.
 
-This item proposes a **public project website** at the project's GitHub Pages URL: a landing page
-that introduces Bajutsu and its principles, plus the existing bilingual `docs/` tree published as a
-browseable documentation portal. It **extends the mkdocs-material site that already exists**
-([`mkdocs.yml`](../../mkdocs.yml)) rather than introducing a second toolchain, and turns on the
-deploy path that is already wired but dormant ([`.github/workflows/docs.yml`](../../.github/workflows/docs.yml)).
+This item proposes a **public project website** at the project's GitHub Pages URL. The site has a
+landing page that introduces Bajutsu and its principles, and it publishes the existing bilingual
+`docs/` tree as a browseable documentation portal. The item **extends the mkdocs-material site that
+already exists** ([`mkdocs.yml`](../../mkdocs.yml)) instead of introducing a second toolchain, and it
+turns on the deploy path that is already wired but dormant
+([`.github/workflows/docs.yml`](../../.github/workflows/docs.yml)).
 
 ## Motivation
 
 - **The material is already written, but locked to GitHub.** `docs/` holds 20-plus pages with a
   full Japanese mirror under `docs/ja/`, plus `README`, [`vision.md`](../../docs/vision.md), and
-  `DESIGN.md`. None of it is discoverable outside the repository, and GitHub's Markdown rendering
-  gives no site search, no navigation, no language switch, and no canonical landing page a reader
-  can be pointed at.
+  `DESIGN.md`. None of these files is discoverable outside the repository. GitHub's Markdown
+  rendering gives no site search, no navigation, no language switch, and no canonical landing page
+  to point a reader at.
 - **A pre-alpha project still needs a front door.** A single page that states the value
   proposition (natural-language-driven E2E, a backend-agnostic driver, determinism-first) and the
-  honest status (iOS idb validated on-device, web Playwright landed, Android next) lets someone
-  evaluate Bajutsu in a minute without reconstructing it from the source tree.
+  honest status (iOS idb validated on-device, web Playwright landed, Android next) lets a visitor
+  evaluate Bajutsu in a minute without reconstructing the picture from the source tree.
 - **The infrastructure is 90 % built and idle.** A mkdocs-material site, a `--strict` CI build, and
   a least-privilege Pages deploy workflow all exist. What is missing is the content scope (a landing
   page + the `docs/` portal, not just the API reference) and the one-time enablement (turn Pages on,
-  flip the deploy guard). Shipping the site is mostly *connecting* existing parts.
+  flip the deploy guard). Shipping the site is mostly a matter of *connecting* existing parts.
 - **Prime-directive fit.** A website is docs-only: it puts no LLM into the Tier-2 `run`/CI gate, and
-  it does not touch the deterministic core. The `--strict` build is itself in the project's spirit —
-  a broken reference or dead link fails the build instead of publishing silently, the same
+  it does not touch the deterministic core. The `--strict` build also matches the project's spirit.
+  A broken reference or dead link fails the build instead of publishing silently, the same
   "the gate catches breakage" stance the code gate takes.
 
 ## Detailed design
@@ -72,8 +73,8 @@ A home page that opens the site, built from material already in `README` / `visi
 6. **Backends / platforms** and a **links section** (docs, roadmap, DESIGN, API reference, GitHub).
 
 mkdocs-material renders a hero either through a theme override (`overrides/home.html`, the Material
-"splash" template) or a styled `index.md`. The override gives a real landing visual; the choice is a
-detail to settle in implementation, not a blocker.
+"splash" template) or a styled `index.md`. The override gives a real landing visual. Which one to
+use is a detail to settle in implementation, not a blocker.
 
 ### 2. Publish the `docs/` tree as a portal
 
@@ -82,23 +83,23 @@ Today `docs_dir` is `docs/api`, so only the API reference is built. Widen the si
 (getting started, concepts, scenarios, selectors, drivers, evidence, reporting, CI, multi-platform,
 self-hosting, the API reference, …).
 
-Two issues this raises, to be designed for explicitly:
+Widening the site raises two issues, and the design handles both explicitly:
 
 - **Bilingual rendering.** The repo's layout is English at `docs/foo.md` with a Japanese mirror at
   `docs/ja/foo.md`. The site should expose a language switch via `mkdocs-static-i18n`, mapping the
   existing layout (default language at the docs root, Japanese under `docs/ja/`) to the plugin's
-  structure. The bilingual rule the project already follows (every documented behavior updated in
-  both languages) keeps the two sides in step.
+  structure. The bilingual rule the project already follows (every documented behavior is updated in
+  both languages) keeps the two languages in step.
 - **Links under `--strict`.** Many `docs/` pages link to paths *outside* `docs/` —
   `../roadmaps/…`, `../DESIGN.md`, `../README.md`, `../demos/…`. mkdocs `--strict` treats an
   unresolvable internal link as an error, so these must be handled: rewrite cross-repo links to
   absolute GitHub URLs (e.g. via a small macro/variable for the repo base), or bring the referenced
-  trees into the build. This link reconciliation is the **main migration cost** and should be scoped
-  before the nav is finalized.
+  trees into the build. This link reconciliation is the **main migration cost**, so the team should
+  scope it before finalizing the nav.
 
 ### 3. Turn on publishing
 
-The deploy path exists but is dormant. To go live:
+The deploy path exists but is dormant. Going live takes four steps:
 
 1. **Enable GitHub Pages** — Settings → Pages → source "GitHub Actions". This is a one-time
    repository-admin action and cannot be done from code.
@@ -112,24 +113,26 @@ The deploy path exists but is dormant. To go live:
 
 ### Build & gate boundary
 
-Keep the site build **out of `make check`**, exactly as today — it is a heavier, separate path like
-on-device E2E. The CI `--strict` build stays the regression net that catches a broken site before it
-publishes. No LLM, no Simulator, Linux-only — consistent with the existing docs workflow.
+The site build stays **out of `make check`**, exactly as today, because it is a heavier, separate
+path like on-device E2E. The CI `--strict` build remains the regression net that catches a broken
+site before it publishes. The build uses no LLM and no Simulator and runs on Linux only, consistent
+with the existing docs workflow.
 
 ## Alternatives considered
 
 - **A separate static-site generator (Docusaurus / Astro / plain HTML).** A richer marketing hero is
   easier in a dedicated framework, but it adds a second build, CI step, and deploy path to maintain,
   duplicating what mkdocs-material + `docs.yml` already provide. Rejected in favor of extending the
-  existing site (the chosen direction).
-- **Landing page only, no docs portal.** Lower effort, but it leaves the already-written bilingual
-  `docs/` unpublished — the largest source of value here. Rejected; the portal is the point.
-- **Make the site the canonical home for docs (move `docs/` into a site-only structure).** A larger
-  restructuring that would break the GitHub-readable source layout and the bilingual mirror
+  existing site, the chosen direction.
+- **Landing page only, no docs portal.** Lower effort, but the already-written bilingual `docs/`
+  would stay unpublished, and it is the largest source of value here. Rejected, because the portal is
+  the point.
+- **Make the site the canonical home for docs (move `docs/` into a site-only structure).** The move
+  is a larger restructuring that would break the GitHub-readable source layout and the bilingual mirror
   convention. The chosen path *publishes* `docs/` while keeping the in-repo source readable.
 - **Reuse the BE-0015 / BE-0016 hosting work.** Those items host the `serve` *application* (a
-  control-plane ⇄ macOS-worker service), which is unrelated to a static project website. Distinct
-  concern; no overlap.
+  control-plane ⇄ macOS-worker service), which is unrelated to a static project website. The two
+  concerns are distinct and do not overlap.
 
 ## Progress
 

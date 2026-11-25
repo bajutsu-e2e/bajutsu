@@ -20,6 +20,7 @@ import yaml
 
 from bajutsu.common.backend_cli import simctl as _simctl
 from bajutsu.common.backends import KNOWN_ACTUATORS, PLATFORMS, backend_override, resolve_actuators
+from bajutsu.common.capability.command_policy import ConfigSource
 from bajutsu.common.config import (
     AndroidConfig,
     Config,
@@ -411,6 +412,49 @@ def _family_requirements(eff: Effective) -> list[str]:
     if eff.platform != "ios":
         return []
     return device_requirements(_ios_kinds(eff), eff.conditions.get("family"))
+
+
+def merge_needs(*parts: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Several token needs as one, keeping every reason a token is needed for."""
+    out: dict[str, list[str]] = {}
+    for part in parts:
+        for token, why in part.items():
+            out.setdefault(token, []).extend(why)
+    return out
+
+
+def scenario_command_needs(
+    text: str | None, source: ConfigSource, *, tags: str = "", exclude: str = ""
+) -> dict[str, list[str]]:
+    """The tokens the hook commands of scenario *text* need, each with why (BE-0501).
+
+    Read off the file alone, so a job whose target or file refs do not resolve here still routes by
+    its commands. Empty when there is no text or it does not load; the run judges it either way.
+
+    Args:
+        text: The scenario file's text, or None when the server cannot read it.
+        source: Where the scenario came from.
+        tags: The run's `--tag` selection, comma separated.
+        exclude: The run's `--exclude` selection, comma separated.
+    """
+    from bajutsu.common.capability.route_tokens import hook_command_needs
+    from bajutsu.common.scenario import select_scenarios
+
+    if text is None:
+        return {}
+    try:
+        scenarios = load_scenario_file(text).scenarios
+    except (ValueError, yaml.YAMLError):
+        return {}
+    include, skip = ([t.strip() for t in raw.split(",") if t.strip()] for raw in (tags, exclude))
+    return merge_needs(
+        *(
+            hook_command_needs(entries, source, f"{s.name}: hooks.{list_name}")
+            for s in select_scenarios(scenarios, include, skip)
+            if s.hooks is not None
+            for list_name, entries in s.hooks.lists.items()
+        )
+    )
 
 
 def scenario_route_needs(

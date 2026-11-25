@@ -7,17 +7,388 @@
 
 ## このリポの CI
 
-| Workflow | ランナー | タイミング | 内容 |
-|---|---|---|---|
-| [`ci.yml`](../../.github/workflows/ci.yml)（`check` ジョブ） | Linux | `main` への push、全 PR（プルリクエスト） | Python 3.13 上で `make check` ゲート一式を実行します。ロックの鮮度（`uv lock --check`）、整形（`ruff format --check`）、lint（`ruff`）、シェル lint（`shellcheck`）、ワークフロー lint（`actionlint`）、型（`mypy bajutsu demos scripts` と、テストスイートに対する `mypy --allow-untyped-defs tests`。BE-0388）、カバレッジ下限つきの `pytest`（`--cov-fail-under=89`）です。ロジック層はシミュレータ不要なので速く安価です |
-| [`mcp-wire.yml`](../../.github/workflows/mcp-wire.yml) | Linux | 手動 + `bajutsu/mcp/**`・`bajutsu mcp` CLI・wire テストに触れる PR | **MCP ワイヤ round-trip** のレーン（BE-0301）で、ジョブは **wire (stdio)** の 1 つです。`bajutsu mcp --transport stdio` を実際のサブプロセスとして起動し、`mcp` SDK の `fastmcp.Client` で stdio 越しに駆動します（`pytest tests/test_mcp_wire.py -m mcp_wire -n0`）。in-process の `tests/test_mcp.py` が触れない JSON-RPC のフレーミング、ツールスキーマの広告、リソース URI のエンコーディングを検証します。ツール一覧を取得し、`bajutsu_doctor` / `bajutsu_run` の呼び出しを round-trip し、run 証跡のリソースを読み取ります。いずれも `fake` バックエンドに対して行います（`bajutsu_doctor` はサーバ内でデバイス不要の実ロジックを走らせ、`bajutsu_run` は実際の `bajutsu run` を起動しますが、その verdict は環境依存なので、round-trip では verdict 行が transport を往復することだけを確認します）。`mcp_wire` マーカーがこのスイートを高速ゲートから外します（pyproject の `addopts` の `not mcp_wire`）。実サブプロセス + stdio IPC は in-process 呼び出しより時間に敏感なので、まず**ゲート対象外**の PR ごとのシグナルとして着地させ、安定を確認してから必須化します。BE-0282 の `network (playwright)` が示した前例です |
-| [`web-e2e.yml`](../../.github/workflows/web-e2e.yml) | Linux | 手動 + 全 PR + マージキュー（必須の `E2E (web)` チェック） | **web（Playwright）バックエンド**のレーン（BE-0279）で、ヘッドレス Chromium に対する 6 ジョブから成ります。**smoke (playwright)** は `demos/web` のシナリオを実行し（`make -C demos/web e2e`）、**dogfood (serve UI)** は Bajutsu 自身の serve SPA を駆動し（BE-0058）、**conformance (playwright)** は BE-0114 のドライバコントラクトを実ブラウザに対して実行します。**network (playwright)** は実ネットワーク経路（`page.route` の介入、`requestfinished` のキャプチャ、`mocked` フラグ、実際にキャプチャした証拠の redaction）を動かします（`make -C demos/web e2e-network`、BE-0282）。**codegen (playwright)** はシナリオからネイティブな Playwright テストを生成し、実際の `@playwright/test` ランナーで実行します（`make -C demos/web codegen-e2e`、BE-0293）。`ios-e2e.yml` の `codegen (xcuitest)` の web 版です。**onboarding (doctor / provision)** は、ブラウザが本当に入っていないホストに対して `bajutsu.common.provisioning.provision` を実行し、provision 後に `doctor` の環境ゲートを再確認します（BE-0304）。**Mac / Simulator 不要**で、コアがプラットフォーム非依存であることを示します。6 つとも同じ `changes` 検出ジョブ（`scripts/e2e_changes.py`、`E2E_LANE=web`）でパスゲートします。**onboarding** を除く、決定論的で実行環境に依存しない 5 つのジョブが、常に結果を報告する `E2E (web)` ジョブ（必須チェック）に集約され、**onboarding** は PR ごとの参考シグナルにとどまります（BE-0304）。web 経路に影響しえない PR はブラウザジョブを飛ばし、ゲートは合格します。**network (playwright)** と **codegen (playwright)** はいずれもまず PR ごとのシグナルとして着地させましたが、CI で安定を確認できたので、現在は `E2E (web)` の `needs:` に昇格しています。**network** は android-e2e.yml ですでにゲート入りしている `network (adb)` の web 版、**codegen** は `ios-e2e.yml` ですでにゲート入りしている `codegen (xcuitest)` の web 版にあたります |
-| [`dependency-audit.yml`](../../.github/workflows/dependency-audit.yml) | Linux | 手動 + 週次 + `pyproject.toml` / `uv.lock` を触る `main` への push / PR | ロックした依存グラフ（`uv export` → `pip-audit --no-deps`）を脆弱性 DB に照合します。結果はロックファイルと DB だけで決まるので、依存の変更時と、変わらない pin に対して新たに公表された脆弱性を拾う週次スケジュールで実行します |
-| [`swift.yml`](../../.github/workflows/swift.yml) | macOS | `main` への push + `BajutsuKit/**` を触る PR | [BajutsuKit](../../BajutsuKit) の `swift build` + `swift test` を実行します。純 Foundation のロジック（リクエスト照合 / モック解析）をシミュレータ無しで単体テストします。実機でのインターセプトそのものは `ios-e2e.yml` がカバーします |
-| [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml) | macOS | 手動 + 全 PR + マージキュー（必須の `E2E (iOS)` チェック） | **iOS（XCUITest）バックエンド**のレーンで、showcase に対する 10 個の macOS ジョブから成り、いずれも XCUITest バックエンド（常駐の BajutsuRunner）で走ります。**build (app + runner)** ジョブが、showcase の 2 つのアプリ（SwiftUI + UIKit）と常駐ランナーを一度だけビルドし、1 つの `ios-build` アーティファクトとしてアップロードします。consumer のジョブは、ビルドし直すのではなくこの成果物をダウンロードしてインストールするので、コールドの Swift ビルドはジョブごとにではなく一度だけ支払われます。各 consumer はこの成果物を複合アクション [`download-ios-build`](../../.github/actions/download-ios-build/action.yml) で取得します。このアクションは短い間隔を置いてダウンロードを最大 2 回再試行するので、アーティファクトサービスへの一時的なネットワークエラーが 1 回起きただけで、シナリオが走る前にジョブが失敗することはなくなりました。**run (xcuitest)** は同型のゲート担当レーンで、かつては別々の `smoke` / `gestures` / `permission` / `runner-actuation` ジョブだったシナリオを、1 回の `bajutsu run` にまとめたものです。常駐ランナーをシナリオ間で warm 再利用します（BE-0291）。ただしこのレーンでは再利用を 1 回に制限しているため（`BAJUTSU_XCUITEST_MAX_WARM_REUSES: 1`。混雑した CI ホストでの run 中のランナークラッシュを抑えるためです）、実際に走る 12 個のシナリオドキュメント（7 個のファイルが保持する全シナリオです。BE-0315 が通知許可をネイティブにしたため、除外する `ai` タグ付きのシナリオはありません）は、コールドの `xcodebuild test-without-building` の起動を一度ではなく 6 回支払います。これは置き換えた 4 個の個別ジョブの合計より 2 回多いのですが、その 4 個のジョブはそれぞれ自前の Swift ビルドと起動も支払っていたので、レーン全体で一度だけ支払う共有の `build` ジョブの分だけ、正味のコストは今も下がっています。内訳は、Stable カタログ（`smoke.yaml`）、ピンチ / 回転の 2 本指ジェスチャ（`gestures_multitouch.yaml`、BE-0019）、常駐ランナーチャネルの `/type`（`search.yaml`）と `/swipe` + `/back`（`notices.yaml`、BE-0281）、提示された `UIAlertController` の各ボタンのタップ（`alert.yaml`。`uniquelyIdentifiedElement` の重複グループの分岐に到達する唯一のシナリオです。この分岐は `swift test` ではコンパイルされません）、決定論的な `permissions` フィールドと、BE-0315 以降はネイティブなリアクティブ `systemAlertHandling` の通知許可（`permission.yaml`、BE-0276 の location と BE-0315 の通知。どちらもゲート上で走ります）、プロアクティブな `handleSystemAlert` ステップ（`permission_system_alert.yaml`、BE-0316。SpringBoard の通知許可プロンプトの「許可」ボタンを、視覚モデルなしのアクセシビリティクエリでタップします）です。`run` は各シナリオを個別の verdict まで実行し、どれかが失敗すればゲートを赤くするので、シナリオごとの合否はジョブ名ではなく run のレポートに移ります。**actuation (xcuitest)** は、このレーンでゲート対象外の受け皿となるジョブです。まだ `run` に昇格していない実機の XCUITest アクチュエーション（BE-0281）として、Stable の起動タブ上で `back`（`navigation.yaml`）とデバイス制御（`setLocation` / クリップボード / `push`、`device.yaml` + `push.yaml`）と、割り込みモニタが消すフォアグラウンドの通知バナー（`push_banner.yaml`、BE-0416）を実行し、あわせてテキスト編集の 4 つのアクチュエータ（`text_editing.yaml`）も実行します。さらに、アクチュエートできる 3 つ目のバックエンドとして、シナリオ作成機能（BE-0285）も駆動します。Log タブのライブなカウンタ値を取り込む `extract`（`extract.yaml`）、ループ本体で詳細画面を push / pop して反復のあいだにツリーを変化させながら Stable の 5 行を反復する `forEach`（`foreach.yaml`）、data-driven の行（`data_driven.yaml`）、`relaunch`（`relaunch.yaml`）の 4 つです。この 4 つは showcase の共有シナリオファイルをそのまま使い（BE-0221）、デバイス制御のシナリオより前に並べています。配信された通知や OS レベルの許可が、この 4 つの前に来ないようにするためです。リストの最後は、プロセスをまたぐペーストにプロアクティブなステップで応答するシナリオ（`paste_system_alert.yaml`、BE-0369）です。`setClipboard` がアプリの外からペーストボードに値を書くため、アプリ自身の読み取りが iOS のペースト同意プロンプトを上げ、`handleSystemAlert: { prompt: paste }` がネイティブなアクセシビリティ照会でそれに応答します。許可と拒否のそれぞれを、対象の locale のもとと `locale: ja_JP` のもとで実行します。日本語の 2 本は、日本語で描画される SpringBoard に対してラベルの対応表を確かめます。実機の新しいカバレッジなので、`run` へ昇格させる前にここで安定性を確かめます。その直前には `system_alert_handling.yaml` を置きます。このファイルは `handleSystemAlert` ステップを使わず、`systemAlertHandling.rules` の宣言だけで各プロンプトに応答できることを確かめます。内訳は通知の拒否と、トラッキングとペーストそれぞれの許可と拒否の計 5 本です。拒否のシナリオは、XCUITest のデフォルトのハンドラではなく rule が応答したことを示します。デフォルトのハンドラはデフォルトのボタンを押すため、拒否の状態を作れないからです。このファイルも実機の新しいカバレッジなので、同じ理由でここから始めます。**golden (xcuitest)** は BE-0006 の要素ツリー golden を XCUITest で実行します（`golden.yaml`）。`android-e2e.yml` の `golden (adb)` に対応する iOS 版です。**codegen (xcuitest)** はシナリオからネイティブ XCUITest を生成し（`make -C demos/showcase ui-test`）、`xcodebuild` で実行します（テスト時に bajutsu / AI は不要です）。UITests スキームをコンパイルするジョブで、常駐ランナーとは別の成果物なので、自前でビルドし、`build` アーティファクトの consumer にはなりません。**bundled-runner (xcuitest)** は、config の `testRunner` ではなく wheel バンドルから解決したランナーで、SwiftUI と UIKit 両方の a11y アプリに対して smoke シナリオを実行し（BE-0292）、ランナーがアプリに依存しないことを確認します。**conformance (xcuitest)** はドライバ conformance スイート（BE-0114）を XCUITest バックエンドに対して実機で実行します。スイート実行中の Simulator インフラ障害（常駐ランナーのクラッシュ、`base.BackendCrashError`）は、`bajutsu run` と同じように復旧します。新しいデバイスを取り直して該当テストを再実行し、上限はテストごとに再試行回数と壁時計の再起動予算（`BAJUTSU_CRASH_RETRIES` / `BAJUTSU_CRASH_RECOVERY_BUDGET`）で区切ります。これによりこの必須チェックは、ホストのフレーキーではなく本物の契約違反で赤くなり、毎回クラッシュする場合は今までどおり明確に失敗します。各再起動は、アップロードする `conformance-recovery-report` アーティファクトに数え上げられます（BE-0334）。固まった CoreSimulator はホスト側の障害ですが、デバイスを作り直しても直りません。作り直しの手順そのものが、いま停滞したのと同じ `simctl` 呼び出しでできているうえ、その停滞は放っておいても解消するからです。そこでスイートは再試行せず、ジョブログでホスト障害として名指しし、同じアーティファクトに数え上げます。あわせて、アプリのデータコンテナの解決をテストごとではなくリースごとに行い、その 1 回の読み取りが期限を超えたときだけもう一度試します。2 回目で解消した停滞は何も赤くしないので、先行指標として同じアーティファクトに数え上げます。あとでチェックを固まらせるのは、悪化していくこの同じホストだからです（BE-0378）。**fault-injection (xcuitest)** は、健全なランナーを駆動する代わりに、ランナー自身のホストプロセスにシグナルを送ります（BE-0305）。短い `SIGSTOP` は、固まったランナーと同じようにチャネルをハングさせるので、一過性リトライ（BE-0207）が吸収しなければなりません。リトライ予算を超える凍結は、crash-recovery（BE-0287）が乗り越えなければなりません。`SIGKILL` では、無関係なタイムアウトではなく実行中のランナー障害を名指しするクラッシュ診断で読み取りが終わらなければなりません。各ケースは、検証対象の層に到達したというチャネル自身のログ記録を合図に障害を解除し、推測した待ち時間には頼りません。**visual (xcuitest)** は Stable カタログをコミット済みの `baselines_ios/` ベースラインとピクセル比較します（`make -C demos/showcase e2e-visual`）。ステータスバーと「Liquid Glass」タブバーはマスクします。`e2e-visual` は自前でアプリをビルドし直すため、`codegen` と同様に `build` アーティファクトの consumer にはなりません。**network (xcuitest)** は、iOS の transport の上でネットワークの実経路を動かします（`make -C demos/showcase e2e-network`。BE-0282）。`web-e2e.yml` の `network (playwright)` と `android-e2e.yml` の `network (adb)` にあたる iOS 版です。BajutsuKit のアプリ内 `URLProtocol` が、モックされた `POST /post` に 201 で応答し（実サーバなら 200 を返します）、各 exchange をループバック上の collector へ報告します。続く 2 本目のシナリオは、スタブを介さないカタログの `GET` を発行し、観測されたという事実だけをアサートします。そのうえで `demos/showcase/network/assert_network_evidence.py` が、永続化された `network.json` をアサートします。モックされた exchange の `Authorization` ヘッダと `password` のフィールドがマスクされていること、生の秘密情報がファイルのどこにも残っていないこと、そしてスタブを介さない exchange が `mocked` を false として記録されていること、つまりマッチ範囲の広すぎるモックが、何もスタブしていない通信を自分のものだと主張できないことです。このうちマスクの確認が、BE-0282 が埋めようとしたギャップです。純粋な redaction のテストはすべて手で組み立てた exchange をアルゴリズムに渡すので、実際にキャプチャした資格情報が出荷される証跡でマスクされるかは、iOS 上ではここ以外で観測できません。このジョブは必要なものを自前でビルドする `make` ターゲットを動かすので、`codegen` や `visual` と同様に `build` アーティファクトの consumer にはなりません。このレーンには、デバイスを 2 台使う **pool (xcuitest)** ジョブ（BE-0298）がありましたが、取り下げました。2 台目の Simulator を起動し、1 回の `bajutsu run --workers 2` に対してデバイスプールの分離の主張を検証するジョブでしたが、その判定を返せたのは 5 回のうち 1 回だけです。残る 4 回は、プールの検査ではなくホストで崩れました（`SimRenderServer` が自身のディスパッチキューでクラッシュする、固まった CoreSimulator に対して `simctl uninstall` がタイムアウトする、runner のチャネルが run の途中で到達不能になる）。赤くなるたびに 10 倍課金のランナーを 30 分ほど使い、動画記録とタッチマーカーとシナリオの半分を削っても、崩れる位置が早まっただけでした。実際の並行デバイスに対するこの主張の検証は、いま Android レーンの `pool (adb)` だけが担い、このレーンでは高速スイートの記帳の証明（`tests/runner/test_pool.py`）だけが残ります。共有の `setup-ios-toolchain` コンポジットアクションが、macOS の各ジョブが繰り返す Xcode / uv / xcodegen / シミュレータ起動の手順をまとめています（`build` ジョブはシミュレータ不要なので `boot: false` を渡します）。10 個のジョブはすべて同じ `changes` 検出ジョブでパスゲートされ、そのうち `build`、`run`、`codegen`、`bundled-runner`、`conformance` は、常に結果を報告する単一の `E2E (iOS)` ジョブ（必須チェック）に集約されます。`actuation`、`golden`、`visual`、`network` も同じ検出ジョブでパスゲートされますが、`E2E (iOS)` の `needs:` には意図的に含めていません。新しく配線した XCUITest のアクチュエーションは、まずは参考シグナルとして着地させ（Simulator レーンにはフレーキーの実績があるため、BE-0218）、安定を確認してからゲートに昇格させます。要素ツリーの `golden` は決定論的で実行環境に依存しないため、そのドリフトを参考シグナルとして出し、`visual` のピクセルのベースラインはホスト依存（Simulator のレンダラが Xcode / デバイス / OS で変わります）だからです。`fault-injection` は BE-0282 と同じ道筋をたどりました。まずシグナルとして着地し、レーンを赤くしていた runner の HTTP サーバの欠陥が直ったあと、失敗のない 64 回の実行を根拠に `needs:` へ入りました（BE-0305）。`network` も実機の新しいカバレッジなので、同じくまずシグナルとして着地させます。その web 版が `E2E (web)` に加わる前にたどったのと同じ道筋です。いずれもドリフトやフレーキーを PR のブロックではなく単独ジョブのシグナルとして出します（`visual` が採取したスクリーンショットは `ios-e2e-visual-run` としてアップロードし、ベースラインの再採取に使います） |
-| [`android-e2e.yml`](../../.github/workflows/android-e2e.yml) | Linux | 手動 + 全 PR + マージキュー（必須の `E2E (android)` チェック） | **Android（adb）バックエンド**のレーン（BE-0208）で、iOS や web のレーンのジョブ分割にならった観点ごとの 8 ジョブから成り、各ジョブが自前の x86_64 API 34 AVD を KVM のもとで起動します（`reactivecircus/android-emulator-runner`）。これに加えて、AVD を起動しない九つ目の **warm gradle cache (adb)** ジョブが、`smoke`/`golden`/`conformance`/`fault-injection`/`pool` がそろってビルドする Compose と resident server の APK を先に一括でビルドします。この五つのジョブは、その分だけ依存解決とコンパイルを五回コールドでやり直さずに済み、温めておいた Gradle の依存キャッシュとビルドキャッシュを復元してビルドを走らせます。Views はここではビルドしません。Views を必要とするのは `smoke` だけで、ここで温めると残り四つのジョブが（ジョブレベルの `needs:` のため）使いもしない Views のコンパイルを待つことになるからです。`smoke` 自身の Views ビルドは、このジョブができる前と同じく温めないままです。`network`/`visual`/`codegen` は意図してこの `needs:` から外しています（`codegen` はさらに Compose の AndroidTest（計装）バリアントを必要としますが、warm gradle cache (adb) はこれをビルドしません）。ジョブレベルの `needs:` は、Gradle と無関係な AVD キャッシュのステップまで巻き込んでビルドが終わるまでその軽いジョブ自身を丸ごと止めてしまうため、キャッシュヒットで得られる以上の待ち時間を強いることになるからです。同一ラン内で並行実行するジョブどうしは、保存前のキャッシュを `actions/cache` で共有できません。そのため warm gradle cache (adb) を先に走らせ、`smoke`/`golden`/`conformance`/`fault-injection`/`pool` の五つが `needs: warm-gradle-cache` を宣言します。`cache-read-only` はどのジョブも明示的には渡さず、composite action 側の安全なデフォルト（`true`、読み取り専用）に任せています。`gradle/actions` が文書化しているマルチジョブでのキャッシュ共有パターンです。warm gradle cache (adb) が外れる、あるいは失敗しても失うのは時間だけで、正しさは変わりません。そのため下流の各ジョブの `if:` は `always()` ではなく `!cancelled()` を使います。`always()` では、android-e2e.yml 自身の `concurrency: cancel-in-progress` で打ち切られたはずの実行でもジョブが動き続けてしまうためです。`!cancelled()` は、warm gradle cache (adb) の成功に対する `needs` の暗黙の依存を明示的な許容条件で吸収しつつ、実行そのものが打ち切られた場合はそこで止まります。`E2E (android)` の `needs:` にも加えていません。**smoke (adb)** は Compose と Views の showcase APK をビルドし、Stable タブのシナリオ（コアの id/tap/type/value のフローに、詳細画面への push と pop で戻る back ナビゲーションを加えたもの）を `--backend android` で実行します（`make -C demos/showcase/android e2e`）。**golden (adb)** は Compose の Stable カタログの golden 要素ツリーを実機でチェックし（`make -C demos/showcase/android e2e-golden`、BE-0006 / BE-0208 ユニット 4）、続いて resident チャネルを切って再実行して（`make -C demos/showcase/android e2e-fallback`、BE-0245）両方の読み取り経路が一致することを確かめます。**network (adb)** は BE-0283 のネットワークキャプチャの検証で、`request` ステップが、BajutsuAndroid のインターセプタが `adb reverse` の collector ブリッジ越しに報告する実際のエミュレータ通信を観測します。**conformance (adb)** はドライバ conformance スイート（BE-0114）を実 adb バックエンドに対して実行します。`ios-e2e.yml` の `conformance (xcuitest)` の Android 版です。**fault-injection (adb)** はディスプレイをスリープさせて、実際の読み取り元が本当に空の要素ツリーを返す状態を作り、`CoordinateTreeDriver` の transient-empty リトライが、高速スイートのテストでは組み立てるしかない実際の条件を乗り越えることと、リトライ予算を超えて空が続いた場合に明確に失敗することを検証します（`make -C demos/showcase/android e2e-fault-injection`、BE-0305）。**visual (adb)** はピクセル VRT を実行します（後述）。**pool (adb)** は、このレーンで唯一エミュレータを 2 台使うジョブです（BE-0298）。キャッシュした AVD の 2 台目のインスタンスを `-read-only` で、emulator-runner アクション自身のステップの内側から起動します（`scripts/android_pool_e2e.sh`。このアクションにはエミュレータを 2 台使うモードがなく、アクションが起動するエミュレータはそのステップのあいだしか生きていないためです）。状態に依存しないシナリオ 4 本を 1 回の `bajutsu run --workers 2` で走らせ（`make -C demos/showcase/android e2e-pool`）、分離の主張を `scripts/assert_pool_isolation.py` で検証します。2 台とも `-memory 3072 -cores 1` と `-read-only` で動かします。`-read-only` は、2 つのエミュレータプロセスが 1 つの AVD を共有できるようにするフラグで、ジョブ自身のエミュレータにも渡します。AVD を読み書きで掴んだインスタンスは AVD をロックし、2 台目をそのまま拒否するからです。`-read-only` はスナップショットの読み込みも無効にするので、このジョブはこのレーンで唯一、常に 2 台ともコールドブートします。自前の AVD キャッシュエントリが買うのは、resume ではなく AVD の作成です。変更フィルタも、レーン全体のシグナルではなく、より狭い `pool` 出力を使います。**Mac / Simulator 不要**で、iOS と web の e2e レーンに並ぶ 3 つ目のバックエンドの Linux 版です。`changes` 検出ジョブ（`scripts/e2e_changes.py`、`E2E_LANE=android`）でパスゲートし、必須の集約ジョブ `E2E (android)` に集約します（BE-0279）。AVD は（ローカル検証の arm64 ではなく）x86_64 にして、x86_64 ランナー上で KVM が加速できるようにしています。golden のベースラインは arm64 で採取していますが、比較がフィールド単位で frame は健全性チェックだけのため、x86_64 でも通ります。sheet/cover のフロー（`components`、`modals`）も、このレーンに限って条件待ちの上限を引き上げることで含めています。`make -C demos/showcase/android e2e` が `BAJUTSU_MIN_WAIT_TIMEOUT`（既定 15 秒）を各待ちのタイムアウトの下限として渡すためです。ソフトウェアレンダリングのエミュレータは、共有シナリオの 5 秒の待ちに収まらないほど遅くモーダルを描画します。条件待ちは条件が満たされた瞬間に返るので、上限を広げても固定の待ち時間にはならず安全な上限にとどまり、共有シナリオには手を入れません（`timeout: 5` はどのバックエンドでも同じです）。深いスクロールのフロー（`controls`、`notices`）もこのレーンに加えました。`controls` はボタン群の下にある segmented control の値ノードを、`notices` は一覧のずっと下のほうにある行を、それぞれ `scroll`（BE-0326）で画面内に入れます。`scroll` は非慣性でツリーを再クエリするステップで、対象の中心が画面内に入った時点で止まります。固定距離のスワイプ連鎖は、密度の高い Android の画面（2400px）では iOS（約 900pt）に比べて画面のごく一部しか進まず、バックエンドごとの距離調整が要りましたが、`scroll` の再クエリはその調整を不要にします（BE-0208 ユニット 5）。`system` と `modals` も、この変更で同じように `scroll` で遠くの対象を画面内に入れます（Permissions タブの `sys.paste.value`、Log タブの `log.dialog.value`）。これでこのレーンの 4 つのフローが `scroll` に依存します。単一タッチのジェスチャのフロー（`gestures`）もこのレーンに加えました。adb ドライバが、root 化したエミュレータでは生の `sendevent` によるタッチ列でダブルタップを実行するようになったためです（`e2e` ターゲットが先に `adb root` を実行します）。2 回のタップが 1 回の `adb shell` のなかで発火するので、タップごとに `input` の JVM を起動していたときには超過していたプラットフォームのダブルタップの受付時間に収まります。root 化していないデバイスでは、従来どおり `input tap` にフォールバックします。対象を画面内に入れるためのスワイプは、ユニット 5 のもう一方の仕組みに支えられています。既定の方向スワイプは画面サイズに対する一定の割合（`_SWIPE_FRACTION`、`bajutsu/common/orchestrator/actions/handlers/gestures.py`）だけ進むので、密度の高い Android の画面（2400px）でも iOS の画面（約 900pt）でも同じ割合をカバーします。固定距離では、そうはいきませんでした（BE-0208 ユニット 5）。マルチタッチのジェスチャのフロー（`gestures_multitouch`）もこのレーンに加えました（BE-0232）。adb ドライバが、root 化したエミュレータでピンチ / 回転を生の 2 スロットの `sendevent` スイープ（2 つの接点が複数フレームにわたって一緒に動きます）として実行するので、iOS が XCUITest で動かす共有シナリオが Android でもそのまま動きます。単一タッチのダブルタップと違って `input` へのフォールバックはなく（2 本指のジェスチャは近似できません）、root を要し、なければ明確に失敗します。ランタイム権限のフロー（`permission`）もこのレーンに加えました（BE-0208 ユニット 6。BE-0210 の事前付与を検証します）。これは iOS レーンが走らせるのと同じ `permission.yaml` です。付与の仕組みはシナリオではなく config にあるので、1 つのファイルで両方をまかなえます。`showcase-compose` が `POST_NOTIFICATIONS` を事前に付与するため（`grantPermissions` により lease 時に `pm grant` を実行します）、Android の `RequestPermission` コントラクトはダイアログを出さずに付与済みとして即座に返り、シナリオの `systemAlertHandling` ガードはここでは発火しません。よってこのレーンでもフローは決定的なまま（LLM も固定の待ち時間もなし）に保たれます（通知を事前付与できない iOS では、このガードが代わりに「Allow」をタップします）。デバイス制御のフロー（`device`）もこのレーンに加えました（BE-0208 ユニット 5）。GPS の位置を上書きし（`emu geo fix`）、クリップボードを書き込んで読み戻し、落ち着いた画面を再度確認します。これは iOS レーンが走らせるのと同じ `device.yaml` です。`setLocation` もクリップボードも両プラットフォームで宣言されるので、一つのファイルが iOS でも Android でも動きます（`push` は `push.yaml` に分けました）。smoke ジョブは `push.yaml` と `push_android.yaml` も実行します。BajutsuAndroid のプッシュレシーバ経由でプッシュを届け、アプリのハンドラが表示したタイトルを確認します（BE-0498）。Stable の起動タブ上で、デバイス制御ファミリのうち `setLocation` と `clipboard` の両方を動かしています。`cmd clipboard` は実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリしかクリップボードを触れないため、クリップボードは showcase が `BajutsuAndroid` から組み込むアプリ内レシーバを経由します（BE-0233）。この書き込みと読み戻しは、強い assertion です。位置のフロー（`location_android`）もこのレーンに加わります（BE-0481）。`e2e` はエミュレータ自身の serial でこのフローを走らせ、その経路は `emu geo fix` を使います。別の **location over adb connect (adb)** ジョブが `e2e-location-connect` を使い、`adb connect` で接続したエミュレータで同じフローを走らせ直します。このジョブは、実行履歴がたまるまで `E2E (android)` の `needs:` に含めない PR ごとのシグナルです。`golden` や `app-crash` と同じ扱いです。`<host>:<port>` の serial には adb から届くコンソールがないので、`setLocation` は BajutsuAndroid のアプリ内の位置レシーバを通ります。実機が通るのと同じ経路です。割り込みハンドラのフロー（`interrupts`）もこのレーンに加えました（BE-0314）。これは実際のアプリでは発火しない構文デモで、`interrupts` エントリの `condition` は画面上の何にも一致しないため、その裏で走るのは `firstlook` と同じ Stable→Horse→お気に入りのフローです。アプリや config に追加の変更は要りません。`firstlook` に対してこのフローが加えるのは、生きたツリーに対する BE-0314 の確認経路です。`wait` は自分のポーリング用ツリーに相乗りするので追加のコストはかかりませんが、素の act ステップは（このシナリオが `screenChanged` ポリシーを宣言していないため）ガード用のクエリを 1 回追加で払います。こうして、一度も発火しないハンドラが実機で何も乱さないこと、act 1 回につき読み取り 1 回分で収まることを、高速スイートの fake では示せない形で証明します。Views 版のレーンにも加えました。id はドット区切りの SPEC 形式とアンダースコア区切りの Android Views 形式の両方を持ち（BE-0221）、`firstlook` がすでに Views ツリーで実証済みの同じ id なので、そのまま動きます。`visual (adb)` ジョブは Compose の Stable カタログのピクセル視覚回帰チェックを実行します（`make -C demos/showcase/android e2e-visual`、BE-0208 ユニット 4）。要素ツリーの golden とは異なり、ピクセルのベースラインはホスト依存です。x86_64 のソフトウェアレンダラ（swiftshader）とローカルの arm64 エミュレータはピクセル単位で食い違うため、このベースラインは arm64 ではなくこの x86_64 レーンで採取してコミットします（`demos/showcase/scenarios/visual/baselines_android/`）。上部のステータスバーはマスクするので、時計が比較を揺らすことはありません。同じターゲットは続けて `status_bar_android.yaml` も実行します（BE-0478 ユニット 6）。Home キーで `background` と `foreground` を行い、System UI のデモモードで `overrideStatusBar` を適用します。ステータスバーの帯だけを専用のコミット済みベースラインと比較し、アプリ単位のロケール `ja_JP` がアプリ自身の構成に届いたことを読み取って確かめます。`uiautomator (codegen)` ジョブは codegen の出力経路です（`make -C demos/showcase/android e2e-codegen`、BE-0294）。`ios-e2e.yml` の `codegen (xcuitest)` の Android 版で、`codegen_android.yaml` からネイティブ UI Automator（Kotlin）テストを再生成し、Gradle の `connectedAndroidTest` が Compose の a11y アプリと計装 APK をビルドして両方をインストールし、生成テストをエミュレータに対して実行します（テスト時に bajutsu / adb ドライバ / AI は不要です）。ビルド前に再生成するので、古いチェックインがエミッタや `androidx.test.uiautomator` API のドリフトを覆い隠すことはありません。決定論的で実行環境に依存しないジョブ、すなわち `smoke (adb)`、`conformance (adb)`、`network (adb)`、`fault-injection (adb)` を、常に結果を報告する集約ジョブ `E2E (android)`（必須チェック、BE-0279）に集約します。`golden (adb)`、`visual (adb)`、`uiautomator (codegen)`、`pool (adb)` はその `needs:` から意図的に外し、参考シグナルにとどめます（要素ツリーの golden は上流依存の変化で赤くなりえ、ピクセルのベースラインはホスト依存で、codegen とエミュレータ 2 台のレーンは BE-0282 の前例にならいまずシグナルとして着地させるためです）。`fault-injection (adb)` は BE-0282 の道筋を最後まで歩みました。73 回の実行で失敗は 1 回、しかもそれはレーンが検証している内容ではなくエミュレータが起動しなかったことによるもので、同じ期間の `conformance (adb)` は 67 回中 4 回失敗しています。これがシグナルの地位から集約ジョブの `needs:` へ押し上げ、リトライの実際の検出に入った回帰は、マージが無視できる赤ではなくマージを止める赤になりました（BE-0305）。`tests/test_e2e_gate_needs.py` は高速スイートで、各集約ジョブの構成と、ゲートが `needs:` に挙げたジョブはそれぞれの結果が読まれるという不変条件を固定し、さらに verdict のスクリプト自体を実行して、それぞれの結果が本当にチェックを赤にすることも固定します。依存の失敗が、集約ジョブが green と数えるパススキップとして通ってはならないからです。これは iOS の `E2E (iOS)` が引くのと同じ判断基準です |
-| [`devicefarm.yml`](../../.github/workflows/devicefarm.yml) | Linux | **手動のみ**（`workflow_dispatch`） | **AWS Device Farm へのバッチ投入**（BE-0235）。showcase の Compose APK をビルドし、Bajutsu と config とシナリオをパッケージ化して [`scripts/devicefarm_submit.py`](../../scripts/devicefarm_submit.py) に渡します。このスクリプトが、`bajutsu run --backend adb` を Device Farm のホストで実行するカスタム環境のテスト仕様をアップロードし、実行をポーリングし、成果物をダウンロードして、**Bajutsu 自身の manifest 判定**（Device Farm の分類ではありません）を表示します。決定的なコアの外側の CI 側のグルーなので、判定に LLM は触れません。起動は `workflow_dispatch` のみで（push / PR では動かず、必須チェックにもなりません）、認証は GitHub OIDC から発行する短命の AWS 認証情報（`AWS_DEVICEFARM_ROLE_ARN`）を `devicefarm` の Environment にスコープし、プロジェクトとデバイスプールの ARN はリポジトリ変数に置きます。いずれかが未設定ならジョブは緑の no-op になり、運用者がアカウントを接続するまで休止します。実アカウントでのシリアル解決の実証は文書化した手動手順（[AWS Device Farm](devicefarm.md) を参照）とし、決定的ゲートからは意図的に外しています |
-| [`ai-smoke.yml`](../../.github/workflows/ai-smoke.yml) | Linux | **手動のみ**（`workflow_dispatch`） | **実モデル**のレーンで、ジョブは2つ、どちらも**ゲート対象外**のシグナルです（BE-0282 の前例）。**smoke (direct Anthropic API)**（BE-0300）は、Bajutsu 自身のアダプタコード（`bajutsu.ai.anthropic.AnthropicBackend`）を通して実プロバイダを些細な強制ツールのプロンプトで呼び出し、返り値がベンダー中立な `MessageResponse` として空でなくパースできることだけを検証します（`pytest tests/test_ai_backend_live_smoke.py -m live -n0`）。ほかのアダプタテストはいずれも手書きの `FakeAnthropic` を駆動するので、実 API の実際の形を再観測するものはこれ以外にありません。トランスポートとスキーマの検証であって、モデルの品質検証ではありません。**accuracy (system-alert guard)**（BE-0308）は、実モデルに対するもう一方の問いを立てます。トランスポートが往復するかではなく、返ってきた答えが正しいかどうかです。ショーケースアプリから捕捉した本物の iOS システムダイアログを視覚アラートロケータ（`bajutsu.agents.alerts.ClaudeAlertLocator`）に見せ、返ってきた座標が正しい dismiss コントロールの frame 内に収まることを検証します（`pytest tests/test_real_model_alerts.py -m live -n0`）。これがこのガード自身の安全性の主張です。ほかのガードのテストはいずれも、テスト作者が打ち込んだ `AlertDecision` を渡すだけなので、実モデルに本物のアラートを見せて判断させるテストは1つもありません。ダイアログは `tests/fixtures/be0308/` にコミット済みの捕捉物です。通知プロンプト、位置情報プロンプト、iOS のプロセス間ペースト同意、そしてショーケースアプリ自身の削除確認の4つで、最後のものはガードがその破壊的なボタンに手を伸ばしてはならないケースです。Simulator は要らないので、ライブなのはモデル呼び出しだけであり、各捕捉物の整合性を確かめる決定的な検証は認証情報なしで毎回のゲートを走ります。どちらのジョブも `run` / CI の判定に LLM を置きません（prime directive 1）。いずれも AI の authoring 周縁だけを動かします。`live` マーカーが両方のスイートを高速ゲートから外します（pyproject の `addopts` の `not live`）。起動はどちらも `workflow_dispatch` のみで、push / PR では動かないため、フォークからの実行が認証情報を目にすることはありません（`devicefarm.yml` が引く境界と同じです）。認証は `ai-smoke` の Environment にスコープした `ANTHROPIC_API_KEY` のリポジトリ secret です。未設定ならテストが自身をスキップし、どちらのジョブも緑の no-op になるので、運用者が secret を接続するまでレーンは休止します。配線したのは直接 Anthropic API アダプタのみです。Bedrock は稼働中の AWS ロールを、`ant` はサインイン済みの OAuth CLI シートを要し、いずれも現実的には CI の secret にできないためで、それらの `-m live` テストはローカルや手動でなら実行できます |
+次の表は、各 workflow のランナーとタイミングをまとめたものです。表のあとの節で、同じ順に各 workflow の内容を説明します。
+
+| Workflow | ランナー | タイミング |
+|---|---|---|
+| [`ci.yml`](../../.github/workflows/ci.yml)（`check` ジョブ） | Linux | `main` への push、全 PR（プルリクエスト） |
+| [`mcp-wire.yml`](../../.github/workflows/mcp-wire.yml) | Linux | 手動 + `bajutsu/mcp/**`、`bajutsu mcp` CLI、wire テストに触れる PR |
+| [`web-e2e.yml`](../../.github/workflows/web-e2e.yml) | Linux | 手動 + 全 PR + マージキュー（必須の `E2E (web)` チェック） |
+| [`dependency-audit.yml`](../../.github/workflows/dependency-audit.yml) | Linux | 手動 + 週次 + `pyproject.toml` / `uv.lock` を触る `main` への push / PR |
+| [`swift.yml`](../../.github/workflows/swift.yml) | macOS | `main` への push + `BajutsuKit/**` を触る PR |
+| [`ios-e2e.yml`](../../.github/workflows/ios-e2e.yml) | macOS | 手動 + 全 PR + マージキュー（必須の `E2E (iOS)` チェック） |
+| [`android-e2e.yml`](../../.github/workflows/android-e2e.yml) | Linux | 手動 + 全 PR + マージキュー（必須の `E2E (android)` チェック） |
+| [`devicefarm.yml`](../../.github/workflows/devicefarm.yml) | Linux | **手動のみ**（`workflow_dispatch`） |
+| [`ai-smoke.yml`](../../.github/workflows/ai-smoke.yml) | Linux | **手動のみ**（`workflow_dispatch`） |
+
+### `ci.yml`：Python のゲート
+
+`check` ジョブは、Python 3.13 上で `make check` ゲート一式を実行します。内容は次のとおりです。
+
+- ロックの鮮度（`uv lock --check`）
+- 整形（`ruff format --check`）
+- lint（`ruff`）
+- シェル lint（`shellcheck`）
+- ワークフロー lint（`actionlint`）
+- 型（`mypy bajutsu demos scripts`、およびテストスイートに対する `mypy --allow-untyped-defs tests`。BE-0388）
+- カバレッジ下限つきの `pytest`（`--cov-fail-under=89`）
+
+ロジック層はシミュレータ不要なので、このジョブは速く安価です。
+
+### `mcp-wire.yml`：MCP ワイヤ round-trip
+
+この workflow は **MCP ワイヤ round-trip** のレーンです（BE-0301）。ジョブは **wire (stdio)** の 1 つです。
+
+このジョブは、`bajutsu mcp --transport stdio` を実際のサブプロセスとして起動します。`mcp` SDK の `fastmcp.Client` で、サブプロセスを stdio 越しに駆動します（`pytest tests/test_mcp_wire.py -m mcp_wire -n0`）。
+
+in-process の `tests/test_mcp.py` が触れない次の 3 点を検証します。
+
+- JSON-RPC のフレーミング
+- ツールスキーマの広告
+- リソース URI のエンコーディング
+
+具体的には、ツール一覧を取得し、`bajutsu_doctor` / `bajutsu_run` の呼び出しを round-trip します。run 証跡のリソースも読み取ります。いずれも `fake` バックエンドに対して行います。
+
+`bajutsu_doctor` は、サーバ内でデバイス不要の実ロジックを走らせます。`bajutsu_run` は実際の `bajutsu run` を起動しますが、その verdict は環境に依存します。そのため round-trip では、verdict 行が transport を往復することだけを確認します。
+
+`mcp_wire` マーカーが、このスイートを高速ゲートから外します（pyproject の `addopts` の `not mcp_wire`）。実サブプロセスと stdio のプロセス間通信（IPC）は、in-process 呼び出しより時間に敏感です。そこで、まず**ゲート対象外**の PR ごとのシグナルとして着地させ、安定を確認してから必須化します。BE-0282 の `network (playwright)` が示した前例です。
+
+### `web-e2e.yml`：web（Playwright）バックエンドのレーン
+
+この workflow は **web（Playwright）バックエンド**のレーンです（BE-0279）。ヘッドレス Chromium に対する 6 ジョブから成ります。
+
+**smoke (playwright)** は、`demos/web` のシナリオを実行します（`make -C demos/web e2e`）。
+
+**dogfood (serve UI)** は、Bajutsu 自身の serve SPA を駆動します（BE-0058）。
+
+**conformance (playwright)** は、BE-0114 のドライバコントラクトを実ブラウザに対して実行します。
+
+**network (playwright)** は、実ネットワーク経路を動かします（`make -C demos/web e2e-network`、BE-0282）。対象は次のとおりです。
+
+- `page.route` の介入
+- `requestfinished` のキャプチャ
+- `mocked` フラグ
+- 実際にキャプチャした証拠の redaction
+
+**codegen (playwright)** は、シナリオからネイティブな Playwright テストを生成します（`make -C demos/web codegen-e2e`、BE-0293）。生成したテストは、実際の `@playwright/test` ランナーで実行します。`ios-e2e.yml` の `codegen (xcuitest)` の web 版です。
+
+**onboarding (doctor / provision)** は、`bajutsu.common.provisioning.provision` を実行します。対象は、ブラウザが本当に入っていないホストです。provision 後には、`doctor` の環境ゲートを再確認します（BE-0304）。
+
+このレーンは **Mac / Simulator 不要**で、コアがプラットフォーム非依存であることを示します。
+
+6 つのジョブは、同じ `changes` 検出ジョブでパスゲートします（`scripts/e2e_changes.py`、`E2E_LANE=web`）。**onboarding** を除く 5 つのジョブは、決定論的で実行環境に依存しません。この 5 つが、常に結果を報告する `E2E (web)` ジョブ（必須チェック）に集約されます。**onboarding** は PR ごとの参考シグナルにとどまります（BE-0304）。web 経路に影響しえない PR はブラウザジョブを飛ばし、ゲートは合格します。
+
+**network (playwright)** と **codegen (playwright)** は、いずれもまず PR ごとのシグナルとして着地させました。CI で安定を確認できたので、現在はどちらも `E2E (web)` の `needs:` に昇格しています。**network** は、`android-e2e.yml` ですでにゲート入りしている `network (adb)` の web 版です。**codegen** は、`ios-e2e.yml` ですでにゲート入りしている `codegen (xcuitest)` の web 版にあたります。
+
+### `dependency-audit.yml`：依存関係の監査
+
+この workflow は、ロックした依存グラフ（`uv export` → `pip-audit --no-deps`）を脆弱性 DB に照合します。
+
+結果はロックファイルと DB だけで決まります。そのため、依存の変更時に実行します。変わらない pin に対して新たに公表された脆弱性を拾うため、週次のスケジュールでも実行します。
+
+### `swift.yml`：BajutsuKit のユニットテスト
+
+この workflow は、[BajutsuKit](../../BajutsuKit) の `swift build` と `swift test` を実行します。純 Foundation のロジック（リクエスト照合 / モック解析）を、シミュレータ無しで単体テストします。実機でのインターセプトそのものは `ios-e2e.yml` がカバーします。
+
+### `ios-e2e.yml`：iOS（XCUITest）バックエンドのレーン
+
+この workflow は **iOS（XCUITest）バックエンド**のレーンです。showcase に対する 10 個の macOS ジョブから成ります。いずれも XCUITest バックエンド（常駐の BajutsuRunner）で走ります。
+
+#### iOS のビルドとセットアップ
+
+**build (app + runner)** ジョブは、showcase の 2 つのアプリ（SwiftUI + UIKit）と常駐ランナーを一度だけビルドします。ビルド結果は、1 つの `ios-build` アーティファクトとしてアップロードします。
+
+consumer のジョブは、ビルドし直すのではなく、この成果物をダウンロードしてインストールします。コールドの Swift ビルドは、ジョブごとにではなく一度だけ支払われます。
+
+各 consumer は、この成果物を複合アクション [`download-ios-build`](../../.github/actions/download-ios-build/action.yml) で取得します。このアクションは、短い間隔を置いてダウンロードを最大 2 回再試行します。アーティファクトサービスへの一時的なネットワークエラーが 1 回起きただけで、シナリオが走る前にジョブが失敗することはなくなりました。
+
+共有の `setup-ios-toolchain` コンポジットアクションが、macOS の各ジョブが繰り返す手順をまとめています。対象は Xcode / uv / xcodegen / シミュレータ起動の手順です。`build` ジョブはシミュレータ不要なので、`boot: false` を渡します。
+
+#### iOS のジョブ
+
+**run (xcuitest)** は、同型のゲート担当レーンです。かつては別々の `smoke` / `gestures` / `permission` / `runner-actuation` ジョブだったシナリオを、1 回の `bajutsu run` にまとめました。常駐ランナーをシナリオ間で warm 再利用します（BE-0291）。
+
+ただしこのレーンでは、再利用を 1 回に制限しています（`BAJUTSU_XCUITEST_MAX_WARM_REUSES: 1`）。混雑した CI ホストでの run 中のランナークラッシュを抑えるためです。
+
+実際に走る 12 個のシナリオドキュメントは、7 個のファイルが保持する全シナリオです。BE-0315 が通知許可をネイティブにしたため、除外する `ai` タグ付きのシナリオはありません。これらは、コールドの `xcodebuild test-without-building` の起動を一度ではなく 6 回支払います。
+
+6 回は、置き換えた 4 個の個別ジョブの合計より 2 回多い回数です。ただし、その 4 個のジョブはそれぞれ自前の Swift ビルドと起動も支払っていました。レーン全体で一度だけ支払う共有の `build` ジョブの分だけ、正味のコストは今も下がっています。
+
+シナリオの内訳は次のとおりです。
+
+- Stable カタログ（`smoke.yaml`）
+- ピンチ / 回転の 2 本指ジェスチャ（`gestures_multitouch.yaml`、BE-0019）
+- 常駐ランナーチャネルの `/type`（`search.yaml`）と `/swipe` + `/back`（`notices.yaml`、BE-0281）
+- 提示された `UIAlertController` の各ボタンのタップ（`alert.yaml`）。`uniquelyIdentifiedElement` の重複グループの分岐に到達する唯一のシナリオで、この分岐は `swift test` ではコンパイルされません
+- 決定論的な `permissions` フィールドと、BE-0315 以降はネイティブなリアクティブ `systemAlertHandling` の通知許可（`permission.yaml`）。BE-0276 の location と BE-0315 の通知が対象で、どちらもゲート上で走ります
+- プロアクティブな `handleSystemAlert` ステップ（`permission_system_alert.yaml`、BE-0316）。視覚モデルなしのアクセシビリティクエリで、SpringBoard の通知許可プロンプトの「許可」ボタンをタップします
+
+`run` は各シナリオを個別の verdict まで実行し、どれかが失敗すればゲートを赤くします。シナリオごとの合否は、ジョブ名ではなく run のレポートに移ります。
+
+**actuation (xcuitest)** は、このレーンでゲート対象外の受け皿となるジョブです。まだ `run` に昇格していない実機の XCUITest アクチュエーション（BE-0281）を駆動します。
+
+- `back`（`navigation.yaml`）
+- デバイス制御（`setLocation` / クリップボード / `push`、`device.yaml` + `push.yaml`）。Stable の起動タブ上で実行します
+- 割り込みモニタが消すフォアグラウンドの通知バナー（`push_banner.yaml`、BE-0416）
+- テキスト編集の 4 つのアクチュエータ（`text_editing.yaml`）
+
+さらに、アクチュエートできる 3 つ目のバックエンドとして、シナリオ作成機能（BE-0285）も駆動します。
+
+- Log タブのライブなカウンタ値を取り込む `extract`（`extract.yaml`）
+- Stable の 5 行を反復する `forEach`（`foreach.yaml`）。ループ本体で詳細画面を push / pop して、反復のあいだにツリーを変化させます
+- data-driven の行（`data_driven.yaml`）
+- `relaunch`（`relaunch.yaml`）
+
+この 4 つは showcase の共有シナリオファイルをそのまま使います（BE-0221）。デバイス制御のシナリオより前に並べます。配信された通知や OS レベルの許可が、この 4 つの前へ来ないようにするためです。
+
+リストの最後には、次の 2 つを置きます。
+
+`system_alert_handling.yaml` は、`systemAlertHandling.rules` の宣言だけで各プロンプトに応答できることを確かめます。`handleSystemAlert` ステップは使いません。内訳は、通知の拒否に加えて、トラッキングとペーストそれぞれの許可と拒否で、計 5 本です。
+
+拒否のシナリオは、XCUITest のデフォルトのハンドラではなく rule が応答したことを示します。デフォルトのハンドラはデフォルトのボタンを押すため、拒否の状態を作れないからです。このファイルも実機の新しいカバレッジなので、次のファイルと同じ理由でここから始めます。
+
+`paste_system_alert.yaml`（BE-0369）は、プロセスをまたぐペーストにプロアクティブなステップで応答するシナリオです。`setClipboard` がアプリの外からペーストボードに値を書くため、アプリ自身の読み取りが iOS のペースト同意プロンプトを上げます。`handleSystemAlert: { prompt: paste }` が、ネイティブなアクセシビリティ照会でそのプロンプトに応答します。
+
+許可と拒否のそれぞれを、対象の locale のもとと `locale: ja_JP` のもとで実行します。日本語の 2 本は、日本語で描画される SpringBoard に対してラベルの対応表を確かめます。実機の新しいカバレッジなので、`run` へ昇格させる前にここで安定性を確かめます。
+
+**golden (xcuitest)** は、BE-0006 の要素ツリー golden を XCUITest で実行します（`golden.yaml`）。`android-e2e.yml` の `golden (adb)` に対応する iOS 版です。
+
+**codegen (xcuitest)** は、シナリオからネイティブ XCUITest を生成し（`make -C demos/showcase ui-test`）、`xcodebuild` で実行します。テスト時に bajutsu / AI は不要です。UITests スキームをコンパイルするジョブで、常駐ランナーとは別の成果物です。そのため自前でビルドし、`build` アーティファクトの consumer にはなりません。
+
+**bundled-runner (xcuitest)** は、config の `testRunner` ではなく wheel バンドルから解決したランナーを使います。SwiftUI と UIKit 両方の a11y アプリに対して smoke シナリオを実行し（BE-0292）、ランナーがアプリに依存しないことを確認します。
+
+**conformance (xcuitest)** は、ドライバ conformance スイート（BE-0114）を XCUITest バックエンドに対して実機で実行します。
+
+スイート実行中の Simulator インフラ障害（常駐ランナーのクラッシュ、`base.BackendCrashError`）は、`bajutsu run` と同じように復旧します。新しいデバイスを取り直して、該当テストを再実行します。上限はテストごとに、再試行回数と壁時計の再起動予算（`BAJUTSU_CRASH_RETRIES` / `BAJUTSU_CRASH_RECOVERY_BUDGET`）で区切ります。
+
+これによりこの必須チェックは、ホストのフレーキーではなく本物の契約違反で赤くなります。毎回クラッシュする場合は、今までどおり明確に失敗します。各再起動は、アップロードする `conformance-recovery-report` アーティファクトに数え上げられます（BE-0334）。
+
+固まった CoreSimulator はホスト側の障害ですが、デバイスを作り直しても直りません。作り直しの手順そのものが、いま停滞したのと同じ `simctl` 呼び出しでできているうえ、その停滞は放っておいても解消するからです。そこでスイートは再試行せず、ジョブログでホスト障害として名指しし、同じアーティファクトに数え上げます。
+
+スイートは、アプリのデータコンテナの解決をテストごとではなくリースごとに行います。その 1 回の読み取りが期限を超えたときだけ、もう一度試します。2 回目で解消した停滞は何も赤くしないので、先行指標として同じアーティファクトに数え上げます。あとでチェックを固まらせるのは、悪化していくこの同じホストだからです（BE-0378）。
+
+**fault-injection (xcuitest)** は、健全なランナーを駆動する代わりに、ランナー自身のホストプロセスにシグナルを送ります（BE-0305）。
+
+短い `SIGSTOP` は、固まったランナーと同じようにチャネルをハングさせるので、一過性リトライ（BE-0207）が吸収しなければなりません。リトライ予算を超える凍結は、crash-recovery（BE-0287）が乗り越えなければなりません。`SIGKILL` では、無関係なタイムアウトではなく実行中のランナー障害を名指しするクラッシュ診断で、読み取りが終わらなければなりません。
+
+各ケースは、検証対象の層に到達したというチャネル自身のログ記録を合図に障害を解除します。推測した待ち時間には頼りません。
+
+**visual (xcuitest)** は、Stable カタログをコミット済みの `baselines_ios/` ベースラインとピクセル比較します。コマンドは `make -C demos/showcase e2e-visual` です。ステータスバーと「Liquid Glass」タブバーはマスクします。`e2e-visual` は自前でアプリをビルドし直します。そのため `codegen` と同様に、`build` アーティファクトの consumer にはなりません。
+
+**network (xcuitest)** は、iOS の transport の上でネットワークの実経路を動かします（BE-0282）。コマンドは `make -C demos/showcase e2e-network` です。`network (playwright)`（`web-e2e.yml`）と `network (adb)`（`android-e2e.yml`）にあたる iOS 版です。
+
+BajutsuKit のアプリ内 `URLProtocol` が、モックされた `POST /post` に 201 で応答します（実サーバなら 200 を返します）。各 exchange はループバック上の collector へ報告します。続く 2 本目のシナリオは、スタブを介さないカタログの `GET` を発行します。観測されたという事実だけをアサートします。
+
+そのうえで `demos/showcase/network/assert_network_evidence.py` が、永続化された `network.json` をアサートします。確認する条件は次の 3 つです。
+
+- モックされた exchange の `Authorization` ヘッダと `password` のフィールドがマスクされていること
+- 生の秘密情報がファイルのどこにも残っていないこと
+- スタブを介さない exchange が `mocked` を false として記録されていること
+
+最後の条件により、マッチ範囲の広すぎるモックが、何もスタブしていない通信を自分のものだと主張できなくなります。
+
+このうちマスクの確認が、BE-0282 が埋めようとしたギャップです。純粋なマスクのテストはすべて、手で組み立てた exchange をアルゴリズムに渡します。そのため、実際にキャプチャした資格情報が出荷される証跡でマスクされるかは、iOS 上ではここ以外で観測できません。このジョブは必要なものを自前でビルドする `make` ターゲットを動かします。そのため `codegen` や `visual` と同様に、`build` アーティファクトの consumer にはなりません。
+
+このレーンには、デバイスを 2 台使う **pool (xcuitest)** ジョブ（BE-0298）がありましたが、取り下げました。2 台目の Simulator を起動し、1 回の `bajutsu run --workers 2` に対してデバイスプールの分離の主張を検証するジョブでした。その判定を返せたのは、5 回のうち 1 回だけです。
+
+残る 4 回は、プールの検査ではなくホストで崩れました。
+
+- `SimRenderServer` が自身のディスパッチキューでクラッシュする
+- 固まった CoreSimulator に対して `simctl uninstall` がタイムアウトする
+- runner のチャネルが run の途中で到達不能になる
+
+赤くなるたびに、10 倍課金のランナーを 30 分ほど使いました。動画記録とタッチマーカーとシナリオの半分を削っても、崩れる位置が早まっただけでした。実際の並行デバイスに対するこの主張の検証は、いま Android レーンの `pool (adb)` だけが担います。このレーンでは、高速スイートの記帳の証明（`tests/runner/test_pool.py`）だけが残ります。
+
+#### iOS のマージゲート
+
+10 個のジョブはすべて、同じ `changes` 検出ジョブでパスゲートされます。そのうち次の 5 つは、常に結果を報告する単一の `E2E (iOS)` ジョブ（必須チェック）に集約されます。
+
+- `build`
+- `run`
+- `codegen`
+- `bundled-runner`
+- `conformance`
+
+`actuation`、`golden`、`visual`、`network` も、同じ検出ジョブでパスゲートされます。ただし `E2E (iOS)` の `needs:` には、意図的に含めていません。
+
+- 新しく配線した XCUITest のアクチュエーションは、まず参考シグナルとして着地させます。Simulator レーンにはフレーキーの実績があるため（BE-0218）、安定を確認してからゲートに昇格させます
+- 要素ツリーの `golden` は決定論的で実行環境に依存しないため、そのドリフトを参考シグナルとして出します
+- `visual` のピクセルのベースラインはホスト依存です。Simulator のレンダラが Xcode / デバイス / OS で変わるためです
+- `network` も実機の新しいカバレッジなので、同じくまずシグナルとして着地させます。その web 版が `E2E (web)` へ加わる前にたどったのと同じ道筋です
+
+`fault-injection` は、BE-0282 と同じ道筋をたどりました。まずシグナルとして着地し、レーンを赤くしていた runner の HTTP サーバの欠陥が直ったあと、失敗のない 64 回の実行を根拠に `needs:` へ入りました（BE-0305）。
+
+いずれのジョブも、ドリフトやフレーキーを PR のブロックではなく、単独ジョブのシグナルとして出します。`visual` が採取したスクリーンショットは `ios-e2e-visual-run` としてアップロードし、ベースラインの再採取に使います。
+
+### `android-e2e.yml`：Android（adb）バックエンドのレーン
+
+この workflow は **Android（adb）バックエンド**のレーンです（BE-0208）。iOS や web のレーンのジョブ分割にならった、観点ごとの 12 ジョブから成ります。各ジョブが、自前の x86_64 API 34 の Android Virtual Device（AVD）を KVM のもとで起動します。起動には `reactivecircus/android-emulator-runner` を使います。これに加えて、AVD を起動しない13番目の **warm gradle cache (adb)** ジョブがあります。
+
+このレーンは **Mac / Simulator 不要**です。iOS と web の e2e レーンに並ぶ、3 つ目のバックエンドの Linux 版にあたります。`changes` 検出ジョブがパスゲートします（`scripts/e2e_changes.py`、`E2E_LANE=android`）。ジョブは、必須の集約ジョブ `E2E (android)` に集約します（BE-0279）。
+
+#### Android エミュレータのパッケージ
+
+AVD を起動する各ジョブは、最初のエミュレータのステップより前に、Android Emulator とシステムイメージをインストールします。使うのは [`install-android-emulator-sdk`](../../.github/actions/install-android-emulator-sdk/action.yml) の composite action です。
+
+`sdkmanager` は、ダウンロードしたアーカイブを展開できなくても警告を出し、終了コード 0 で終わります。そのため、壊れたダウンロードは後続の `adb` の `Connection refused` としてしか現れませんでした。この action はインストールを 1 回だけ再試行します。再び失敗したら、パッケージ名を示してステップを失敗させます（`scripts/install_android_sdk_packages.sh`）。
+
+#### Android の Gradle キャッシュ先行ビルド
+
+**warm gradle cache (adb)** ジョブは、Compose と resident server の APK を先に一括でビルドします。`smoke`、`golden`、`conformance`、`fault-injection`、`pool` が、そろってこの APK をビルドするためです。この5つのジョブは、その分だけ依存解決とコンパイルを5回コールドでやり直さずに済みます。温めておいた Gradle の依存キャッシュとビルドキャッシュを復元して、ビルドを走らせます。
+
+Views は、ここではビルドしません。Views を必要とするのは `smoke` だけです。ここで温めると、残り4つのジョブが（ジョブレベルの `needs:` のため）使いもしない Views のコンパイルを待つことになります。`smoke` 自身の Views ビルドは、このジョブができる前と同じく温めないままです。
+
+`network`、`visual`、`codegen` は、意図してこの `needs:` から外しています。`codegen` はさらに Compose の AndroidTest（計装）バリアントを必要としますが、warm gradle cache (adb) はこれをビルドしません。ジョブレベルの `needs:` は、Gradle と無関係な AVD キャッシュのステップまで巻き込みます。ビルドが終わるまで、その軽いジョブ自身を丸ごと止めてしまいます。キャッシュヒットで得られる以上の待ち時間を強いることになるからです。
+
+同一ラン内で並行実行するジョブどうしは、保存前のキャッシュを `actions/cache` で共有できません。そのため warm gradle cache (adb) を先に走らせ、先ほどの5つが `needs: warm-gradle-cache` を宣言します。`cache-read-only` はどのジョブも明示的には渡さず、composite action 側の安全なデフォルト（`true`、読み取り専用）に任せています。`gradle/actions` が文書化している、マルチジョブでのキャッシュ共有パターンです。
+
+warm gradle cache (adb) が外れる、あるいは失敗しても、失うのは時間だけで、正しさは変わりません。そのため下流の各ジョブの `if:` は、`always()` ではなく `!cancelled()` を使います。`always()` では、`android-e2e.yml` 自身の `concurrency: cancel-in-progress` で打ち切られたはずの実行でも、ジョブが動き続けてしまうためです。
+
+`!cancelled()` は、warm gradle cache (adb) の成功に対する `needs` の暗黙の依存を、明示的な許容条件で吸収します。実行そのものが打ち切られた場合は、そこで止まります。このジョブは `E2E (android)` の `needs:` にも加えていません。
+
+#### Android のジョブ
+
+**smoke (adb)** は、Compose と Views の showcase APK をビルドします。Stable タブのシナリオを `--backend android` で実行します（`make -C demos/showcase/android e2e`）。シナリオは、コアの id/tap/type/value のフローに、詳細画面への push と pop で戻る back ナビゲーションを加えたものです。
+
+**golden (adb)** は、Compose の Stable カタログの golden 要素ツリーを実機でチェックします（BE-0006 / BE-0208 ユニット 4）。コマンドは `make -C demos/showcase/android e2e-golden` です。続いて resident チャネルを切って再実行します（BE-0245）。コマンドは `make -C demos/showcase/android e2e-fallback` です。両方の読み取り経路が一致することを確かめます。
+
+**network (adb)** は、BE-0283 のネットワークキャプチャの検証です。`request` ステップが、実際のエミュレータ通信を観測します。通信は、BajutsuAndroid のインターセプタが `adb reverse` の collector ブリッジ越しに報告します。
+
+**conformance (adb)** は、ドライバ conformance スイート（BE-0114）を実 adb バックエンドに対して実行します。`ios-e2e.yml` の `conformance (xcuitest)` の Android 版です。
+
+**fault-injection (adb)** は、ディスプレイをスリープさせます（BE-0305）。コマンドは `make -C demos/showcase/android e2e-fault-injection` です。実際の読み取り元が、本当に空の要素ツリーを返す状態になります。このジョブは 2 つを検証します。
+
+- `CoordinateTreeDriver` の transient-empty リトライが、実際の条件を乗り越えること。高速スイートのテストでは、この条件を組み立てるしかありません
+- リトライ予算を超えて空が続いた場合に、明確に失敗すること
+
+**visual (adb)** はピクセル VRT を実行します（後述）。**pool (adb)** は、このレーンで唯一エミュレータを 2 台使うジョブです（BE-0298。後述）。**uiautomator (codegen)** は codegen の出力経路です（後述）。
+
+**pool (adb)** は、キャッシュした AVD の 2 台目のインスタンスを `-read-only` で起動します。起動は、emulator-runner アクション自身のステップの内側から行います（`scripts/android_pool_e2e.sh`）。スクリプトが必要なのは、このアクションにエミュレータを 2 台使うモードがないからです。アクションが起動するエミュレータは、そのステップのあいだしか生きていません。
+
+ジョブは、状態に依存しないシナリオ 4 本を 1 回の `bajutsu run --workers 2` で走らせます（`make -C demos/showcase/android e2e-pool`）。分離の主張は `scripts/assert_pool_isolation.py` で検証します。
+
+2 台とも `-memory 3072 -cores 1` と `-read-only` で動かします。`-read-only` は、2 つのエミュレータプロセスが 1 つの AVD を共有できるようにするフラグです。ジョブ自身のエミュレータにも、このフラグを渡します。AVD を読み書きで掴んだインスタンスは AVD をロックし、2 台目をそのまま拒否するからです。
+
+`-read-only` はスナップショットの読み込みも無効にします。このジョブは、このレーンで唯一、常に 2 台ともコールドブートします。自前の AVD キャッシュエントリが買うのは、resume ではなく AVD の作成です。変更フィルタも、レーン全体のシグナルではなく、より狭い `pool` 出力を使います。
+
+`visual (adb)` ジョブは、Compose の Stable カタログのピクセル視覚回帰チェックを実行します（BE-0208 ユニット 4）。コマンドは `make -C demos/showcase/android e2e-visual` です。要素ツリーの golden とは異なり、ピクセルのベースラインはホスト依存です。x86_64 のソフトウェアレンダラ（swiftshader）とローカルの arm64 エミュレータは、ピクセル単位で食い違います。
+
+そのためこのベースラインは、arm64 ではなくこの x86_64 レーンで採取してコミットします。置き場は `demos/showcase/scenarios/visual/baselines_android/` です。上部のステータスバーはマスクするので、時計が比較を揺らすことはありません。
+
+同じターゲットは続けて `status_bar_android.yaml` も実行します（BE-0478 ユニット 6）。Home キーで `background` と `foreground` を行い、System UI のデモモードで `overrideStatusBar` を適用します。ステータスバーの帯だけを専用のコミット済みベースラインと比較し、アプリ単位のロケール `ja_JP` がアプリ自身の構成に届いたことを読み取って確かめます。
+
+`uiautomator (codegen)` ジョブは、codegen の出力経路です（`make -C demos/showcase/android e2e-codegen`、BE-0294）。`ios-e2e.yml` の `codegen (xcuitest)` の Android 版です。このジョブは、`codegen_android.yaml` からネイティブ UI Automator（Kotlin）テストを再生成します。
+
+続いて Gradle の `connectedAndroidTest` が、Compose の a11y アプリと計装 APK をビルドして両方をインストールします。生成テストは、エミュレータに対して実行します。テスト時に bajutsu / adb ドライバ / AI は不要です。ビルド前に再生成するので、古いチェックインがエミッタや `androidx.test.uiautomator` API のドリフトを覆い隠すことはありません。
+
+#### Android のエミュレータとシナリオの範囲
+
+AVD は、ローカル検証の arm64 ではなく x86_64 にしています。x86_64 ランナー上で KVM が加速できるようにするためです。golden のベースラインは arm64 で採取していますが、x86_64 でも通ります。比較がフィールド単位で、frame は健全性チェックだけだからです。
+
+sheet/cover のフロー（`components`、`modals`）も、このレーンに限って条件待ちの上限を引き上げることで含めています。`make -C demos/showcase/android e2e` が、`BAJUTSU_MIN_WAIT_TIMEOUT`（既定 15 秒）を各待ちのタイムアウトの下限として渡すためです。ソフトウェアレンダリングのエミュレータは、共有シナリオの 5 秒の待ちに収まらないほど遅くモーダルを描画します。
+
+条件待ちは、条件が満たされた瞬間に返ります。上限を広げても固定の待ち時間にはならず、安全な上限にとどまります。共有シナリオには手を入れません（`timeout: 5` はどのバックエンドでも同じです）。
+
+深いスクロールのフロー（`controls`、`notices`）もこのレーンに加えました。`controls` はボタン群の下にある segmented control の値ノードを、`notices` は一覧のずっと下のほうにある行を、それぞれ `scroll`（BE-0326）で画面内に入れます。`scroll` は非慣性でツリーを再クエリするステップで、対象の中心が画面内に入った時点で止まります。
+
+固定距離のスワイプ連鎖は、密度の高い Android の画面（2400px）では iOS（約 900pt）に比べて画面のごく一部しか進みません。そのため、バックエンドごとの距離調整が要りました。`scroll` の再クエリは、その調整を不要にします（BE-0208 ユニット 5）。
+
+`system` と `modals` も、この変更で同じように `scroll` で遠くの対象を画面内に入れます。対象は、Permissions タブの `sys.paste.value` と Log タブの `log.dialog.value` です。これでこのレーンの 4 つのフローが `scroll` に依存します。
+
+単一タッチのジェスチャのフロー（`gestures`）もこのレーンに加えました。adb ドライバが、root 化したエミュレータでは生の `sendevent` によるタッチ列でダブルタップを実行するようになったためです（`e2e` ターゲットが先に `adb root` を実行します）。2 回のタップが 1 回の `adb shell` のなかで発火します。タップごとに `input` の JVM を起動していたときには超過していた、プラットフォームのダブルタップの受付時間に収まります。root 化していないデバイスでは、従来どおり `input tap` にフォールバックします。
+
+対象を画面内に入れるためのスワイプは、ユニット 5 のもう一方の仕組みに支えられています。既定の方向スワイプは、画面サイズに対する一定の割合だけ進みます。定数は `bajutsu/common/orchestrator/actions/handlers/gestures.py` の `_SWIPE_FRACTION` です。そのため、密度の高い Android の画面（2400px）でも iOS の画面（約 900pt）でも、同じ割合をカバーします。固定距離では、そうはいきませんでした（BE-0208 ユニット 5）。
+
+マルチタッチのジェスチャのフロー（`gestures_multitouch`）もこのレーンに加えました（BE-0232）。adb ドライバが、root 化したエミュレータでピンチ / 回転を生の 2 スロットの `sendevent` スイープとして実行します。2 つの接点が、複数フレームにわたって一緒に動きます。iOS が XCUITest で動かす共有シナリオが、Android でもそのまま動きます。単一タッチのダブルタップと違って `input` へのフォールバックはなく（2 本指のジェスチャは近似できません）、root を要し、なければ明確に失敗します。
+
+ランタイム権限のフロー（`permission`）もこのレーンに加えました（BE-0208 ユニット 6。BE-0210 の事前付与を検証します）。これは iOS レーンが走らせるのと同じ `permission.yaml` です。付与の仕組みはシナリオではなく config にあるので、1 つのファイルで両方をまかなえます。
+
+`showcase-compose` は、`POST_NOTIFICATIONS` を事前に付与します（`grantPermissions` により lease 時に `pm grant` を実行します）。そのため Android の `RequestPermission` コントラクトは、ダイアログを出さずに付与済みとして即座に返ります。シナリオの `systemAlertHandling` ガードはここでは発火しません。よってこのレーンでもフローは決定的なまま（LLM も固定の待ち時間もなし）に保たれます。通知を事前付与できない iOS では、このガードが代わりに「Allow」をタップします。
+
+デバイス制御のフロー（`device`）もこのレーンに加えました（BE-0208 ユニット 5）。GPS の位置を上書きし（`emu geo fix`）、クリップボードを書き込んで読み戻します。落ち着いた画面を再度確認します。これは iOS レーンが走らせるのと同じ `device.yaml` です。`setLocation` とクリップボードは両プラットフォームで宣言されます。そのため 1 つのファイルが、iOS でも Android でも動きます（`push` は `push.yaml` に分けました）。smoke ジョブは `push.yaml` と `push_android.yaml` も実行します。BajutsuAndroid のプッシュレシーバ経由でプッシュを届け、アプリのハンドラが表示したタイトルを確認します（BE-0498）。
+
+フローは Stable の起動タブ上で、デバイス制御ファミリのうち `setLocation` と `clipboard` の両方を動かします。`cmd clipboard` は実機では黙って何もせず、Android 10 以降はフォアグラウンドのアプリしかクリップボードを触れません。そのためクリップボードは、showcase が `BajutsuAndroid` から組み込むアプリ内レシーバを経由します（BE-0233）。この書き込みと読み戻しは、強い assertion です。
+
+位置のフロー（`location_android`）もこのレーンに加わります（BE-0481）。`e2e` はエミュレータ自身の serial でこのフローを走らせ、その経路は `emu geo fix` を使います。別の **location over adb connect (adb)** ジョブが、同じフローを走らせ直します。このジョブは `e2e-location-connect` を使い、`adb connect` で接続したエミュレータで走ります。
+
+このジョブは、実行履歴がたまるまで `E2E (android)` の `needs:` に含めない PR ごとのシグナルです。`golden` や `app-crash` と同じ扱いです。`<host>:<port>` の serial には、adb から届くコンソールがありません。そのため `setLocation` は、BajutsuAndroid のアプリ内の位置レシーバを通ります。実機が通るのと同じ経路です。
+
+割り込みハンドラのフロー（`interrupts`）もこのレーンに加えました（BE-0314）。これは実際のアプリでは発火しない構文デモです。`interrupts` エントリの `condition` は画面上の何にも一致しないため、その裏で走るのは `firstlook` と同じ Stable→Horse→お気に入りのフローです。アプリや config に追加の変更は要りません。
+
+`firstlook` に対してこのフローが加えるのは、生きたツリーに対する BE-0314 の確認経路です。`wait` は自分のポーリング用ツリーに相乗りするので、追加のコストはかかりません。素の act ステップは、このシナリオが `screenChanged` ポリシーを宣言していないため、ガード用のクエリを 1 回追加で払います。
+
+こうして、一度も発火しないハンドラが実機で何も乱さないこと、act 1 回につき読み取り 1 回分で収まることを、高速スイートの fake では示せない形で証明します。Views 版のレーンにも加えました。id はドット区切りの SPEC 形式とアンダースコア区切りの Android Views 形式の両方を持ちます（BE-0221）。`firstlook` がすでに Views ツリーで実証済みの同じ id なので、そのまま動きます。
+
+#### Android のマージゲート
+
+決定論的で実行環境に依存しない次のジョブを、常に結果を報告する集約ジョブ `E2E (android)`（必須チェック、BE-0279）に集約します。
+
+- `smoke (adb)`
+- `conformance (adb)`
+- `network (adb)`
+- `fault-injection (adb)`
+
+`golden (adb)`、`visual (adb)`、`uiautomator (codegen)`、`pool (adb)` は、その `needs:` から意図的に外し、参考シグナルにとどめます。理由は次の 3 点です。
+
+- 要素ツリーの golden は、上流依存の変化で赤くなりえます
+- ピクセルのベースラインは、ホスト依存です
+- codegen とエミュレータ 2 台のレーンは、BE-0282 の前例にならい、まずシグナルとして着地させます
+
+これは iOS の `E2E (iOS)` が引くのと同じ判断基準です。
+
+`fault-injection (adb)` は、BE-0282 の道筋を最後まで歩みました。73 回の実行で失敗は 1 回でした。しかもそれは、レーンが検証している内容ではなく、エミュレータが起動しなかったことによるものです。同じ期間の `conformance (adb)` は、67 回中 4 回失敗しています。
+
+この結果が、`fault-injection (adb)` をシグナルの地位から集約ジョブの `needs:` へ押し上げました。リトライの実際の検出に入った回帰は、マージが無視できる赤ではなく、マージを止める赤になりました（BE-0305）。
+
+`tests/test_e2e_gate_needs.py` は高速スイートで、次の 3 点を固定します。
+
+- 各集約ジョブの構成
+- ゲートが `needs:` に挙げたジョブは、それぞれの結果が読まれるという不変条件
+- それぞれの結果が本当にチェックを赤にすること（verdict のスクリプト自体を実行して確認）
+
+依存の失敗が、集約ジョブが green と数えるパススキップとして通ってはならないからです。
+
+### `devicefarm.yml`：AWS Device Farm へのバッチ投入
+
+この workflow は **AWS Device Farm へのバッチ投入**です（BE-0235）。showcase の Compose APK をビルドし、Bajutsu、config、シナリオをパッケージ化します。パッケージは [`scripts/devicefarm_submit.py`](../../scripts/devicefarm_submit.py) に渡します。このスクリプトは次の処理を行います。
+
+- `bajutsu run --backend adb` を Device Farm のホストで実行する、カスタム環境のテスト仕様をアップロードします
+- 実行をポーリングします
+- 成果物をダウンロードします
+- **Bajutsu 自身の manifest 判定**（Device Farm の分類ではありません）を表示します
+
+この workflow は決定的なコアの外側の CI 側のグルーなので、判定に LLM は触れません。起動は `workflow_dispatch` のみで、push / PR では動かず、必須チェックにもなりません。
+
+認証は、GitHub の OpenID Connect（OIDC）から発行する短命の AWS 認証情報（`AWS_DEVICEFARM_ROLE_ARN`）です。この認証情報を `devicefarm` の Environment にスコープします。プロジェクトとデバイスプールの ARN は、リポジトリ変数に置きます。いずれかが未設定ならジョブは緑の no-op になり、運用者がアカウントを接続するまで休止します。
+
+実アカウントでのシリアル解決の実証は、文書化した手動手順です（[AWS Device Farm](devicefarm.md) を参照）。決定的ゲートからは意図的に外しています。
+
+### `ai-smoke.yml`：実モデルのレーン
+
+この workflow は**実モデル**のレーンです。ジョブは 2 つで、どちらも**ゲート対象外**のシグナルです（BE-0282 の前例）。
+
+**smoke (direct Anthropic API)**（BE-0300）は、実プロバイダを呼び出します。呼び出しには、Bajutsu 自身のアダプタコード `bajutsu.ai.anthropic.AnthropicBackend` を通します。プロンプトは些細な強制ツールのものです。返り値がベンダー中立な `MessageResponse` として、空でなくパースできることだけを検証します。コマンドは `pytest tests/test_ai_backend_live_smoke.py -m live -n0` です。
+
+ほかのアダプタテストはいずれも、手書きの `FakeAnthropic` を駆動します。実 API の実際の形を再観測するものは、これ以外にありません。このジョブはトランスポートとスキーマの検証であって、モデルの品質検証ではありません。
+
+**accuracy (system-alert guard)**（BE-0308）は、実モデルに対するもう一方の問いを立てます。トランスポートが往復するかではなく、返ってきた答えが正しいかどうかです。このジョブは、ショーケースアプリから捕捉した本物の iOS システムダイアログを、視覚アラートロケータ（`bajutsu.agents.alerts.ClaudeAlertLocator`）に見せます。
+
+返ってきた座標が、正しい dismiss コントロールの frame 内に収まることを検証します。コマンドは `pytest tests/test_real_model_alerts.py -m live -n0` です。これがこのガード自身の安全性の主張です。ほかのガードのテストはいずれも、テスト作者が打ち込んだ `AlertDecision` を渡すだけです。実モデルに本物のアラートを見せて判断させるテストは、1 つもありません。
+
+ダイアログは、`tests/fixtures/be0308/` にコミット済みの捕捉物です。次の 4 つがあります。
+
+- 通知プロンプト
+- 位置情報プロンプト
+- iOS のプロセス間ペースト同意
+- ショーケースアプリ自身の削除確認（ガードがその破壊的なボタンに手を伸ばしてはならないケース）
+
+捕捉物に Simulator は要らないので、ライブなのはモデル呼び出しだけです。各捕捉物の整合性を確かめる決定的な検証は、認証情報なしで毎回のゲートを走ります。
+
+どちらのジョブも、`run` / CI の判定に LLM を置きません（prime directive 1）。いずれも AI の authoring 周縁だけを動かします。`live` マーカーが両方のスイートを高速ゲートから外します（pyproject の `addopts` の `not live`）。
+
+起動はどちらも `workflow_dispatch` のみで、push / PR では動きません。そのため、フォークからの実行が認証情報を目にすることはありません（`devicefarm.yml` が引く境界と同じです）。認証は、`ai-smoke` の Environment にスコープした `ANTHROPIC_API_KEY` のリポジトリ secret です。未設定ならテストが自身をスキップし、どちらのジョブも緑の no-op になります。運用者が secret を接続するまで、レーンは休止します。
+
+配線したのは、直接 Anthropic API アダプタのみです。Bedrock は稼働中の AWS ロールを、`ant` はサインイン済みの OAuth CLI シートを要します。いずれも現実的には CI の secret にできないためです。それらの `-m live` テストは、ローカルや手動でなら実行できます。
 
 ### マージを止める E2E チェックはどれか（BE-0279）
 
@@ -28,7 +399,7 @@
 チェックは参考シグナルにとどめます。実行はされ、ドリフトを自分のジョブ上に出しますが、マージは止めません。
 
 - **ピクセル視覚回帰（VRT）**、すなわち `visual` ジョブ。ピクセルのベースラインはホスト依存で（Simulator や
-  エミュレータのレンダラは OS・デバイス・ツールチェインで変わります）、そのドリフトは Bajutsu 側の変更と
+  エミュレータのレンダラは OS、デバイス、ツールチェインで変わります）、そのドリフトは Bajutsu 側の変更と
   無関係です。集約ジョブの `needs:` から外します。
 - **要素ツリーの golden**、すなわち iOS / Android の `golden` ジョブ。決定論的ですが、Android ではツリーを
   上流の実機側サーバを通して読み取るため、その変化が Bajutsu 側の変更と無関係に赤くしえます。そのため
@@ -45,15 +416,15 @@ PR は走りもブロックもされません。新しい必須の集約ジョ�
 このフィルタは `bajutsu/` の既定値を反転しています（BE-0333）。ファイルが「見てもらう」ために加わる必要のある
 手書きのポジティブリスト（未掲載のものは黙って何も発火しなかった）ではなく、共有のコアがパッケージ *全体* を
 一括して拾い、明示的に分類したものだけを差し引きます。すなわち、どのレーンも実行しない周辺（`_PERIPHERY_EXCLUSIONS`。
-各項目が除外の理由を持ちます — analytics / analysis スタック、MCP サーバ、AI アダプタ、GitHub と cloud の連携、
-そして混在パッケージ `agents` / `crawl` / `cli.commands` の個々の周辺モジュール）と、各レーンが再主張する
+各項目が除外の理由を持ちます。対象は analytics / analysis スタック、MCP サーバ、AI アダプタ、GitHub と cloud の連携、
+そして混在パッケージ `agents` / `crawl` / `cli.commands` の個々の周辺モジュールです）と、各レーンが再主張する
 backend 固有のリーフ（`_LANE_CLAIMED`）です。どちらにも名指しされないファイルは一括で拾われ、誰かが分類するまで
-全 3 レーンを発火させます — 無駄なジョブという安全側で、ポジティブリストが生んでいた黙った過小発火の代わりです。
+全 3 レーンを発火させます。無駄なジョブという安全側の失敗であり、ポジティブリストが生んでいた黙った過小発火の代わりです。
 この既定値が、ミスの一クラスをまとめて退治します。トップレベルのモジュールがパッケージへ分割されたケース
 （`bajutsu/config` と `bajutsu/platform_lifecycle` はどちらもこのずれを起こし、レーンがまさに動かすためにある
 コードを変更してもレーン全体が飛ばされていました）、新しいトップレベルモジュールや CLI コマンド、そして run パスが
-import しているのにリストが一度も名指ししなかったファイル — 毎 run が書き込むマニフェスト書き出し `bajutsu/common/report/`
-がその筆頭です — が、パッケージとモジュールが一括の拾い上げで等しく照合されるようになったため、いずれも発火します。
+import しているのにリストが一度も名指ししなかったファイル（毎 run が書き込むマニフェスト書き出し `bajutsu/common/report/`
+がその筆頭です）が、パッケージとモジュールが一括の拾い上げで等しく照合されるようになったため、いずれも発火します。
 
 分類の健全性は、いくつかのテストが保ちます。`test_run_path_closure_is_gated_or_excluded` は run パスの静的な `ast`
 import 閉包を辿り、到達したファイルがゲート対象でも分類済み周辺項目でもなければ落とします。run パスが *新たに*

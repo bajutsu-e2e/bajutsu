@@ -14,13 +14,14 @@ variable this replaces reached that code. A command with no gate installed — a
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from bajutsu.common.capability.command_policy import (
     CommandKind,
     CommandPolicy,
+    ConfigSource,
     command_sha256,
 )
 
@@ -42,13 +43,22 @@ class CommandGate:
         secret_values: Values masked out of a recorded command line, as `${secrets.*}` are in
             evidence.
         records: The `commandExecutions` entries, in the order the run met the commands.
+        scenario_source: Where the scenario files came from; None means the config's own source.
     """
 
     policy: CommandPolicy = field(default_factory=CommandPolicy)
     config_dir: Path | None = None
     secret_values: list[str] = field(default_factory=list)
     records: list[dict[str, Any]] = field(default_factory=list)
+    # Where the scenario files came from when that differs from the config (BE-0501).
+    scenario_source: ConfigSource | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    def for_scenario(self) -> CommandGate:
+        """This gate for a scenario's own commands: judged by its source, kept in the same record."""
+        if self.scenario_source is None:
+            return self
+        return replace(self, policy=replace(self.policy, source=self.scenario_source))
 
     def check(self, kind: CommandKind, field_name: str, cmd: str) -> str:
         """Decide *cmd* (declared at *field_name*); return the action, recording a refusal.
@@ -89,6 +99,10 @@ class CommandGate:
         self._append(
             field_name, cmd, "sandboxed" if sandboxed else "ran", exit_code=exit_code, cwd=cwd
         )
+
+    def record_skip(self, field_name: str, cmd: str, *, cwd: Path | None = None) -> None:
+        """Record a hook command whose `when` did not match, so it never ran (BE-0497)."""
+        self._append(field_name, cmd, "skipped", cwd=cwd)
 
     def _append(
         self,

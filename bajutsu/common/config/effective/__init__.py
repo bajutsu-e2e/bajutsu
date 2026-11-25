@@ -13,6 +13,7 @@ from .android_config import AndroidConfig
 from .doctor_thresholds import DoctorThresholds
 from .effective import Effective, PlatformConfig
 from .evidence_dirs import EvidenceDirs
+from .hook_phases import HookPhases
 from .ios_config import IosConfig
 from .run_defaults import RunDefaults
 from .web_config import WebConfig
@@ -23,6 +24,7 @@ __all__ = [
     "DoctorThresholds",
     "Effective",
     "EvidenceDirs",
+    "HookPhases",
     "IosConfig",
     "PlatformConfig",
     "RunDefaults",

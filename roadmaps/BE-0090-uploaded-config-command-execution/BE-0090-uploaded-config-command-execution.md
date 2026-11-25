@@ -18,15 +18,17 @@
 [BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md) lets a
 browser user upload a `.zip` bundle that `serve` extracts and binds as the **active config** the
 Replay / Record / Crawl tabs run from. An uploaded config is untrusted input, and BE-0073 already
-refuses one part of it: a target's `build` command is **never** executed on the host (the bundle
-ships a prebuilt binary; [DESIGN §1](../../DESIGN.md)). But a config carries other fields that run
-a shell command on the `serve` host — chiefly `launchServer.cmd` — and that command is **not**
-governed: when the bound bundle runs, the `bajutsu run` subprocess spawns it as written, on the bare
-host, with the operator's environment. This item replaces that bare-host execution with a `sandbox`
-mode that runs the uploaded command inside a throwaway **Docker** container so it cannot touch the
-`serve` host, and pairs it with an explicit policy (`deny` / `reuse` / `sandbox`) over *whether* the
-command runs at all. There is no longer any mode that reaches the bare host: running the uploaded
-server becomes something a multi-tenant host can allow, because the only way it runs is contained.
+refuses one part of it: a target's `build` command is **never** executed on the host, because the
+bundle ships a prebuilt binary ([DESIGN §1](../../DESIGN.md)). A config carries other fields that run
+a shell command on the `serve` host, chiefly `launchServer.cmd`, and nothing governs that command.
+When the bound bundle runs, the `bajutsu run` subprocess spawns the command as written, on the bare
+host, with the operator's environment.
+
+This item replaces that bare-host execution with a `sandbox` mode. The mode runs the uploaded command
+inside a throwaway **Docker** container, so the command cannot touch the `serve` host. The item also
+adds an explicit policy (`deny` / `reuse` / `sandbox`) over *whether* the command runs at all.
+No mode reaches the bare host any longer. A multi-tenant host can therefore allow the uploaded
+server to run, because the server runs contained.
 
 ## Motivation
 
@@ -44,36 +46,36 @@ Three config fields name a shell command, but they are not all live today:
   Playwright network collector, so `cmd` is currently a dormant surface that would execute the same
   way as `launchServer` once a launcher exists.
 
-So the live exposure today is `launchServer.cmd`; `mockServer.cmd` is a latent one the same policy
-must cover before it is wired. BE-0073 closes the `build` door for uploads (`start_run` forces
-`build=None` when the active config is an uploaded bundle) but leaves `launchServer` **open** — and it
-had to: a web bundle has **no** `appPath` binary, so `launchServer` is the only way it can be
-self-contained (it serves the bundled static app at run time), which is exactly why a blanket block
-isn't an option.
+So the live exposure today is `launchServer.cmd`, and `mockServer.cmd` is a latent exposure that the
+same policy must cover before the field is wired. BE-0073 closes the `build` door for uploads
+(`start_run` forces `build=None` when the active config is an uploaded bundle) but leaves
+`launchServer` **open**. It had to: a web bundle has **no** `appPath` binary, so `launchServer` is
+the only way the bundle can be self-contained (it serves the bundled static app at run time). That
+is exactly why a blanket block is not an option.
 
 The gap matters at the deployment boundary, not on a laptop:
 
 - **Tier-A (authenticated single-Mac `serve`).** Running an uploaded config's `launchServer.cmd` is
-  no worse than running the uploaded `.app` binary the same bundle ships — the authenticated operator
-  is already trusted to bring and run their own suite, so bare-host execution has been tolerable here.
-  But it is the same mechanism that is unacceptable when hosted, which is why this item routes every
+  no worse than running the uploaded `.app` binary the same bundle ships. The authenticated operator
+  is already trusted to bring and run their own suite, so bare-host execution has been tolerable
+  here. The same mechanism is unacceptable when hosted, which is why this item routes every
   deployment, Tier-A included, through the sandbox rather than keeping a bare-host escape hatch.
 - **Hosted / multi-tenant `serve`** ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
   [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). An
   authenticated-but-untrusted tenant uploading a bundle whose config sets `launchServer.cmd: rm -rf …`
-  (or anything else) is **arbitrary command execution on the host** — a remote-code-execution vector.
+  (or anything else) is **arbitrary command execution on the host**, a remote-code-execution vector.
   BE-0073 is explicitly scoped to single-Mac Tier-A and defers multi-tenant isolation to BE-0015 /
-  BE-0016, so this isn't a BE-0073 bug; it's the seam those items must close before hosting is safe.
+  BE-0016, so the gap is not a BE-0073 bug. Those items must close this seam before hosting is
+  safe.
 
 A policy that can only say *deny* or *allow* leaves the host case stuck: `deny` breaks the legitimate
 self-contained-web-bundle use the upload path exists for, and `allow` is bare-host RCE. The missing
-option is a **safe yes** — run the uploaded command, but confine it so a hostile `cmd` reaches nothing
-but a disposable container. That is what virtualizing the server command with Docker buys, and it is
-already in the project's grain: Tier-B self-hosting ships a `docker compose` control plane
+option is a **safe yes**: run the uploaded command, but confine it so a hostile `cmd` reaches nothing
+but a disposable container. Virtualizing the server command with Docker provides that option, and it
+already fits the project: Tier-B self-hosting ships a `docker compose` control plane
 ([`deploy/self-host/`](../../deploy/self-host/), [docs/self-hosting.md](../../docs/self-hosting.md)),
 and BE-0015 / BE-0016 already name per-job container isolation as their domain. This item pulls that
-isolation forward as a concrete execution mode and gives it the deterministic policy gate to sit
-behind.
+isolation forward as a concrete execution mode and puts the mode behind a deterministic policy gate.
 
 ## Detailed design
 
@@ -91,7 +93,7 @@ prime directives.
   - **`reuse`** — don't run the uploaded `cmd`; only `launchServer`'s existing `readyUrl` probe may
     *use* an operator-provisioned server already answering at `baseUrl`.
   - **`sandbox`** — run the uploaded `cmd`, but **inside a throwaway Docker container**, never on the
-    `serve` host. This is the safe-yes and the default (detailed below).
+    `serve` host. This mode is the safe yes and the default (detailed below).
 - **No bare-host execution; sandbox by default.** There is deliberately **no mode that runs an
   uploaded `cmd` directly on the `serve` host** — that path is exactly the RCE surface this item
   closes, so it does not exist even as an opt-in. `serve` treats Docker as a required dependency of
@@ -148,10 +150,10 @@ prime directives.
   provenance, so
   "what did this run execute, where, and what was suppressed?" stays answerable.
 
-The scope is the **policy seam plus a containerized execution mode** for the upload path — deciding
+The scope is the **policy seam plus a containerized execution mode** for the upload path: deciding
 whether an uploaded config's commands run, and running them in a disposable container when they do.
 Deeper per-job isolation (egress controls, network namespaces, VM-grade sandboxing) remains BE-0015 /
-BE-0016 territory; this item gives those a deterministic gate and a working container baseline to
+BE-0016 territory. This item gives that work a deterministic gate and a working container baseline to
 extend.
 
 ## Alternatives considered

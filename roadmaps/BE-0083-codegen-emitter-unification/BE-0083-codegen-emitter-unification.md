@@ -15,42 +15,50 @@
 
 ## Introduction
 
+This item extracts the scenario walk shared by the two codegen emitters into one place. The shared
+walk is either a small intermediate representation or a `CodeGenerator` protocol that the
+per-target emitters implement. The traversal then lives once, and each target supplies only its own
+line syntax.
+
 Bajutsu transpiles a scenario into a native test for two targets today: XCUITest
 (`bajutsu/codegen.py`, shipped in [BE-0003](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md))
 and Playwright (`bajutsu/codegen_playwright.py`, shipped in
-[BE-0062](../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)). The two
-modules share an identical *control flow* — walk the scenarios, for each one merge the launch
-environment, emit a launch line, emit each step, then emit the `expect` block — and differ only in
-the per-line target syntax. That skeleton is currently copy-pasted between the two files. This item
-extracts the shared walk into one place (a small intermediate representation, or a `CodeGenerator`
-protocol the per-target emitters implement) so the traversal lives once and each target only supplies
-its own line syntax.
+[BE-0062](../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)). The two modules share an
+identical *control flow*:
 
-This is a behavior-preserving refactor of an internal, deterministic, AI-free path: the generated
-output is byte-for-byte identical, so it changes no tool behavior and stays within the prime
-directives.
+1. Walk the scenarios.
+2. For each scenario, merge the launch environment.
+3. Emit a launch line.
+4. Emit each step.
+5. Emit the `expect` block.
+
+The modules differ only in the per-line target syntax. Today the skeleton is copy-pasted between
+the two files.
+
+The change is a behavior-preserving refactor of an internal, deterministic, AI-free path. The
+generated output is byte-for-byte identical, so no tool behavior changes and the change stays within
+the prime directives.
 
 ## Motivation
 
 - **The control flow is duplicated.** `_emit_scenario` and `to_xcuitest` / `to_playwright` in the
   two modules are structurally the same loop (env merge → launch line → `for step` → `expect` block →
-  close). A change to *how a scenario is walked* — say, emitting a new top-level construct, or
-  handling a new scenario section — has to be made twice and kept in sync by hand, with nothing in the
-  gate proving the two stayed aligned.
-- **A third emitter would copy it a third time.** Adding an Android codegen target (the natural next
-  step once an Android backend lands — see
-  [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md), whose
-  per-platform table already lists a new `codegen.py` emitter per platform) would mean a third copy of
-  the same skeleton. Unifying the walk now makes each new target the cost of *only* its line syntax,
-  which is the part that genuinely differs.
+  close). Suppose a change alters *how a scenario is walked*, for example by emitting a new top-level
+  construct or handling a new scenario section. Someone must make that change twice and keep the two
+  copies in sync by hand, and nothing in the gate proves the copies stayed aligned.
+- **A third emitter would copy the walk a third time.** The natural next step, once an Android
+  backend lands, is an Android codegen target. [BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
+  has a per-platform table that already lists a new `codegen.py` emitter per platform. Without
+  unification, that target means a third copy of the same skeleton. Unifying the walk now makes each
+  new target cost *only* its line syntax, which is the part that genuinely differs.
 - **The per-line helpers are already cleanly separated.** Both modules already factor the
   target-specific work into small helpers (`_emit_step`, `_emit_assertion`, selector/locator
-  builders). Only the outer traversal is duplicated, so the refactor is contained: lift the loop, keep
-  the helpers.
+  builders). Only the outer traversal is duplicated, so the refactor stays contained: lift the loop
+  and keep the helpers.
 
 ## Detailed design
 
-Two shapes are viable; the item will pick one during implementation:
+Two shapes are viable, and implementation will pick one:
 
 1. **A `CodeGenerator` protocol.** A shared `walk_scenarios(scenarios, env, gen)` owns the loop and
    calls into a target object that supplies the variable parts: `file_header()`, `scenario_open(name)`,
@@ -59,28 +67,30 @@ Two shapes are viable; the item will pick one during implementation:
    stay as thin public entry points that instantiate their generator and call the shared walk.
 2. **A small intermediate representation.** The walk lowers a scenario to a neutral list of emit
    instructions (open-scenario, launch-env, step, assertion, close), and each target renders that list
-   to text. This decouples *what to emit* from *how to render it* more strictly, at the cost of one
+   to text. This shape decouples *what to emit* from *how to render it* more strictly, at the cost of one
    more layer.
 
 Either way, the per-target line builders (`_emit_step`, `_emit_assertion`, locator/selector helpers)
-are unchanged — they are already the right seam. The acceptance bar is that the generated XCUITest and
-Playwright output is **byte-for-byte identical** to today's, proven by the existing codegen tests
-(`tests/` already covers both emitters), with a focused test added for the shared walk if the
-protocol shape needs one.
+are unchanged, because they are already the right seam. The acceptance bar is that the generated
+XCUITest and Playwright output is **byte-for-byte identical** to today's. The existing codegen tests
+prove this, since `tests/` already covers both emitters. If the protocol shape needs it, a focused
+test is added for the shared walk.
 
-Scope is the two codegen modules plus their tests; no runner, scenario model, or driver change.
+Scope is the two codegen modules plus their tests. The runner, scenario model, and driver do not
+change.
 
 ## Alternatives considered
 
-- **Leave the duplication.** Two emitters is a small, tolerable amount of copy-paste today — but the
-  duplication is load-bearing the moment a third target (Android) is added, and the gate cannot catch
-  the two drifting apart. Unifying now is cheap insurance against that.
+- **Leave the duplication.** Two emitters are a small, tolerable amount of copy-paste today. The
+  duplication becomes load-bearing the moment a third target (Android) is added, and the gate cannot
+  catch the two copies drifting apart. Unifying now is cheap insurance against that.
 - **Share via free functions without a protocol/IR.** Passing a bag of callbacks into a shared loop
-  works but reads worse than a named protocol and makes the contract between the walk and a target
-  implicit. Preferred only if the protocol proves heavier than the duplication it removes.
-- **Defer until the Android emitter is actually being written.** Reasonable, but doing the unification
-  device-free now (it needs no Simulator) de-risks the Android codegen work and keeps the two existing
-  emitters from drifting in the meantime.
+  works, but it reads worse than a named protocol and makes the contract between the walk and a
+  target implicit. This option is preferred only if the protocol proves heavier than the duplication
+  it removes.
+- **Defer until the Android emitter is actually being written.** Reasonable. Still, doing the
+  unification device-free now (it needs no Simulator) de-risks the Android codegen work and keeps the
+  two existing emitters from drifting in the meantime.
 
 ## Progress
 
@@ -88,11 +98,11 @@ Scope is the two codegen modules plus their tests; no runner, scenario model, or
 
 ## References
 
-- `bajutsu/codegen.py` (XCUITest), `bajutsu/codegen_playwright.py` (Playwright) — the two emitters
-  this unifies.
+- `bajutsu/codegen.py` (XCUITest) and `bajutsu/codegen_playwright.py` (Playwright): the two emitters
+  this item unifies.
 - [BE-0003 — M3 codegen / traces / network / CI](../BE-0003-m3-codegen-traces-network-ci/BE-0003-m3-codegen-traces-network-ci.md)
   (XCUITest codegen), [BE-0062 — Playwright codegen](../BE-0062-playwright-codegen/BE-0062-playwright-codegen.md)
-  (Playwright codegen) — the two shipped targets.
-- [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md)
-  — its per-platform table lists a new `codegen.py` emitter per platform, the future caller this
+  (Playwright codegen): the two shipped targets.
+- [BE-0009 — Cross-platform abstractions](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions.md):
+  its per-platform table lists a new `codegen.py` emitter per platform, the future caller that this
   unification serves.

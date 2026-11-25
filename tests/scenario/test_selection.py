@@ -10,6 +10,7 @@ from bajutsu.common.scenario import (
     Step,
     load_scenarios,
     select_scenarios,
+    tags_match,
 )
 
 
@@ -65,3 +66,20 @@ def test_preserves_order_and_does_not_mutate() -> None:
     out = select_scenarios(scns, ["x"], [])
     assert [s.name for s in out] == ["a", "b"]
     assert len(scns) == 2
+
+
+@pytest.mark.parametrize(
+    ("tags", "include", "exclude", "expected"),
+    [
+        ([], [], [], True),
+        ([], ["a"], [], False),
+        (["a", "b"], ["b", "c"], [], True),
+        (["a", "b"], ["a"], ["b"], False),
+        (["a"], [], ["b"], True),
+        (["A"], ["a"], [], False),
+    ],
+)
+def test_tags_match(
+    tags: list[str], include: list[str], exclude: list[str], expected: bool
+) -> None:
+    assert tags_match(tags, include, exclude) is expected

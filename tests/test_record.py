@@ -222,7 +222,6 @@ def test_record_tags_video_only_where_the_route_can_record_it(
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )

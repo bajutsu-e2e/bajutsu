@@ -15,62 +15,33 @@
 
 ## Introduction
 
-`bajutsu codegen` turns a passing scenario into a native test in a destination framework's
-own idiom, so a team can run the same flow in their existing CI with no bajutsu runtime and
-no AI at test time. Today `--emit` accepts `xcuitest` only. Now that the web (Playwright)
-backend has landed ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
-a scenario can `run` against a browser — but there is no way to hand that flow off as a
-native browser test. This item adds `--emit playwright`: a second, purely structural emit
-target that renders a scenario as a Playwright test.
+`bajutsu codegen` turns a passing scenario into a native test written in the idiom of a destination framework. A team can then run the same flow in its existing continuous integration (CI) with no bajutsu runtime and no AI at test time. Today `--emit` accepts only `xcuitest`.
 
-> **Disambiguation.** Playwright ships its own tool literally named `codegen` (`playwright
-> codegen`), a *recorder* that watches a fresh browser session and writes code from what it
-> observes. bajutsu's `codegen` is a different thing: it is a structural map of an *existing
-> passing scenario* — the scenario stays the single, git-reviewed source of truth. This item
-> is about the latter (scenario → Playwright test), not about wrapping Playwright's recorder.
+The web (Playwright) backend has landed ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)), so a scenario can `run` against a browser. Nothing yet hands that flow off as a native browser test. This item adds `--emit playwright`, a second emit target that renders a scenario as a Playwright test. The target is purely structural.
+
+> **Disambiguation.** Playwright ships its own tool named `codegen` (`playwright codegen`). That tool is a *recorder*: it watches a fresh browser session and writes code from what it observes. The `codegen` of bajutsu differs. It is a structural map of an *existing passing scenario*, and the scenario stays the single, git-reviewed source of truth. This item covers the scenario-to-Playwright-test map and does not wrap Playwright's recorder.
 
 ## Motivation
 
-`codegen` exists so a passing scenario can leave the bajutsu runtime behind and live in a
-team's native CI. That promise is currently iOS-only: the web backend can `run` a scenario
-deterministically on Linux with no Mac, but the handoff artifact stops at XCUITest. A team
-that adopts the web backend has no `codegen` path at all, which is the one place the iOS and
-web stories visibly diverge.
+`codegen` exists so that a passing scenario can leave the bajutsu runtime behind and live in a team's native CI. Today that promise holds only for iOS. The web backend can `run` a scenario deterministically on Linux with no Mac, but the handoff artifact stops at XCUITest. A team that adopts the web backend has no `codegen` path at all. That gap is the one place where the iOS and web stories visibly diverge.
 
-The mapping is a good fit for the same reasons the XCUITest one is:
+The mapping fits for the same reasons the XCUITest mapping does:
 
-- It is **purely structural** — a fixed map from scenario constructs to Playwright calls,
-  with no model consulted at generation time. It does not touch the `run` / CI gate
-  ([DESIGN §2](../../DESIGN.md)), and it adds no LLM anywhere.
-- The web id convention (`data-testid`) and ARIA `role`/name already mirror the
-  `Selector` fields ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)),
-  so each construct has a natural Playwright equivalent — exactly the property that lets the
-  XCUITest emitter stay a small, total function.
+- The mapping is **purely structural**. It is a fixed map from scenario constructs to Playwright calls, and no model is consulted at generation time. The `run` / CI gate ([DESIGN §2](../../DESIGN.md)) stays untouched, and no LLM enters anywhere.
+- The web id convention (`data-testid`) and the ARIA `role` and name already mirror the `Selector` fields ([BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)). Each construct therefore has a natural Playwright equivalent. That property lets the XCUITest emitter stay a small, total function.
 
 ## Detailed design
 
 ### Why the emitted test uses Playwright's *semantic* locators
 
-The web `run` driver ([`drivers/playwright.py`](../../bajutsu/drivers/playwright.py))
-deliberately does **not** use Playwright's semantic locators: it walks the DOM, normalizes to
-`Element`s, and coordinate-clicks the resolved frame center through the shared
-`base.resolve_unique`, so matching is byte-for-byte identical to iOS. The emitted test does the
-**opposite** — it uses `page.getByTestId(...)` / `getByRole(...)` and web-first assertions —
-and that is correct, not a contradiction:
+The web `run` driver ([`drivers/playwright.py`](../../bajutsu/drivers/playwright.py)) deliberately does **not** use Playwright's semantic locators. It walks the DOM and normalizes the result to `Element`s. It then coordinate-clicks the center of the resolved frame through the shared `base.resolve_unique`, so matching is byte-for-byte identical to iOS.
 
-- The destination framework *is* the runtime. The generated test runs in the team's own
-  Playwright CI with no bajutsu present, so it must speak Playwright's idiom; there is no
-  shared resolver to route through.
-- This is exactly what the XCUITest emitter already does. At run time idb coordinate-taps,
-  but the emitted XCUITest uses `el(id).tap()` and `waitForExistence` — the destination's
-  semantic API and native waiting. Determinism in the *handoff artifact* is owned by the
-  destination framework (XCUITest waits for hittability; Playwright auto-waits and web-first
-  assertions retry until timeout). The bajutsu determinism core governs `run`, not the code
-  it emits.
+The emitted test does the **opposite**. It uses `page.getByTestId(...)`, `getByRole(...)`, and web-first assertions. The two choices do not contradict each other, for two reasons:
 
-So semantic locators + web-first assertions are the right target, and they keep the generated
-test readable and robust to layout changes — the same goal the `data-testid` id convention
-serves.
+- The destination framework *is* the runtime. The generated test runs in the team's own Playwright CI with no bajutsu present. It must speak Playwright's idiom, and no shared resolver exists to route through.
+- The XCUITest emitter already works this way. At run time idb coordinate-taps, yet the emitted XCUITest uses `el(id).tap()` and `waitForExistence`. Those are the destination's semantic API and native waiting. The destination framework owns determinism in the *handoff artifact*: XCUITest waits for hittability, and Playwright auto-waits while web-first assertions retry until timeout. The bajutsu determinism core governs `run`, not the code that `codegen` emits.
+
+Semantic locators and web-first assertions are thus the right target. They keep the generated test readable and robust to layout changes, which is the goal that the `data-testid` id convention also serves.
 
 ### CLI and output shape
 
@@ -78,11 +49,9 @@ serves.
 bajutsu codegen <scenario.yaml> --app <name> --emit playwright [-o <out.spec.ts>]
 ```
 
-The v1 language is **TypeScript (`@playwright/test`)** — the most widely adopted Playwright
-surface, with first-class web-first assertions. A group of scenarios becomes one
-`test.describe` block; **1 scenario = 1 `test(...)`** (parallel to one `XCTestCase` / one test
-method). Each test navigates to the app's base URL (read from config, as `run` does — the web
-`launch` equivalent is `page.goto(baseURL)`), then emits the steps and the `expect` block.
+The v1 language is **TypeScript (`@playwright/test`)**, the most widely adopted Playwright surface, with first-class web-first assertions. A group of scenarios becomes one `test.describe` block. **1 scenario = 1 `test(...)`**, parallel to one `XCTestCase` or one test method.
+
+Each test navigates to the app's base URL, read from config as `run` does. The web equivalent of `launch` is `page.goto(baseURL)`. The test then emits the steps and the `expect` block.
 
 ```ts
 // Generated by bajutsu — do not edit by hand. Re-generate with `bajutsu codegen`.
@@ -143,54 +112,29 @@ Mirrors the `Selector` → web-attribute mapping the driver already uses
 
 ### Determinism in the generated test
 
-All *waiting* uses Playwright's native auto-wait: web-first assertions retry until the test
-timeout, so there are no fixed sleeps for synchronization. The only fixed timings emitted are
-**gesture durations** (`longPress`'s `delay`, and coordinate swipes) — intrinsic to the
-gesture and identical in spirit to XCUITest's `press(forDuration:)` and the idb backend's
-short drag duration. This is called out honestly, the same way the iOS path is.
+All *waiting* uses Playwright's native auto-wait. Web-first assertions retry until the test timeout, so no fixed sleep synchronizes anything. The only fixed timings in the output are **gesture durations**: the `delay` of `longPress` and the coordinate swipes. Each duration is intrinsic to its gesture. They match in spirit XCUITest's `press(forDuration:)` and the short drag duration of the idb backend. The document names these timings openly, as it does for the iOS path.
 
 ### Shape of the change
 
-Add a `to_playwright(scenarios, …)` sibling to `to_xcuitest` (its own module, e.g.
-`codegen_playwright.py`, or a new function in `codegen.py`), and dispatch on `--emit` in
-[`cli/commands/codegen.py`](../../bajutsu/cli/commands/codegen.py). The XCUITest path stays
-byte-for-byte unchanged. The two emitters share the same structural walk (scenarios → steps →
-assertions, unsupported → `// TODO`); whether to factor that walk behind a tiny emitter seam or
-keep two parallel total functions is an implementation detail — the parallel-function form is
-preferred first, to avoid over-abstracting for two targets. Docs:
-[codegen.md](../../docs/codegen.md) (+ ja) gains the `--emit playwright` target and its
-mapping tables.
+Add a `to_playwright(scenarios, …)` function beside `to_xcuitest`. It lives in its own module, such as `codegen_playwright.py`, or as a new function in `codegen.py`. The `--emit` flag dispatches in [`cli/commands/codegen.py`](../../bajutsu/cli/commands/codegen.py). The XCUITest path stays byte-for-byte unchanged.
+
+The two emitters share one structural walk: scenarios, then steps, then assertions, with unsupported constructs becoming `// TODO`. One option factors that walk behind a tiny emitter seam. The other keeps two parallel total functions. The choice is an implementation detail, and the parallel-function form comes first to avoid over-abstracting for two targets.
+
+The docs change as well: [codegen.md](../../docs/codegen.md) (and its ja mirror) gains the `--emit playwright` target and its mapping tables.
 
 ### Prime-directive compliance
 
-- **AI never judges.** The emitter is a fixed structural map; no model is consulted, and the
-  `run` / CI gate is untouched. The generated test carries no bajutsu runtime and no AI.
-- **Determinism first.** Synchronization is Playwright auto-wait; the only fixed timings are
-  gesture durations, flagged as such.
-- **App-agnostic.** The base URL and any `launchEnv` come from config; the emitted code is
-  identical across apps, like the existing `el` / `byLabel` helpers.
+- **AI never judges.** The emitter is a fixed structural map. No model is consulted, and the `run` / CI gate is untouched. The generated test carries no bajutsu runtime and no AI.
+- **Determinism first.** Playwright auto-wait handles synchronization. The fixed timings are gesture durations, flagged as such.
+- **App-agnostic.** The base URL and any `launchEnv` come from config. The emitted code is identical across apps, like the existing `el` / `byLabel` helpers.
 
-The exact `launchEnv` → web mapping (query params vs. seeded `localStorage` vs. cookies — the
-channels [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md)
-lists) is left **TBD**: v1 seeds `localStorage` via `page.addInitScript` by default and emits a
-`// TODO` when an app expects another channel, keeping the per-app difference in config rather
-than in the emitter.
+The exact `launchEnv`-to-web mapping is left **TBD**. The candidate channels are query params, seeded `localStorage`, and cookies, as [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend.md) lists. By default v1 seeds `localStorage` through `page.addInitScript`. It emits a `// TODO` when an app expects another channel. The per-app difference thus stays in config rather than in the emitter.
 
 ## Alternatives considered
 
-- **Emit coordinate-based Playwright (mouse-click the frame center), mirroring the run driver
-  exactly.** Rejected: the generated test would be brittle and unreadable, discarding the
-  semantic locators and auto-waiting that are Playwright's own determinism tools. The XCUITest
-  emitter already establishes that `codegen` targets the destination idiom, not bajutsu's
-  internal resolution.
-- **Make the v1 language Python (`pytest-playwright`) instead of TypeScript.** Deferred, not
-  rejected: `@playwright/test` (TypeScript) is the most widely adopted surface and has
-  first-class web-first assertions. A Python target can follow as a second value of `--emit`,
-  reusing the same structural walk.
-- **Wrap Playwright's own `codegen` recorder.** Rejected: that records a fresh browser session
-  and is a *separate authoring path*; it would fork the source of truth away from the existing
-  passing scenario (losing its ids, assertions, and git-reviewable history). bajutsu's `codegen`
-  contract is scenario → native test, keeping the scenario authoritative.
+- **Emit coordinate-based Playwright (mouse-click the frame center), mirroring the run driver exactly.** Rejected. The generated test would be brittle and unreadable, and it would discard the semantic locators and auto-waiting that are Playwright's own determinism tools. The XCUITest emitter already establishes that `codegen` targets the destination idiom, not the internal resolution of bajutsu.
+- **Make the v1 language Python (`pytest-playwright`) instead of TypeScript.** Deferred, not rejected. `@playwright/test` (TypeScript) is the most widely adopted surface, with first-class web-first assertions. A Python target can follow as a second value of `--emit` and reuse the same structural walk.
+- **Wrap Playwright's own `codegen` recorder.** Rejected. That recorder records a fresh browser session and is a *separate authoring path*. It would fork the source of truth away from the existing passing scenario and lose its ids, its assertions, and its git-reviewable history. The `codegen` contract of bajutsu is scenario to native test, which keeps the scenario authoritative.
 
 ## Progress
 

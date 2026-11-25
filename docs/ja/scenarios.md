@@ -65,6 +65,7 @@ scenarios:
 | `steps` | list | 必須 | アクションの並び（下記） |
 | `expect` | list | `[]` | 全ステップ成功後の最終アサーション（[selectors](selectors.md#アサーション評価)） |
 | `cleanup` | list | `[]` | ティアダウンのルール。各エントリは `{ on: always \| success \| failure, steps }` で、判定が出たあと `steps` を抜けるすべての経路で走る（[下記](#setup--cleanupセットアップとティアダウンのフェーズ)） |
+| `hooks` | object | なし | このシナリオだけの前後に、アプリのセッションの外側で実行する外部コマンド。`beforeScenario` と `afterScenario` を書く（[下記](#hooks1-本のシナリオの前後で実行する外部コマンド)） |
 | `capturePolicy` | list | `[]` | 繰り返し発火する証跡ルール（[evidence](evidence.md#a-capturepolicyルール方式)） |
 | `network` | object | なし | `{ filter: { domains: [...] } }`。`filter.domains` は、レポートの Steps タイムラインに差し込む通信を URL ホストで絞る（親ドメインはサブドメインに一致）。未指定なら全件を表示する。Network タブは常に全件を表示する（[reporting](reporting.md#reporthtml)） |
 | `mocks` | list | `[]` | 決定的なネットワークスタブ。一致する送信リクエストには、ネットワークへ行かず定型レスポンスを返す（[ネットワークモック](#ネットワークモック決定的スタブ)） |
@@ -684,6 +685,93 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 ### `codegen` が出力するもの
 
 `setup` にはフレームワークの構文が要りません。`codegen` はそのステップを、生成したテスト本体の先頭に `// setup` の区切りコメントとともにそのまま展開します。最初に走り、失敗すれば後続を打ち切るという、フェーズの意味そのままだからです。`cleanup` には構文が要り、ターゲットごとに手段が違います。Playwright と UI Automator では、テスト本体を `try` / `catch` / `finally` で包みます。どちらのターゲットもアサーションが例外を投げるので、`catch` は判定の元になったはずの失敗をそのまま捕まえられるからです。XCUITest では代わりに `addTeardownBlock` を 1 つだけ登録します。`XCTAssert` は例外を投げずに失敗を記録するだけなので、結末は `testRun?.hasSucceeded` から読みます（[codegen](codegen.md)）。
+
+## `hooks`：1 本のシナリオの前後で実行する外部コマンド
+
+シナリオの `hooks` ブロックは、そのシナリオだけが必要とするコマンドを実行します。たとえば、期限切れのカードを
+持つアカウントを用意するコマンドです。ターゲットのすべてのシナリオに効くリストは、`targets.<name>.hooks` に
+書きます（[configuration](configuration.md#run-とシナリオの前後で実行する外部コマンドhooksbe-0491)）。
+
+```yaml
+- name: checkout with an expired card
+  hooks:
+    beforeScenario:
+      - name: card
+        cmd: "./scripts/create-expired-card.sh"   # $BAJUTSU_OUTPUT に cardId=... を書く
+        timeout: 30
+    afterScenario:
+      - cmd: "./scripts/delete-card.sh"           # $BAJUTSU_HOOK__card__cardId を読む
+  steps:
+    - type: { text: "${hooks.card.cardId}", into: { id: checkout.card } }
+```
+
+ブロックには `beforeScenario` と `afterScenario` の 2 つのリストを書きます。エントリのフィールドは
+[ターゲットのエントリ](configuration.md#1-エントリのフィールド)と同じです。違いは 1 つで、相対パスの `cwd` は
+シナリオファイルのあるディレクトリを基準に解決します。別の場所に書くべきキーはロード時に失敗し、エラーが
+書き場所を示します。`beforeRun`、`afterRun`、`sandbox` はターゲットに属します。`setup`、`cleanup`、
+`interrupts` はシナリオのトップレベルのフィールドです。
+
+コマンドはステップではありません。起動の前と判定のあとに走るため、アプリが起動時に読むデータを用意できます。
+コマンドはアプリについて何も表明しません。前提または後始末が成り立たなかったときに、シナリオを失敗させます。
+
+### ターゲットのコマンドとの実行順
+
+2 つの階層は入れ子になります。1 本のシナリオは次の順に実行します。
+
+1. ターゲットの `beforeScenario` エントリ。
+2. シナリオの `beforeScenario` エントリ。
+3. デバイスの確保とアプリの起動、続いてシナリオの `setup`、`steps`、`expect`、`cleanup`。
+4. 判定に一致する `on` を持つ、シナリオの `afterScenario` エントリ。
+5. 判定に一致する `on` を持つ、ターゲットの `afterScenario` エントリ。
+
+複数のターゲットを扱うシナリオでは、シナリオ自身のエントリが、すべてのターゲットの内側に入ります。
+`preconditions.inheritSetup: false` はターゲットの 2 つのリストを飛ばし、シナリオ自身のリストは飛ばしません。
+
+| 失敗した箇所 | 結果 |
+|---|---|
+| ターゲットの `beforeScenario` エントリ | 起動と、シナリオの 2 つのリストを飛ばします。ターゲットの `afterScenario` エントリは実行します |
+| シナリオの `beforeScenario` エントリ | シナリオは `beforeScenario: <name>: …` で失敗し、起動を飛ばします。両方の階層の `afterScenario` エントリを実行します |
+| シナリオの `afterScenario` エントリ | 失敗は、成功したシナリオの判定になり、既存の失敗がある場合はその後ろに追記します。後続のエントリは実行します |
+
+すべての `afterScenario` エントリは、1 つの判定に答えます。`steps`、`expect`、`cleanup` が出した判定です。
+エントリの失敗は、後続のエントリのどれが一致するかを変えません。
+
+### 名前とトークン
+
+ステップは値を `${hooks.<name>.<key>}` として読みます。コマンドは環境変数 `BAJUTSU_HOOK__<name>__<key>` から
+読みます。そのため、エントリの `cmd` や `env` に書いたトークンはロード時に失敗し、エラーが変数の名前を示します。
+`name` は、1 本のシナリオから見えるエントリのあいだで一意でなければなりません。見えるエントリとは、シナリオ自身の
+エントリと、シナリオが扱うターゲットのエントリです。別々のシナリオは同じ名前を使えます。値が混ざらないからです。
+
+### データの行と `when`
+
+エントリの `when` には、エントリを実行するシナリオのタグを書きます
+（[configuration](configuration.md#一部のシナリオでだけエントリを実行するwhenbe-0497)）。`hooks` ブロックは、
+すべてのデータ行で共有されます。`tags` に `${row.*}` を書けば、コマンドを実行する行を選べます。
+
+```yaml
+- name: checkout as ${row.plan}
+  tags: [checkout, "${row.plan}"]
+  data:
+    - { plan: free }
+    - { plan: premium }
+  hooks:
+    beforeScenario:
+      - name: subscription
+        cmd: "./scripts/grant-premium.sh"
+        when: { tags: [premium] }
+```
+
+### コマンドの実行可否
+
+ターゲットのコマンドと同じく、シナリオを実行する worker が決めます
+（[セルフホスティング](self-hosting.md#シナリオの出所)）。2 つのリストを実行するのは `run` と `audit` です。
+`codegen` はコマンドを出力しません。`sandbox` モードでは、シナリオが最初に宣言したターゲットのコンテナで実行するため、
+そのターゲットに `hooks.sandbox` ブロックが要ります。
+
+コマンドのログは、run ディレクトリの `hooks/<list>/_scenario/<scenario-index>/<name-or-index>.log` に置きます。
+`_scenario` は予約した名前で、ターゲットの名前には使えません。レポートは、シナリオのコマンドを `(scenario)` という
+ラベルの付いた独立したブロックで表示します。
 
 ## セレクタ（要素の指定）
 

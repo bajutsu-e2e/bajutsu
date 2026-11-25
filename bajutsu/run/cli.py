@@ -6,6 +6,7 @@ import inspect
 import os
 import select
 import sys
+import time
 import typing
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from bajutsu.cli._shared import (
     _log_subsystem_default,
     _precondition_checks,
     _refuse_bad_preconditions,
+    _reject_unmet_hook_conditions,
     _reject_url_udid,
     _resolve_browser,
     _resolve_kind,
@@ -54,6 +56,8 @@ from bajutsu.common.backends import (
 from bajutsu.common.cancellation import (
     CANCELLED_FAILURE,
     CancelSource,
+    cancelled_teardown_seconds,
+    grace_seconds,
     graceful_sigterm,
     not_cancelled,
 )
@@ -95,8 +99,9 @@ from bajutsu.common.runner import (
 )
 from bajutsu.common.runner.build import BuildError, build_app
 from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
-from bajutsu.common.runner.launch_server import server_refusal, start_launch_server
+from bajutsu.common.runner.hook_session import HookSession, phases_of, run_tags, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
+from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     ComponentResolver,
@@ -357,6 +362,7 @@ def _expand_file(
     plan_sources: dict[str, ScenarioPlanSource] = {}
     for s in scenarios:
         s.set_source_stem(path.stem)
+        s.set_source_path(path)
         s.preconditions.resolve_seed_photos(lambda ref: str(contained_ref(root, base_dir, ref)))
         base_name = declared_name(s.name)
         plan = plan_by_name.get(base_name)
@@ -1128,6 +1134,26 @@ def _reject_bad_target_config_hooks(
         raise typer.Exit(2) from None
 
 
+def _reject_unknown_hook_tokens(
+    target_effs: Mapping[str, Effective], scenarios: list[Scenario], primary: str
+) -> None:
+    """Fail fast on a `${hooks.<name>.<key>}` token that can never resolve (BE-0491).
+
+    Checked when the run loads, before any device work: a token naming no `beforeRun` or
+    `beforeScenario` entry of a target the scenario drives would otherwise fail halfway through the
+    suite, and so would one naming a `beforeScenario` entry the scenario skips through
+    `preconditions.inheritSetup: false`. Whether each *key* was written can only be known once the
+    command has run, which the run loop checks per scenario. A hook name two visible entries share
+    fails the same way (BE-0501).
+    """
+    from bajutsu.common.runner.scenario_hooks import scenario_hook_error
+
+    for s in scenarios:
+        if (why := scenario_hook_error(s, target_effs, primary)) is not None:
+            typer.echo(f"scenario {s.name!r}: {why}")
+            raise typer.Exit(2)
+
+
 def _reject_unmatchable_conditions(
     scenarios: list[Scenario],
     target_effs: Mapping[str, Effective],
@@ -1220,9 +1246,11 @@ def _filter_scenarios(
     ios_tipkit_handling: bool | None = None,
     target_ios_tipkit_handling: bool = False,
     check: Callable[[list[Scenario]], None] | None = None,
+    check_all: Callable[[list[Scenario], list[Scenario]], None] | None = None,
 ) -> list[Scenario]:
     """Apply `--tag`/`--exclude` selection and apply `--erase` / `--no-erase` to each scenario.
 
+    *check_all* sees every scenario and the selected ones, for a defect in the files themselves.
     Selection runs over the combined set; an empty result is a usage error (exit 2). *check* then
     sees the selected scenarios as written, before any run default is filled in, so a field the
     scenario never wrote cannot trip it (BE-0452). The flag moves `preconditions.subject.reinstall` along
@@ -1233,6 +1261,7 @@ def _filter_scenarios(
     scenario's own entry, then the target's `dismiss` — and is written only when it ends on or the
     flag names it, so a scenario that drives no iOS target never gains the iOS-only entry.
     """
+    everything = scenarios
     include = [t.strip() for t in tag.split(",") if t.strip()]
     excluded = [t.strip() for t in exclude.split(",") if t.strip()]
     if include or excluded:
@@ -1240,6 +1269,8 @@ def _filter_scenarios(
         if not scenarios:
             typer.echo("no scenarios match --tag/--exclude")
             raise typer.Exit(2)
+    if check_all is not None:
+        check_all(everything, scenarios)
     if check is not None:
         check(scenarios)
     for s in scenarios:
@@ -2243,6 +2274,10 @@ class _RunPlan:
     # The worker's command policy for this run's config, and the record of every governed command
     # it met (BE-0492); `manifest.json` carries the record as `commandExecutions`.
     command_gate: CommandGate
+    # The run's hook phases (BE-0491): `beforeRun` before the first scenario, `afterRun` after the
+    # last, and the outputs a scenario's `${hooks.<name>.<key>}` token reads. None when no target
+    # declares a hook command, so a run without them does no hook work at all.
+    hooks: HookSession | None
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
@@ -2272,6 +2307,76 @@ class _RunPlan:
     matrix: DeviceMatrix | None = None
 
 
+def _finish_hooks(plan: _RunPlan) -> None:
+    """Run every target's `afterRun` entries after a run that did not finish (BE-0491).
+
+    A backstop, and a no-op once the phase has run: each report path runs `afterRun` before it
+    assembles the report, and a teardown run twice would undo more than its `before` entry created.
+    So the paths that reach here with the phase still pending are the ones where the run never
+    completed — a device failure, an exception, a cancellation — and the verdict handed to teardown
+    is `failure`. Reporting `success` there would skip the `on: failure` entries that exist for a
+    run that blew up, and run the `on: success` ones on a run that did not.
+    """
+    if plan.hooks is None or plan.hooks.finished is not None:
+        return
+    plan.hooks.after_run(
+        "failure",
+        # Bounded like the pipeline's own calls: a cancelled run that crashed before the pipeline
+        # ran the phase reaches only this path, and must not be held for one `timeout` per entry.
+        deadline=(
+            time.monotonic() + cancelled_teardown_seconds(grace_seconds())
+            if plan.cancelled()
+            else None
+        ),
+    )
+
+
+def _hook_session_or_exit(
+    target_effs: Mapping[str, Effective],
+    *,
+    run_id: str,
+    runs_dir: Path,
+    gate: CommandGate,
+    worker: WorkerCapability | None,
+    secret_values: list[str],
+    base_dir: Path | None,
+    scenario_targets: set[str],
+    tags: Mapping[str, Sequence[Sequence[str]]],
+) -> HookSession | None:
+    """The run's hook session, or None when nothing in this run declares a hook command (BE-0491).
+
+    The session's artifact writer is the run's own, so each command's log is copied into the run
+    directory with `${secrets.*}` and every `mask: true` output value replaced. Two targets sharing
+    a hook name exits 2 here, before any device work, since a `${hooks.<name>.<key>}` token could
+    not say which command it meant.
+    """
+    from bajutsu.common.evidence.redaction import Redactor
+    from bajutsu.common.evidence.sink import RunArtifactWriter
+    from bajutsu.common.runner.pipeline import _union_redact
+
+    if not phases_of(target_effs, scenario_targets):
+        return None
+    writer = RunArtifactWriter(
+        runs_dir / run_id, Redactor(_union_redact(target_effs.values()), values=secret_values)
+    )
+    try:
+        return start_session(
+            target_effs,
+            run_id=run_id,
+            runs_dir=runs_dir,
+            run_dir=runs_dir / run_id,
+            gate=gate,
+            writer=writer,
+            named_commands=worker.named_commands if worker is not None else None,
+            base_dir=base_dir,
+            scenario_targets=scenario_targets,
+            tags=tags,
+        )
+    except ValueError as e:
+        typer.echo(str(e))
+        raise typer.Exit(2) from None
+
+
 def _print_score(score: Score) -> None:
     """Render the app's entry-screen convention score to stderr (the `run --score` inline of `doctor`).
 
@@ -2286,10 +2391,10 @@ def _print_score(score: Score) -> None:
 
 
 def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str]]]:
-    """Bring up the launch server and execute the run — single-engine, cross-browser, or device runs.
+    """Run the `beforeRun` hooks and execute the run — single-engine, cross-browser, or device runs.
 
-    The launch server (if the target declares one) is brought up before the pool leases and torn
-    down in the finally; one server serves every engine in a matrix run. Returns the per-scenario
+    Every target's `beforeRun` entries run before the pool leases, and its `afterRun` entries in the
+    finally, so one bring-up serves every engine in a matrix run (BE-0491). Returns the per-scenario
     results, the report manifest path, and the not-applicable records (BE-0452).
     """
     # --progress streams scenario/step lines to stderr (the web UI merges them into its run log);
@@ -2309,12 +2414,13 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
             endpoints=plan.eff.notify,
             bindings=plan.secret_bindings,
         )
-    # Bring up the app's target server (the web baseUrl host) if it declares `launchServer`, waiting
-    # on its readiness probe; reused if already serving. The pool leases lazily (the web driver
-    # navigates at lease time), so the server only needs to be up before the run, not before the pool.
-    try:
-        stop_server = start_launch_server(plan.eff, gate=plan.command_gate)
-    except RuntimeError as e:  # CommandRefused included
+    # Run every target's `beforeRun` entries, in declared order, before the pool leases: a script
+    # that brings a server up has to have exited before the web driver navigates to it, and the pool
+    # leases lazily, so the bring-up needs to precede the run rather than the pool (BE-0491).
+    if plan.hooks is not None and not (before := plan.hooks.before_run()).ok:
+        # No scenario runs. The `always` / `failure` teardown rules still do, so a script that got
+        # halfway through its preparation can undo it.
+        plan.hooks.after_run("failure")
         _fail_before_scenarios(
             _UnstartedRun(
                 eff=plan.eff,
@@ -2328,8 +2434,9 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
                 config_source=plan.config_source,
                 label=plan.label,
                 gate=plan.command_gate,
+                hooks=plan.hooks,
             ),
-            str(e),
+            before.reason,
         )
     try:
         if plan.matrix is not None:
@@ -2341,7 +2448,7 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
         typer.echo(str(e))
         raise typer.Exit(2) from None
     finally:
-        stop_server()
+        _finish_hooks(plan)
 
 
 @dataclass(frozen=True)
@@ -2359,6 +2466,9 @@ class _UnstartedRun:
     config_source: dict[str, str] | None
     label: str
     gate: CommandGate
+    # The run's hook session, so a run that failed in `beforeRun` still renders the hook block and
+    # the link to the log its command wrote (BE-0491).
+    hooks: HookSession | None = None
 
 
 def _fail_before_scenarios(run: _UnstartedRun, message: str) -> NoReturn:
@@ -2370,7 +2480,7 @@ def _fail_before_scenarios(run: _UnstartedRun, message: str) -> NoReturn:
     """
 
     def no_device(*_args: object, **_kwargs: object) -> NoReturn:
-        raise AssertionError("a run whose server never came up leases no device")
+        raise AssertionError("a run whose beforeRun hooks never came up leases no device")
 
     _, manifest = run_and_report(
         run.eff,
@@ -2379,6 +2489,7 @@ def _fail_before_scenarios(run: _UnstartedRun, message: str) -> NoReturn:
         run.runs_dir,
         run.run_id,
         secret_values=run.secret_values,
+        hooks=run.hooks,
         source_name=run.source_name,
         description=run.description,
         plan_sources=run.plan_sources,
@@ -2516,6 +2627,7 @@ def _dispatch_single(
             force_erase_on_retry=plan.force_erase_on_retry,
             cancelled=plan.cancelled,
             step_gate=plan.step_gate,
+            hooks=plan.hooks,
         )
     finally:
         _close_pools(pools)
@@ -2567,6 +2679,12 @@ def _dispatch_matrix(
                 trace_driver=plan.trace_driver,
                 force_erase_on_retry=plan.force_erase_on_retry,
                 cancelled=plan.cancelled,
+                # Each engine pass runs the scenarios again, so each runs their own
+                # `beforeScenario` / `afterScenario`; the run-level pair wraps every pass once. The
+                # engine names the pass's own evidence subdirectory, so one pass's hook logs never
+                # overwrite another's — the same split its other evidence already gets.
+                hooks=plan.hooks,
+                evidence_prefix=engine,
             )
         finally:
             shutdown()
@@ -2587,6 +2705,7 @@ def _dispatch_matrix(
         command_executions=plan.command_gate.records,
         cancelled=plan.cancelled,
         worker_failures=plan.worker_failures,
+        hooks=plan.hooks,
     )
 
 
@@ -2671,6 +2790,8 @@ def _dispatch_runs(
         command_executions=plan.command_gate.records,
         label=plan.label or None,
         worker_failures=plan.worker_failures,
+        hooks=plan.hooks,
+        cancelled=plan.cancelled,
     )
     return results, manifest, not_applicable
 
@@ -2770,6 +2891,7 @@ def _run_cell(
             force_erase_on_retry=plan.force_erase_on_retry,
             cancelled=plan.cancelled,
             step_gate=plan.step_gate,
+            hooks=plan.hooks,
         )
     finally:
         # The engine stays in the label: two web pools can differ only by it, and a shared label
@@ -2872,6 +2994,13 @@ def _finish(
         _write_zip(manifest)
     if plan.evidence_store:
         _upload_evidence(manifest, plan.evidence_store)
+    # A failed teardown leaves every scenario's verdict alone and fails the run itself, as a failed
+    # `beforeRun` does (BE-0491). Checked after `--zip` and `--evidence-store`, which a run whose
+    # teardown misbehaved is exactly the run someone wants the evidence of.
+    teardown = plan.hooks.finished if plan.hooks is not None else None
+    if teardown is not None and not teardown.ok:
+        typer.echo(f"afterRun failed: {teardown.reason}")
+        raise typer.Exit(2)
     raise typer.Exit(0 if ok else 1)
 
 
@@ -3101,6 +3230,13 @@ def run_body(
     config_origin: str = typer.Option(
         "operator", "--config-source", hidden=True, help=CONFIG_SOURCE_HELP
     ),
+    scenario_source: str = typer.Option(
+        "",
+        "--scenario-source",
+        hidden=True,
+        help="where the scenario files came from when not the config's own source: a label the "
+        "worker sets, which judges the scenario's own hook commands (BE-0501)",
+    ),
     # --- Config sourcing ---
     config: str = typer.Option(DEFAULT_CONFIG),
     label: str = typer.Option(
@@ -3176,6 +3312,9 @@ def run_body(
             eff.run_defaults.ios_tip_kit_handling,
             check=lambda selected: _check_preconditions_or_exit(
                 loaded, selected, primary, eff, erase=erase
+            ),
+            check_all=lambda everything, selected: _reject_unmet_hook_conditions(
+                loaded, everything, primary, selected=selected
             ),
         )
         return (
@@ -3283,11 +3422,18 @@ def run_body(
     # Before any build: the worker's command policy decides whether the config's builds, server, and
     # runner build run here (BE-0492).
     gate = _install_command_gate_or_exit(
-        config_origin, worker, config_dir=loaded.root or eff.base_dir, secret_values=secret_values
+        config_origin,
+        worker,
+        config_dir=loaded.root or eff.base_dir,
+        secret_values=secret_values,
+        scenario_source=scenario_source,
     )
-    # A server command the policy refuses fails the run here, before any build or device
-    # reservation, rather than after every target's device is held (BE-0492).
-    if (refusal := server_refusal(eff, gate)) is not None:
+    # A hook command the policy refuses — or one it sandboxes with no `hooks.sandbox` block to run
+    # it in — fails the run here, before any build or device reservation, rather than after every
+    # target's device is held (BE-0492, BE-0491). Every declared entry is checked, whether or not
+    # its `on` will match the verdict.
+    effs = {**target_effs, target_name: eff}
+    if (refusal := run_hook_refusal(scenarios, effs, target_name, gate)) is not None:
         _fail_before_scenarios(
             _UnstartedRun(
                 eff=eff,
@@ -3310,6 +3456,7 @@ def run_body(
     # pipeline, whose own guard would otherwise raise mid-run instead of this clean exit 2.
     _reject_cross_browser_matrix_with_targets(all_scenarios, engines)
     _reject_bad_target_config_hooks(target_effs, scenarios, target_name)
+    _reject_unknown_hook_tokens(effs, all_scenarios, target_name)
     # Built only now, once `--tag` / `--exclude` and the worker check have settled the primary: an
     # inferred primary of a scenario selected away is never built (an iOS app on a Linux lane).
     rebuilt: set[str] = set()
@@ -3395,6 +3542,22 @@ def run_body(
         baselines_dir, schemas_dir, gc = _resolve_evidence_dirs(
             baselines, schemas, goldens, eff, files[0]
         )
+        # The run id is settled before the hook session, which stamps it into every command's
+        # `BAJUTSU_RUN_ID` and names the raw area the commands write their output and logs to.
+        run_id = new_run_id()
+        hook_session = _hook_session_or_exit(
+            {**target_effs, target_name: eff},
+            run_id=run_id,
+            runs_dir=Path(runs_dir),
+            gate=gate,
+            worker=worker,
+            secret_values=secret_values,
+            base_dir=loaded.root or eff.base_dir,
+            scenario_targets=sandbox_targets(scenarios, target_name),
+            # The whole selection, a scenario the worker's capability check failed included: what a
+            # run-level `when` sees depends on the files and the flags, never on the worker.
+            tags=run_tags(all_scenarios, target_name),
+        )
         # Answer a `SIGTERM` by asking the run to stop at its next safe boundary instead of dying
         # where it stands, leaving no manifest, no report, and no history row (BE-0370). The window
         # covers `_finish` too: the `FAIL <manifest>` line it prints is what `serve` reads this run's
@@ -3423,7 +3586,7 @@ def run_body(
                 golden_context=gc,
                 secret_bindings=secret_bindings,
                 secret_values=secret_values,
-                run_id=new_run_id(),
+                run_id=run_id,
                 runs_dir=Path(runs_dir),
                 network=network,
                 log_predicate=log_predicate,
@@ -3433,6 +3596,7 @@ def run_body(
                 label=label,
                 evidence_store=evidence_store,
                 command_gate=gate,
+                hooks=hook_session,
                 score=score,
                 trace_driver=trace_driver,
                 step_gate=step_gate,

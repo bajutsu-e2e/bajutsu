@@ -15,23 +15,29 @@
 
 ## はじめに
 
-Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つのキーにまとめ、各コマンドは `--app <name>` で対象を 1 つ選びます（[DESIGN §8](../../DESIGN.md)、[configuration.md](../../docs/ja/configuration.md)）。この名前は iOS Simulator 限定だった頃の名残で、当時はテスト対象が常に iOS アプリでした。その後 Web（Playwright）バックエンドが着地し（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）、web のテスト対象は「アプリ」ではなく URL です。スキーマはこのために `bundleId` と並べて `baseUrl` を既に持っています。本項目は文法を `apps` から `targets` へ（`--app` を `--target` へ）改名し、このキーが実際に保持しているもの、すなわちプラットフォームを問わないテスト対象を、名前で正しく表します。
+Bajutsu は、アプリ固有の設定をすべて `apps.<name>` という 1 つのキーにまとめています。各コマンドは、`--app <name>` でエントリを 1 つ選びます（[DESIGN §8](../../DESIGN.md)、[configuration.md](../../docs/ja/configuration.md)）。
+
+この名前は、iOS Simulator 限定だった頃の名残です。当時、テスト対象は常に iOS アプリでした。その後、Web（Playwright）バックエンドが着地しました（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。web のテスト対象は「アプリ」ではなく URL です。スキーマは、このために `bundleId` と並べて `baseUrl` をすでに持っています。
+
+本項目は、文法を `apps` から `targets` へ、`--app` を `--target` へ改名します。新しい語は、このキーが保持するもの、つまりプラットフォームを問わないテスト対象を、名前で表します。
 
 ## 動機
 
-`apps` は実態に合わない名前になっており、コード自身が既にそれを回避しています。
+`apps` は実態に合わない名前になっており、コード自身がすでにそれを回避しています。
 
-- エントリのモデル `AppConfig` は、その分岐を自身のコメントで「iOS アプリは bundleId で、web アプリは baseUrl でテスト対象を特定する」と説明し、バリデータは不正なエントリを `app needs bundleId (iOS) or baseUrl (web)` で弾きます。キーは `apps` のままなのに、概念を表す語としてコードは **target** を使っています。
-- Android が予定され（[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)）、スコープ文自体もマルチプラットフォームへ動かす予定がある（[BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)）なか、web サイトや Android パッケージを「アプリ」と呼ぶ無理は増す一方です。
-- app-agnostic は prime directive です（[DESIGN §2](../../DESIGN.md)）。テスト対象ごとの差分は config に置き、ツール本体は対象が変わっても不変に保ちます。`targets.<name>` はこの約束をプラットフォーム非依存の語で述べますが、`apps.<name>` は暗黙に iOS を前提にしています。
+- エントリのモデル `AppConfig` は、その分岐を自身のコメントで説明しています。「iOS アプリは bundleId で、web アプリは baseUrl でテスト対象を特定する」というものです。バリデータは、不正なエントリを `app needs bundleId (iOS) or baseUrl (web)` で弾きます。キーは `apps` のままなのに、概念を表す語として、コードは **target** を使っています。
+- Android が予定され（[BE-0007](../BE-0007-android-backend/BE-0007-android-backend-ja.md)）、スコープ文自体もマルチプラットフォームへ動かす予定があります（[BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)）。web サイトや Android パッケージを「アプリ」と呼ぶ無理は、プラットフォームが増えるたびに大きくなります。
+- app-agnostic は prime directive です（[DESIGN §2](../../DESIGN.md)）。テスト対象ごとの差分は config に置き、対象が変わってもツール本体は変えません。`targets.<name>` は、この約束をプラットフォーム非依存の語で述べます。`apps.<name>` は、暗黙に iOS を前提にしています。
 
-「target」はテストツールでテスト対象（system under test）を指す慣用語で、プラットフォームに依存せず、しかも上記のとおりコードとドキュメントが既に使っている語です（"the target app"）。config の表面がまだ 1 キーで、プロジェクトが 1.0 に達していないいま改名するほうが、用語が 3 プラットフォーム分のドキュメントとシナリオに広がった後よりはるかに安く済みます。
+「target」は、テストツールでテスト対象（system under test）を指す慣用語です。プラットフォームに依存せず、コードとドキュメントがすでに使っている語でもあります（"the target app"）。
+
+改名は、いまのほうが後よりはるかに安く済みます。config の表面はまだ 1 キーで、プロジェクトは 1.0 に達していません。後になると、用語は 3 プラットフォーム分のドキュメントとシナリオに広がります。
 
 ## 詳細設計
 
 ### 変更する箇所
 
-*汎用的な入れ物とセレクタ* の語を、全レイヤで一貫して改名します。互換エイリアスを設けない **一括の切り替え** とし、リポジトリ自身の config、テスト、ドキュメントを同じ変更で動かします。
+改名の対象は、*汎用の入れ物とセレクタ*の語で、全レイヤにわたって一貫して行います。互換エイリアスを設けない**一括の切り替え**とします。リポジトリ自身の config、テスト、ドキュメントを、同じ変更で動かします。
 
 | レイヤ | 現在 | 変更後 |
 |---|---|---|
@@ -52,28 +58,28 @@ Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つの
 
 ### 変更しない箇所
 
-動かすのは **汎用の語だけ** です。iOS 固有の概念を正しく指しているフィールド名は残します。改名するとかえって誤った名前になるためです。
+動かすのは**汎用の語だけ**です。iOS 固有の概念を正しく指しているフィールド名は残します。改名すると、かえって誤った名前になるためです。
 
-- `bundleId`、`appPath`、`deeplinkScheme` は iOS 固有のもの（bundle identifier、ビルド済み `.app` へのパス、URL スキーム）を指し、汎用のテスト対象を指す語ではありません。web のテスト対象はこれらを省き、`baseUrl` を設定するだけです。
-- `scenarios/<name>/` のレイアウトとテスト対象ごとのシナリオディレクトリ。キーは対象の名前であり、これは変わりません。
-- 決定的なコア（セレクタ解決、オーケストレータ、ランナー、アサーション）は手を付けません。これは config / CLI 境界での名前の変更だけです。
+- `bundleId`、`appPath`、`deeplinkScheme` は、iOS 固有のもの（bundle identifier、ビルド済み `.app` へのパス、URL スキーム）を指します。汎用のテスト対象を指す語ではありません。web のテスト対象は、これらを省き、`baseUrl` を設定します。
+- `scenarios/<name>/` のレイアウトと、テスト対象ごとのシナリオディレクトリは、形を変えません。キーは対象の名前で、この名前は変わりません。
+- 決定的なコア（セレクタ解決、オーケストレータ、ランナー、アサーション）には手を付けません。変更するのは、config と CLI の境界にある語だけです。
 
 ### 移行（一括の切り替え）
 
-`apps:` / `targets:` を両方受け付ける期間は設けません。外部の config にとっても変更は機械的です。
+`apps:` と `targets:` を両方受け付ける期間は設けません。外部の config にとっても、変更は機械的です。
 
 - `apps:` → `targets:`（および `orgs.<o>.apps:` → `orgs.<o>.targets:`）
 - 各コマンドの `--app <name>` → `--target <name>`
-- API を直接叩く利用者は `/api/apps` → `/api/targets`
+- API を直接叩く利用者は、`/api/apps` → `/api/targets`
 
-更新後の [configuration.md](../../docs/ja/configuration.md) / [cli.md](../../docs/ja/cli.md) と、リリースノートの 1 行で移行は足ります。プロジェクトが 1.0 に達しておらず、config の表面が 1 キーであるうちは、影響範囲は小さく収まります。
+更新後の [configuration.md](../../docs/ja/configuration.md) と [cli.md](../../docs/ja/cli.md)、およびリリースノートの 1 行で、移行は足ります。プロジェクトが 1.0 に達しておらず、config の表面が 1 キーであるうちは、影響範囲は小さく収まります。
 
 ## 検討した代替案
 
-- **`apps` を残し、web のテスト対象も流用すると書くだけにする。** 却下しました。この語は web と Android で実際に誤解を招き、コードは既にコメントとバリデータのメッセージで「target」と述べています。名前が誤ったことを主張しているキーを、ドキュメントでは直せません。
-- **非推奨エイリアスを足す（両方を受理し、`apps:` 使用時に警告する）。** 範囲確定の判断に従い却下しました。両方受理の期間は、ドキュメントに 2 つの用語、抱える警告経路、追跡する削除予定を生みます。その費用が報われるのは、外部インストールや公開シナリオといった規模に達したときだけで、Bajutsu はそこに達していません。いま綺麗に切り替えるほうが、後で移行するより安く済みます。
-- **設定キーだけ改名し、`--app` は残す。** 却下しました。`targets:` と書く config を `--app` と言う CLI で駆動するのは一貫しません。セレクタのフラグは、選ぶ対象のキーと一致させるべきです。
-- **別の語（`subjects` / `systems` / `suts` / `applications`）。** 却下しました。「target」は E2E ツールでテスト対象を指す確立した語で、プラットフォーム非依存の語として最短で、しかも既にコードベースで使われている語なので、無用な差分と戸惑いを最小にします。
+- **`apps` を残し、web のテスト対象も流用すると書くだけにする。** 却下しました。この語は web と Android で誤解を招きます。コードも、コメントとバリデータのメッセージですでに「target」と述べています。名前が誤ったことを主張しているキーを、ドキュメントでは直せません。
+- **非推奨エイリアスを足す（両方を受理し、`apps:` の使用時に警告する）。** 範囲確定の判断に従い、却下しました。両方を受理する期間は、ドキュメントに 2 つの用語を置き、抱える警告経路を増やし、追跡する削除予定を残します。この費用が報われるのは、外部インストールや公開シナリオが一定の規模に達したときだけです。Bajutsu はまだ達していません。いま切り替えるほうが、後で移行するより安く済みます。
+- **設定キーだけ改名し、`--app` は残す。** 却下しました。`targets:` と書く config を、`--app` と言う CLI で駆動するのは一貫しません。セレクタのフラグは、選ぶ対象のキーと一致させるべきです。
+- **別の語（`subjects`、`systems`、`suts`、`applications`）を使う。** 却下しました。「target」は、E2E ツールでテスト対象を指す確立した語です。プラットフォーム非依存の語として最短で、コードベースですでに使われています。無用な差分と戸惑いを最小にできます。
 
 ## 進捗
 
@@ -81,7 +87,7 @@ Bajutsu はアプリ固有の設定をすべて `apps.<name>` という 1 つの
 
 ## 参考
 
-- [DESIGN §8](../../DESIGN.md)（CLI と設定: per-app / マルチアプリ）、[DESIGN §2](../../DESIGN.md)（app-agnostic の prime directive）
-- [configuration.md](../../docs/ja/configuration.md)、[cli.md](../../docs/ja/cli.md)（設定の階層と `--app` フラグ）
-- `bajutsu/config.py`（`AppConfig`、`Config.apps`、`OrgConfig.apps`、`resolve` / `org_for_app` / `apps_for_org`）
-- 関連項目: [BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新。この改名が相乗りするマルチプラットフォームのドキュメント移行）、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド。「アプリ」を実態に合わない名前にした、着地済みのプラットフォーム）、[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム対応バックエンドレジストリ）
+- [DESIGN §8](../../DESIGN.md)（CLI と設定：per-app とマルチアプリ）、[DESIGN §2](../../DESIGN.md)（app-agnostic の prime directive）
+- [configuration.md](../../docs/ja/configuration.md)、[cli.md](../../docs/ja/cli.md)：設定の階層と `--app` フラグ
+- `bajutsu/config.py`：`AppConfig`、`Config.apps`、`OrgConfig.apps`、`resolve` / `org_for_app` / `apps_for_org`
+- 関連項目：[BE-0010](../BE-0010-update-scope-statement/BE-0010-update-scope-statement-ja.md)（スコープ文の更新。この改名が相乗りするマルチプラットフォームのドキュメント移行）、[BE-0009](../BE-0009-cross-platform-abstractions/BE-0009-cross-platform-abstractions-ja.md)（抽象のクロスプラットフォーム化）、[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)（Web Playwright バックエンド。「アプリ」を実態に合わない名前にした、着地済みのプラットフォーム）、[BE-0042](../BE-0042-platform-backend-registry/BE-0042-platform-backend-registry-ja.md)（プラットフォーム対応バックエンドレジストリ）

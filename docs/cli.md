@@ -942,9 +942,9 @@ or starts with `@` or `label:`, and none of them reaches `idMatches`, `labelMatc
   left it, so you can keep inspecting it by hand. The two sessions the command itself owns are
   closed: the web backend's browser, and the WebDriver session on the live route to an `appium` grid,
   which would otherwise stay reserved on the grid until it expires.
-- A target declaring `services.server` has its server started before the shell opens and stopped when
-  it exits — without that, a web target would open the browser on a host that is not listening and
-  every `tree` would read the error page.
+- A target declaring `hooks.beforeRun` runs those commands before the shell opens, and its
+  `hooks.afterRun` commands when the shell exits. Without them, a web target would open the browser
+  on a host that is not listening, and every `tree` would read the error page.
 
 **Steps** (`step <yaml>`): one flow-style `{...}` mapping, the exact `Step` model a scenario file's
 own steps validate against — `step {swipe: {on: {id: card}, direction: up}}`,
@@ -1295,8 +1295,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   [Self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492) covers the block, and
   [BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)
   records the change. Four inputs went away with that move:
-  - `--upload-exec` and `$BAJUTSU_UPLOAD_EXEC`. The pair governed an uploaded bundle's
-    `services.server` command. Set `commandExecution.uploaded` on each worker instead.
+  - `--upload-exec` and `$BAJUTSU_UPLOAD_EXEC`. The pair governed the commands an uploaded bundle
+    declares. Set `commandExecution.uploaded` on each worker instead.
   - `--allow-remote-build` and `$BAJUTSU_ALLOW_REMOTE_BUILD`. The pair allowed host builds for a Git
     config bound through the Web UI. Set `remote: allow` on each worker instead.
 

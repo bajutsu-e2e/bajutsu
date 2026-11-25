@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0491](BE-0491-target-command-hooks-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0491") |
+| 実装 PR | [#2512](https://github.com/bajutsu-e2e/bajutsu/pull/2512) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0059](../BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)、[BE-0090](../BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) |
 <!-- /BE-METADATA -->
@@ -368,15 +369,32 @@ hooks:
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スキーマ：4つのフックのリストとエントリのモデル。`services.server` と `services.mockServer` を削除し、置き換え先を示す読み込みエラーを出す。
-- [ ] フック実行部：エントリ、制限時間、出力ファイル、環境変数、ログ、マスク。
-- [ ] コマンドの方針：フックのリストを姉妹提案の `commandExecution` のモードと `manifest.json` の記録に通し、統制の対象を `services.server.cmd` から置き換える。
-- [ ] ラン単位のフェーズ：`beforeRun` / `afterRun` を `run`、`audit`、`record`、`crawl`、`repl` に組み込み、`services.server` の起動を置き換える。
-- [ ] シナリオ単位のフェーズ：`beforeScenario` / `afterScenario` をシナリオのライフサイクルに組み込む（`inheritSetup`、ワーカー、複数ターゲットの順序、取り消しを含む）。
-- [ ] `${hooks.<name>.<key>}` トークン：読み込み時の静的な確認と、アクション実行時の置き換え。
-- [ ] sandbox：`hooks.sandbox` とランごとのコンテナ、そのポート、マウント、パス。
-- [ ] レポート：フックのフェーズを独立したブロックで示し、ログへのリンクを付ける。
-- [ ] `demos/serve-ui/dogfood.config.yaml` を移行し、ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
+- [x] スキーマ：4つのフックのリストとエントリのモデル。`services.server` と `services.mockServer` を削除し、置き換え先を示す読み込みエラーを出す。
+- [x] フック実行部：エントリ、制限時間、出力ファイル、環境変数、ログ、マスク。
+- [x] コマンドの方針：フックのリストを姉妹提案の `commandExecution` のモードと `manifest.json` の記録に通し、統制の対象を `services.server.cmd` から置き換える。
+- [x] ラン単位のフェーズ：`beforeRun` / `afterRun` を `run`、`audit`、`record`、`crawl`、`repl` に組み込み、`services.server` の起動を置き換える。
+- [x] シナリオ単位のフェーズ：`beforeScenario` / `afterScenario` をシナリオのライフサイクルに組み込む（`inheritSetup`、ワーカー、複数ターゲットの順序、取り消しを含む）。
+- [x] `${hooks.<name>.<key>}` トークン：読み込み時の静的な確認と、アクション実行時の置き換え。
+- [x] sandbox：`hooks.sandbox` とランごとのコンテナ、そのポート、マウント、パス。
+- [x] レポート：フックのフェーズを独立したブロックで示し、ログへのリンクを付ける。
+- [x] `demos/serve-ui/dogfood.config.yaml` を移行し、ドキュメント、`DESIGN.md`、`docs/architecture.md` を両言語で更新する。
+
+ログ：
+
+- 2026-11-24（[#2512](https://github.com/bajutsu-e2e/bajutsu/pull/2512)）：9つの作業単位をまとめて実装しました。4つのリスト、エントリのモデル、`hooks.sandbox`
+  ブロックをスキーマに追加し、`services.server` と `services.mockServer` は置き換え先を示す読み込み
+  エラーとともに削除しました。実行部は各エントリを独自のプロセスグループでシェルを介さずに起動し、
+  エントリ自身の `timeout` で上限を与え、出力とログをパイプではなくファイルへ書きます。値は
+  `$BAJUTSU_OUTPUT` を通じて返り、後続のコマンドには `BAJUTSU_HOOK__<name>__<key>` として、シナリオには
+  `${hooks.<name>.<key>}` として届きます。各エントリは worker のコマンド方針を通り、`manifest.json` に
+  記録されます。`manifest.json` は各フェーズの結果も持つので、レポートはリストごとに1つのブロックを
+  描けます。上の設計と異なる点が2つあります。1つは `BAJUTSU_SCENARIO_FILE` で、run ループがシナリオの
+  パスを持たないため、ファイルのパスではなく stem を渡しています。`Scenario.source_path` を加えれば
+  パスを渡せます。もう1つは、コマンドが書かなかった `${hooks.*}` のキーの扱いです。ステップ単位ではなく
+  シナリオを失敗させます。置換の基本処理は未知のトークンをそのまま残す設計であり、ステップ単位で失敗
+  させると `${vars.*}` の挙動も変わってしまうためです。差が出るのは実行されない分岐にトークンがある
+  場合だけで、そこでは本提案の記述なら通ったシナリオを、厳しい側の実装が落とします。この得失は作者が
+  確認したうえで現状を採ったので、未解決の課題ではなく決定済みの選択です。
 
 ## 参考
 

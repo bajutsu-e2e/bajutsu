@@ -21,10 +21,10 @@ repository** ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.m
 an **uploaded `.zip` bundle** ([BE-0073](../BE-0073-serve-zip-bundle-upload/BE-0073-serve-zip-bundle-upload.md)),
 and a **file browser over the serve host's `--root`** (the original source,
 `bajutsu/serve/operations.py` `browse_fs` / `bind_config`). The file browser is the right default
-for a local single-user `serve` on your own machine, but it makes no sense on a **hosted** deployment
-(the `server` backend, [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)):
-a browser user there has no relationship to the host's filesystem, and exposing a directory listing
-of the operator's `--root` to every authenticated user is an unnecessary surface.
+for a local single-user `serve` on your own machine. It makes no sense on a **hosted** deployment
+(the `server` backend, [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)),
+for two reasons. A browser user there has no relationship to the host's filesystem. And exposing a
+directory listing of the operator's `--root` to every authenticated user is an unnecessary surface.
 
 This item makes the set of offered config sources **deployment-aware**: on the `server` backend the
 "Open config" dialog offers only the two sources a remote user can meaningfully use — **upload** and
@@ -40,13 +40,14 @@ useless and at worst a mild information-disclosure surface:
 1. **A hosted user has no filesystem relationship to the host.** On the `server` backend the config,
    scenarios, and `runs/` live on a shared worker the browser user never provisioned. The two paths
    that put *their* suite on that host are exactly upload (BE-0073) and Git (BE-0063). Browsing the
-   operator's `--root` cannot bind anything the user owns — it can only bind files an operator
+   operator's `--root` cannot bind anything the user owns. It can only bind files an operator
    hand-placed, which is not how a hosted deployment is meant to be used.
 2. **It exposes the operator's `--root` tree to every authenticated user.** BE-0051 confined the
    browser to `--root`, so it is not an arbitrary-path escape, but on a multi-user hosted server it
    still hands every logged-in user a directory listing of, and the ability to bind any config under,
-   a tree the operator controls. On a single-user local `serve` that is the operator's own machine
-   and is fine; on a shared host it is an avoidable exposure that neither BE-0015 nor BE-0051 removes.
+   a tree the operator controls. On a single-user local `serve`, the tree is the operator's own machine
+   and the exposure is fine. On a shared host, the exposure is avoidable, and neither BE-0015 nor
+   BE-0051 removes it.
 3. **Hiding it in the UI alone would be cosmetic.** `/api/fs` (browse) and the path branch of
    `POST /api/config` (bind by path) would still answer a hand-crafted request. The restriction has
    to be enforced on the server so it is real, not just absent from the rendered dialog.
@@ -67,7 +68,7 @@ testable through the serve HTTP harness without a Simulator.
    backend never sets it. This is the single source of truth the rest of the item reads.
 
 2. **Advertise the available config sources on `/api/config`.** `config_info` gains a
-   `configSources` field — the list the UI may offer, e.g. `["git", "upload", "fs"]` locally and
+   `configSources` field, the list the UI may offer, e.g. `["git", "upload", "fs"]` locally and
    `["git", "upload"]` when hosted. Modelled on the existing `oauthEnabled` capability the same
    payload already carries, so the frontend reads deployment capability from one place.
 
@@ -105,10 +106,10 @@ entirely in the serve config-sourcing layer.
   on the backend draws the line exactly where the filesystem stops being the user's own. An explicit
   operator override (a flag/env) could layer on later if a token-authed stdlib deployment wants the
   same restriction, but it is out of scope here.
-- **Hide the source in the UI only.** Simpler, but cosmetic — the `/api/fs` and path-bind endpoints
-  would still answer. Rejected in favor of server-side enforcement so the restriction is real.
-- **Remove the file browser entirely.** It is the right and only local affordance for binding a
-  config already on your own machine; removing it would regress the local single-user flow the tool
+- **Hide the source in the UI only.** Simpler, but cosmetic: the `/api/fs` and path-bind endpoints
+  would still answer. Rejected in favor of server-side enforcement, so the restriction is real.
+- **Remove the file browser entirely.** The file browser is the right and only local affordance for binding a
+  config already on your own machine, and removing it would regress the local single-user flow the tool
   started from. The restriction must be deployment-scoped, not global.
 
 ## Progress

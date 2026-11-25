@@ -712,9 +712,9 @@ bajutsu repl --target <name> [options]
   そのまま手で調べ続けられます。閉じるのは、このコマンド自身が持っている 2 つのセッションだけです。1 つは
   web backend のブラウザ、もう 1 つは `appium` グリッドへの live 経路の WebDriver セッションです。この
   WebDriver セッションは、閉じないとグリッド上で期限切れまで予約されたままになります。
-- `services.server` を宣言しているターゲットでは、シェルを開く前にサーバを起動し、抜けるときに停止します。これが
-  ないと、web ターゲットは待ち受けていないホストに対してブラウザを開き、`tree` のたびにエラーページを読むことに
-  なります。
+- `hooks.beforeRun` を宣言しているターゲットでは、シェルを開く前にそのコマンドを実行し、抜けるときに
+  `hooks.afterRun` のコマンドを実行します。これがないと、web ターゲットは待ち受けていないホストに対して
+  ブラウザを開き、`tree` のたびにエラーページを読むことになります。
 
 **ステップの指定**（`step <yaml>`）は、flow スタイルの `{ ... }` を1つだけ書く形式で、シナリオファイル自身の
 ステップが検証されるのと同じ `Step` モデルです。`step {swipe: {on: {id: card}, direction: up}}`、
@@ -1011,7 +1011,7 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--backend`（非推奨）。** 以前このフラグは、2つの backend を選んでいました。`local` backend は `serve` のプロセス内で job を実行し、`server` backend は job をキューに積みました。今はどちらの値でも同じサーバが起動します。`serve` は `local` と `server` を受け付けて警告を表示し、値を無視します。未知の値を渡すと、これまでどおり終了コード 2 で終わります。次のリリースでフラグを取り除くので、コマンドラインから外してください。
 - **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。詳しくは [self-hosting](self-hosting.md) で扱います。
 - **廃止したコマンド実行のフラグ。** config のコマンドを実行するかどうかは、もう `serve` が決めません（[BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）。job を実行する worker が、自分の `worker.yaml` の `commandExecution` ブロックで決めます（[self-hosting](self-hosting.md#worker-が実行する-config-のコマンドbe-0492)を参照）。この移行で、次の4つの入力を廃止しました。
-  - `--upload-exec` と環境変数 `BAJUTSU_UPLOAD_EXEC` です。アップロードされたバンドルの `services.server` コマンドを統制していました。代わりに、各 worker で `commandExecution.uploaded` を設定します。
+  - `--upload-exec` と環境変数 `BAJUTSU_UPLOAD_EXEC` です。アップロードされたバンドルが宣言するコマンドを統制していました。代わりに、各 worker で `commandExecution.uploaded` を設定します。
   - `--allow-remote-build` と環境変数 `BAJUTSU_ALLOW_REMOTE_BUILD` です。Web UI から bind した Git の config に、ホスト上での build を許していました。代わりに、各 worker で `remote: allow` を設定します。
 
   4つのどれかを受け取ると、`serve` は起動を拒否し、`commandExecution` ブロックを案内するメッセージを出します。`run`、`record`、`crawl` の `--upload-exec` オプションも廃止しました。

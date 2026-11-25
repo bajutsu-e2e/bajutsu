@@ -81,8 +81,11 @@ targets:
         kind: chromium                         # chromium / chrome / edge / firefox / webkit。--browser が実行ごとに上書き
         emulate: iPhone 13                     # 省略するとデスクトップのコンテキスト。それ以外は Playwright のデバイスプリセット
     driver: { headless: true }                 # false でブラウザを画面に表示。--headed が実行ごとに上書き
-    services:
-      server: { cmd: "python -m http.server 8787", readyUrl: "http://127.0.0.1:8787/" }
+    hooks:
+      beforeRun:
+        - { name: server, cmd: "./scripts/serve-demo.sh", timeout: 30 }   # :8787 が応答したら終了する
+      afterRun:
+        - { cmd: "./scripts/stop-demo.sh" }
     paths: { scenarios: demos/web/scenarios }
 ```
 
@@ -102,8 +105,8 @@ targets:
 
 | グループ | フィールド |
 |---|---|
-| `services` | `server`（run のためにアプリ自身のホストを起動します。後述）、`mockServer`、`mailbox`（run がポーリングするだけで起動はしない外部の受信箱です。[後述](#mailboxemail-ステップ)） |
-| `hooks` | `setup`、`cleanup`、`interrupts`（画面、システムアラート、TipKit。[後述](#システムアラートと-tipkithooksinterrupts)） |
+| `services` | `mailbox`（run がポーリングするだけで起動はしない外部の受信箱です。[後述](#mailboxemail-ステップ)） |
+| `hooks` | `setup`、`cleanup`、`interrupts`（画面、システムアラート、TipKit。[後述](#システムアラートと-tipkithooksinterrupts)）、および外部コマンドの 4 リスト `beforeRun` / `afterRun` / `beforeScenario` / `afterScenario` と `sandbox` ブロック（[後述](#run-とシナリオの前後で実行する外部コマンドhooksbe-0491)） |
 | `evidence` | `capture`、`redact`、`collectNetwork`、`visualCompare`、`secrets` |
 | `paths` | `scenarios`、`baselines`、`schemas`、`goldens` |
 
@@ -361,7 +364,7 @@ targets:
 | `platform_config.device_mode`（`WebConfig`） | `runsOn.browser.emulate` | web のみ: ブラウザコンテキストを生成するときのデバイスモードです。省略するとデスクトップのコンテキストになり、Playwright のデバイスプリセット名（例 `iPhone 13`）を指定すると、viewport / `device_scale_factor` / `is_mobile` / `has_touch` / `user_agent` をエミュレートし、web ターゲットをそのモバイル端末として駆動します。これはデスクトップ級ブラウザでのエミュレーション（Chrome DevTools のデバイスツールバー）であり、実機ではありません（[drivers → Playwright](drivers.md#playwrightweb)）。ドライバーの中で `playwright.devices` に対して**遅延**して解決するため、config 読み込みが Playwright を import することはありません。不明なプリセットは config 読み込み時ではなくドライバー起動時に明示的なエラーで失敗します（[BE-0228](../../roadmaps/BE-0228-web-device-mode-emulation/BE-0228-web-device-mode-emulation-ja.md)） |
 | `conditions` | `runsOn` | ターゲットが宣言するデバイスの条件です（[前述](#デバイスの条件runson)）。範囲は書いたままの文字列で持ちます。`run` はここから run を作り、`doctor` はその run を一覧にします |
 | `device_provider` | `--worker-config` | このターゲットのデバイスの取得元です。config はこれを指定しなくなりました。コマンドが従う `worker.yaml` の `appium` environment が、グリッドのエンドポイントを、グリッドのプラットフォームのターゲットに渡します（[マシンが実行できるもの](#マシンが実行できるもの設定の外be-0450)）。ほかのターゲットはビルトインの `local` provider（`--udid` の経路）を使います。このエンドポイントは live の W3C WebDriver トランスポートで端から端まで駆動します（[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)、[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
-| `launch_server` | `services.server` | 任意の `{cmd, readyUrl, readyTimeout, cwd, env}` です。run のためにアプリのホストを起動し、終わったら停止します。`readyUrl`（既定は `subject.url`）をプローブし、すでに応答すれば再利用（worker のモードが `allow` か `sandbox` のとき）、しなければ `cmd` を起動して準備が整うまで待ちます（固定 sleep ではなく条件待ち）。`subject.build` の web 版です（[BE-0059](../../roadmaps/BE-0059-launch-target-server/BE-0059-launch-target-server-ja.md)）。`cmd` を実行するかどうか、どこで実行するかは、run を実行する worker が決めます。worker の `worker.yaml` の `commandExecution` ブロックが config の出所ごとにモードを定め、アップロードされたバンドルのコマンドは既定で Docker コンテナの中で実行します（[セルフホスティング](self-hosting.md#worker-が実行する-config-のコマンドbe-0492)、[BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md) を参照）。`sandbox` での実行には、追加フィールドとして `dockerImage`（Docker イメージ参照。例 `node:20-slim`）か `dockerfile`（バンドル相対のパスで、`docker build` でビルドします）のどちらか一方、加えて `port`（コンテナ内の待ち受けポート。ループバックのホストポートへ publish します）が必要です（[BE-0090](../../roadmaps/BE-0090-uploaded-config-command-execution/BE-0090-uploaded-config-command-execution-ja.md)） |
+| `hooks.before_run` / `.after_run` / `.before_scenario` / `.after_scenario` / `.sandbox` | `hooks.beforeRun` / `.afterRun` / `.beforeScenario` / `.afterScenario` / `.sandbox` | run の前後と各シナリオの前後で実行する外部コマンドです。各エントリは `{cmd | use, name, cwd, env, timeout, on, mask}` の形を取ります（[後述](#run-とシナリオの前後で実行する外部コマンドhooksbe-0491)）。コマンドは `$BAJUTSU_OUTPUT` を通じて値を返し、シナリオは `${hooks.<name>.<key>}` として読みます。コマンドを実行するかどうか、どこで実行するかは、run を実行する worker が決めます。worker の `worker.yaml` の `commandExecution` ブロックが config の出所ごとにモードを定め、アップロードされたバンドルのコマンドは既定で run ごとに 1 つの Docker コンテナの中で実行します（[セルフホスティング](self-hosting.md#worker-が実行する-config-のコマンドbe-0492)、[BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）。この 4 リストは `services.server` を置き換えました。準備完了の判定は、サーバを起動するスクリプトの側に移っています（[BE-0491](../../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)） |
 | `run_defaults.system_alerts` / `.ios_tip_kit_handling` | `hooks.interrupts` の `systemAlert` と `tipKit` のエントリ | システムアラートガードと TipKit ガードに、アプリ単位の既定値を与えます。シナリオ自身の `interrupts` がこの上に重なります（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。`systemAlert` のエントリは、別のプロンプトについてエントリを書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときは run が通知を出し、シナリオ側は同じプロンプトのエントリを書けば上書きできます。重ね方の規則は[後述](#システムアラートと-tipkithooksinterrupts)のとおりで、[シナリオ](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)でも説明しています。`tipKit: dismiss` は TipKit ガードの既定値になります（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` は、すべてのシナリオについてこの値を上書きします |
 | `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | ターゲットのすべてのシナリオを包むステップです。`setup` はシナリオ自身の `setup` より先に、`cleanup` はシナリオ自身の `cleanup` より後に動き（規則は、シナリオの `cleanup` の規則と同じ `on: always`、`success`、`failure` を取ります）、`interrupts` はシナリオのものより先に確認します。hook のステップは `use: { component: <file>, with: … }` でコンポーネントを呼べます。ローダは config を読み込むときに、config ファイルのディレクトリを基準にコンポーネントを解決し、スイートのルートの外を指す参照を拒否します（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md)）。`group:` と `setMocks` は引き続き hook では使えません。シナリオは `preconditions.inheritSetup: false` で、宣言したすべてのターゲットの `hooks.setup` を飛ばせます。cleanup はその場合も動きます。`hooks.interrupts` の `systemAlert` と `tipKit` のエントリは前の行の 2 つのフィールドに解決するので、`.interrupts` は画面のエントリだけを持ちます |
 | `locale` | `runsOn.ios.locale` | iOS: launch 時に適用されます（`simctl` の launch 引数）。ビルトイン既定は `en_US` です。XCUITest バックエンドでは、cold spawn のたびに **Simulator 自身のシステム言語**も固定します。デバイスのグローバル設定ドメインに書き込み、SpringBoard がその言語で描画するよう再起動します。そのため、プロセス外の権限プロンプトのボタンのテキストは、Simulator がたまたま持っていた言語ではなく、この `locale` が予測するものになります。`preconditions.device.ios.locale` が固定済みの値と異なるシナリオは、warm な runner を再利用せず cold respawn を強制します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。label の対応表（英語と日本語）にない言語では、`handleSystemAlert` ステップはボタンの位置で答えます。同じ言語の `interrupts` にある `systemAlert` のエントリは、デバイスを操作する前にシナリオを失敗させます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)） |
@@ -372,7 +375,6 @@ targets:
 | `start_when` | `subject.startWhen` | 任意の `startWhen: { exists: { id: … } }` です。run を始める前に launch が出現を待つセレクタで、既定の「アプリが 2 要素以上を描画した」判定の代わりになります。`interrupts` のエントリが `condition` に使う形で書き、`negate` は付けません。最初の操作画面が常時表示のクロームの上に出るモーダルであるアプリ向けです（要素数の判定はモーダル提示前に返ってしまうことがあります）。`id` / `idMatches` はシナリオのセレクタと同様に OR 候補のリストを受け付けるので（`startWhen: { exists: { id: [stable.row.1, stable_row_1] } }`。BE-0221）、native な id 構文が異なる target も 1 つの `startWhen` で扱えます。固定 sleep ではなく条件待ちです。指定するのは、その target の**すべて**のシナリオが同じ画面から始まるときに限ります。シナリオごとに最初の画面が異なる場合は、各シナリオの先頭に `wait` ステップを置いてください。readiness の最も強いシグナルは引き続き `startWhen` です。iOS では、`BajutsuKit` の画面遷移 observer（BE-0310）を組み込んだ target が、namespace／要素数のヒューリスティックの上に、起動以降に報告された画面遷移という段を設定不要で得ます。ただし明示的な `startWhen` はそれより上位です。observer のシグナルが判定を担うのは、`startWhen` が設定されていないときだけです |
 | `id_namespaces` | `subject.idNamespaces` | doctor が参照します |
 | `reserved_namespaces` | トップレベルの `reservedNamespaces` | 情報用です（doctor は app の `idNamespaces` のみで採点します） |
-| `mock_server` | `services.mockServer` | ⚠️ スキーマのみ · 未配線 |
 | `evidence_dirs.scenarios` | `paths.scenarios` | このターゲットのシナリオディレクトリです。`run --target` は配下の `*.yaml` を全件読み、`record` は新規をここへ書きます。config ファイル自身のディレクトリ基準の相対パス（`subject.path` や兄弟の `paths.baselines` / `.schemas` / `.goldens` も同様）で、`bajutsu` をどこから実行しても config は同じ挙動になります（BE-0242）。`run --scenario` / `record --out` で上書きします |
 | `capture` | `evidence.capture` | 既定証跡です（[evidence の注記](evidence.md#証跡の指示方法3-つ)） |
 | `redact` | `evidence.redact`（defaults ∪ ターゲット） | マージします（下記） |
@@ -439,6 +441,279 @@ config には、ガード全体をオンやオフにするキーがありませ�
 | TipKit | シナリオのエントリを使い、なければターゲットのエントリを使います。どちらにもなければオフです |
 
 `pollInterval` は層ごとに決まります。シナリオ、`--alert-poll-interval`、ターゲットの順に見て、最初に値を持つ層が勝ちます。1 つの層の中では最小の値が勝ちます。短い間隔は、より長い間隔を求めたエントリの要求も満たすからです。固まった画面の上限はガード全体で 1 つです。その値は、プロンプトに答えるエントリのうちもっとも寛容なもの、つまり最大の値で、`0`（停止オフ）はどの値よりも優先します。各規則の詳しい説明は[シナリオ](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)にあります。
+
+### run とシナリオの前後で実行する外部コマンド（`hooks`、BE-0491）
+
+シナリオが依存するテストデータは、どこかで用意しなければなりません。`targets.<name>.hooks` の下の
+4 つのリストが、その用意と後片付けを外部コマンドで行います。コマンドは Web API 経由でデータを投入できます。
+ファイルを置いたり、アプリ自身のサーバを起動したりもできます。さらに、出力ファイルを通じて値をシナリオへ
+返せます。
+
+これによってシナリオの DSL に `shell` ステップが入るわけではありません。
+[BE-0036](../../roadmaps/BE-0036-utility-steps/BE-0036-utility-steps-ja.md) はそれを却下しました。
+任意のコマンドを実行できるシナリオは可搬性を失い、レビュアーは何をしているか読み取れなくなります。
+コマンドはターゲットの config に置き、運用者が責任を持ちます。シナリオ自身の `hooks` ブロックも、
+ステップの列には入りません。
+
+| リスト | 実行される時点 | 出力の有効範囲 |
+|---|---|---|
+| `beforeRun` | 最初のシナリオの前に 1 回 | run 全体 |
+| `afterRun` | 最後のシナリオの後に 1 回。run から抜けるどの経路でも実行されます | — |
+| `beforeScenario` | 各シナリオの前、アプリ起動より先 | そのシナリオ |
+| `afterScenario` | 各シナリオの後、判定が確定してから | — |
+
+```yaml
+targets:
+  web:
+    platform: web
+    subject: { url: "http://127.0.0.1:8787/index.html" }
+    hooks:
+      beforeRun:
+        - name: server
+          cmd: "./scripts/start-server.sh"    # サーバを起動し、応答するまで待って終了する
+          timeout: 60
+      beforeScenario:
+        - name: user
+          cmd: "./scripts/create-user.sh"     # userId=... を $BAJUTSU_OUTPUT へ書く
+      afterScenario:
+        - cmd: "./scripts/delete-user.sh"     # $BAJUTSU_HOOK__user__userId を読む
+      afterRun:
+        - cmd: "./scripts/stop-server.sh"
+```
+
+シナリオ側は、準備のためのステップを持たずに投入済みの値を読めます。
+
+```yaml
+- name: sign in as a seeded user
+  steps:
+    - type: { text: "${hooks.user.userId}", into: { id: login.username } }
+```
+
+#### 1 エントリのフィールド
+
+| フィールド | 対象リスト | 意味 |
+|---|---|---|
+| `cmd` | すべて | コマンドです。シェルと同じ規則で分割し、シェルを介さずに実行します。パイプやリダイレクトには `sh -c` かスクリプトが必要です |
+| `use` | すべて | `cmd` の代わりに、worker が `namedCommands` に挙げたコマンドの名前を指定します。エントリは `cmd` と `use` のどちらか一方だけを持ちます。`use` のとき `env` に書けるのは、そのコマンドについて worker が挙げた変数だけで、`cwd` は無視されます（[セルフホスティング](self-hosting.md#worker-が実行する-config-のコマンドbe-0492)） |
+| `name` | すべて | 識別子です。`[A-Za-z][A-Za-z0-9_]*` の形で `__` を含まず、run が駆動するすべてのターゲットの 4 リストを通じて一意です。出力を読まれるエントリには必須です |
+| `cwd`、`env` | すべて | 作業ディレクトリと追加の環境変数です。相対パスの `cwd` は config ファイル自身のディレクトリから解決します |
+| `timeout` | すべて | コマンドに許す秒数です。既定は 300 です |
+| `on` | `afterRun`、`afterScenario` | `always`、`success`、`failure` のいずれかです。既定は `always` です。シナリオの `cleanup` ルールと同じ語を使います |
+| `mask` | すべて | true にすると、このエントリの出力値を `${secrets.*}` の値と同じようにエビデンスでマスクします。既定は false です |
+| `when` | すべて | このエントリを実行するシナリオのタグです。`{ tags, exclude }` と書きます（[下記](#一部のシナリオでだけエントリを実行するwhenbe-0497)）。省略すると、すべてのシナリオで実行します |
+
+#### 実行の順序とライフサイクル
+
+各エントリは、次のエントリが始まる前に完了まで実行されます。終了コードが 0 でない場合、または `timeout`
+を超えた場合、そのエントリは失敗します。`timeout` 超過のときは、コマンドのプロセスグループ全体を停止します。
+
+スクリプトが終了した後もプロセスが残ることがあります。たとえば、バックグラウンドで起動したサーバです。
+Bajutsu はそのプロセスを追跡しません。停止もしません。そのため、サーバを起動するスクリプトは 2 つの責任を
+負います。
+
+- **準備完了の判定**：スクリプトは、サーバがリクエストを受け付けられるようになってから終了します。どの
+  チェックを使うかは、そのサーバに合わせてスクリプトが選びます。HTTP でのプローブ、ポートの確認、ログの
+  特定行のいずれでもかまいません。待ち時間はエントリの `timeout` が上限を与えます。固定 sleep ではなく
+  条件待ちになります。
+- **停止**：`afterRun` か `afterScenario` のエントリがサーバを停止します。
+
+1 つのシナリオは次の順序で進みます。
+
+1. `beforeScenario` のエントリを宣言順に実行します。
+2. デバイスをリースし、アプリを起動します。
+3. `setup` のステップ、`steps` と `expect`、`cleanup` のルールを実行します。
+4. `on` が判定に一致する `afterScenario` のエントリを宣言順に実行します。
+
+`beforeScenario` のエントリはアプリ起動より先に走るので、アプリは起動時に投入済みのデータを読めます。
+`preconditions.inheritSetup: false` を設定したシナリオは、ターゲットの `setup` と 2 つのシナリオ用
+リストをまとめてスキップします。2 つのリストは対になっています。`afterScenario` のスクリプトは、
+`beforeScenario` のスクリプトが作ったものを片付けるのが普通です。ターゲットの `cleanup` はそのまま実行
+されます。
+
+1 つのシナリオが複数のターゲットを駆動することもあります。その場合、run は駆動するすべてのターゲットの
+hooks を実行します。各リストの中では、シナリオが宣言した順にターゲットを処理します。`after` のリストは
+逆順に処理するので、最後に準備したターゲットが最初に片付けられます。
+
+シナリオも自身のコマンドを宣言でき、ターゲットのコマンドの内側で実行されます
+（[scenarios](scenarios.md#hooks1-本のシナリオの前後で実行する外部コマンド)、
+[BE-0501](../../roadmaps/BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md)）。ターゲットの
+すべてのシナリオが必要とするコマンドを、ここに書きます。
+
+#### 一部のシナリオでだけエントリを実行する（`when`、BE-0497）
+
+準備が必要なのは、スイートの一部のシナリオだけということがよくあります。エントリの `when` ブロックには、
+そのエントリを実行するシナリオのタグを書きます。タグが一致しなければ、Bajutsu はエントリをスキップします。
+
+```yaml
+hooks:
+  beforeRun:
+    - name: mock
+      cmd: "./scripts/start-mock.sh"
+      when: { tags: [offline] }            # run が offline のシナリオを選んだときに起動する
+  afterRun:
+    - cmd: "./scripts/stop-mock.sh"
+      when: { tags: [offline] }
+  beforeScenario:
+    - name: account
+      cmd: "./scripts/create-payment-account.sh"
+      when: { tags: [payments], exclude: [readonly] }
+  afterScenario:
+    - cmd: "./scripts/delete-payment-account.sh"
+      when: { tags: [payments], exclude: [readonly] }
+```
+
+| フィールド | 意味 |
+|---|---|
+| `when.tags` | このタグのどれか 1 つ以上を持つシナリオに一致します。省略または空のときは、何も制約しません |
+| `when.exclude` | このタグのどれか 1 つでも持つシナリオには一致しません。`exclude` は `tags` より優先します |
+
+一致の規則は、`bajutsu run` の `--tag` と `--exclude` がシナリオを選ぶ規則と同じです。タグは文字列全体で
+比較し、大文字と小文字を区別します。両方のリストが空の `when` は、読み込みに失敗します。
+
+条件は、コンポーネントとデータを展開した後のタグを読みます。そのため、`tags` に `${row.*}` を書けば、
+データの行ごとに異なるタグを持てます。
+
+エントリがどのシナリオを読むかは、リストによって決まります。
+
+- **`beforeScenario` と `afterScenario`**：前後に実行する対象のシナリオを読みます。`afterScenario` の
+  エントリは、`when` と `on` の両方を満たしたときに実行します。
+- **`beforeRun` と `afterRun`**：run のシナリオ集合を読み、どれか 1 つが一致すれば実行します。`when` に
+  空でない `tags` がなければ、config の読み込みに失敗します。
+
+シナリオ集合には、エントリのターゲットを駆動するシナリオが入ります。
+
+| コマンド | シナリオ集合 |
+|---|---|
+| `run` | `--tag` と `--exclude` を適用して残ったシナリオ。その run のすべての worker レーンにまたがります |
+| `serve` が worker に渡すジョブ | そのジョブ自身のシナリオ。複数のファイルをまとめて実行すると、シナリオファイルごとに 1 つのジョブになり、各ジョブが 1 回の run になります |
+| `audit` | `audit` が再生するシナリオ |
+| `record`、`crawl`、`repl` | 空。これらのコマンドはシナリオファイルを実行しません |
+
+空の集合は、どの条件にも一致しません。`record`、`crawl`、`repl` でも必要なサーバには、`when` を
+付けません。Bajutsu は、最初の `beforeRun` エントリの前に集合を確定します。`afterRun` のエントリは、
+キャンセル後も同じ集合で判断します。
+
+Bajutsu は、`beforeScenario` のエントリと、それを片付ける `afterScenario` のエントリを結び付けません。
+両方に同じ `when` を書きます。条件の広い片付けのエントリは、そのまま実行されます。片付けの
+エントリからは、スキップしたエントリの `BAJUTSU_HOOK__<name>__<key>` 変数は未設定に見えます。
+
+`${hooks.<name>.<key>}` を読むシナリオは、読む先のエントリの `when` に一致しなければなりません。`run` と
+`audit` は、`--tag` と `--exclude` の選択に関係なく、展開後のすべてのシナリオを検査します。一致しない
+シナリオがあれば、終了コード 2 になります。エラーは、エントリ、条件、シナリオのタグを示します。選択されず、
+`targets` も書いていないシナリオは、実行できるターゲットが config に 1 つもないときだけ失敗します。検査は、
+ターゲットの `setup` と `cleanup` のステップにあるトークンにも及びます。
+
+スキップしたエントリは、ログファイルも出力ファイルも書きません。レポートは、エントリを `skipped (when)` と
+条件で表示します。[`commandExecutions`](self-hosting.md#コマンドの記録) には `skipped` の判断が残ります。
+worker のコマンドポリシーは、条件に一致しないエントリも検査します。
+
+#### 失敗と判定
+
+hook がアプリを判定することはありません。hook の失敗が run やシナリオを失敗させるのは、前提条件か後片付けが
+成り立たなかったからです。何が成功かをコマンドが決めるわけではありません。
+
+| 失敗した場所 | 影響 |
+|---|---|
+| `beforeRun` | シナリオは 1 つも実行されません。`always` と `failure` の `afterRun` エントリは実行されます。run は終了コード 2 になります |
+| `beforeScenario` | そのシナリオは `beforeScenario: <name>: …` で失敗し、起動とステップをスキップします。そのシナリオの `afterScenario` エントリは実行されます |
+| `afterScenario` | シナリオの `cleanup` と同じ規則です。成功していたシナリオではその失敗が判定になり、すでに失敗していた場合は既存の失敗の後ろに追記されます |
+| `afterRun` | 各シナリオの判定はそのまま残ります。レポートに失敗が記録され、run は終了コード 2 になります |
+
+先のエントリが失敗しても、後続の `afterScenario` と `afterRun` のエントリは実行されます。後片付けの残りを
+やめることは、後片付けがまさに避けようとしている結果です。キャンセルされた run でも `after` の 2 つの
+リストは実行されます（`SIGTERM`、または Web UI の Cancel ボタン）。その実行時間は、シナリオの `cleanup` が
+使うキャンセル猶予時間の一部で上限が決まります。
+
+#### 値の受け渡し：出力ファイルと環境変数
+
+各エントリは、環境変数 `BAJUTSU_OUTPUT` が指す空のファイルを与えられて実行されます。コマンドは 1 つの値を
+`key=value` の 1 行として書きます。キーの形は `name` と同じ規則に従います。不正な行はそのエントリを失敗
+させます。打ち間違いが、黙って欠けた値に変わることはありません。
+
+シナリオは `${hooks.<name>.<key>}` として値を読みます。run ループは `${secrets.*}` と同じく、アクション
+実行の時点でトークンを置換します。シナリオが読めるのは、`beforeRun` の出力と、そのシナリオ自身の
+`beforeScenario` の出力です。解決できないトークンは、デバイスに触れる前に run が拒否します。解決できない
+形は 2 つあります。1 つは、`beforeRun` と `beforeScenario` のどちらにも存在しない名前を指すトークンです。
+もう 1 つは、`inheritSetup: false` でスキップされる `beforeScenario` のエントリを指すトークンです。
+コマンドが書かなかったキーはシナリオを失敗させます。そのメッセージは hook 名とキー名の両方を示します。
+
+有効範囲にある後続のコマンドは、先のコマンドの出力を環境変数として読めます。変数名は
+`BAJUTSU_HOOK__<name>__<key>` です。二重アンダースコアは対応を一意に保ちます。`name` とキーが `__` を
+禁じているのはそのためです。各コマンドは、文脈を表す変数も受け取ります。
+
+| 変数 | 設定される対象 |
+|---|---|
+| `BAJUTSU_RUN_ID`、`BAJUTSU_RUN_DIR`、`BAJUTSU_TARGET` | どのコマンドでも、すべてのエントリ（`sandbox` では run ディレクトリをマウントしないので `BAJUTSU_RUN_DIR` は未設定です） |
+| `BAJUTSU_SCENARIO`、`BAJUTSU_SCENARIO_FILE`、`BAJUTSU_WORKER` | `beforeScenario` と `afterScenario` |
+| `BAJUTSU_VERDICT`（`success` か `failure`） | `afterRun` と `afterScenario` |
+
+`BAJUTSU_WORKER` は `run --workers` でのワーカー番号です。シナリオの hooks は、そのシナリオを実行する
+ワーカーの中で動きます。並列に走るシナリオは hooks も並列に実行します。共有状態に触れるスクリプトは、
+この番号でデータやポートを選べます。シナリオごとにサーバを起動するスクリプトも同じようにできます。
+
+#### コマンドが実行される場所と、実行の可否
+
+コマンドは、シナリオを実行するマシンの上で動きます。
+
+| run の起動方法 | hooks が実行される場所 |
+|---|---|
+| ターミナルや CI からの `bajutsu run` | そのマシン |
+| `serve` の Web UI | ジョブをリースした `bajutsu worker` |
+| デバイスクラウドのバッチ | バッチが `bajutsu run` を実行するデバイスクラウドのホスト |
+
+hook が呼ぶ投入用の API や、hook が置くファイルは、そのマシンから到達できなければなりません。
+
+あるマシンがある config のコマンドをそもそも実行するかどうかは、別の判断です。その判断はマシン側が持ちます。
+worker の `worker.yaml` の `commandExecution` ブロックが、config の出所ごとにモードを定めます
+（[セルフホスティング](self-hosting.md#worker-が実行する-config-のコマンドbe-0492)）。`use` のエントリは
+worker が導入済みのスクリプトを指します。信頼できない config のコマンド行をすべて拒否する `named` モードの
+worker でも、このエントリは実行できます。
+
+Bajutsu の各コマンドは、自分に合うリストを実行します。
+
+| コマンド | `beforeRun` / `afterRun` | `beforeScenario` / `afterScenario` |
+|---|---|---|
+| `run`（および `serve` が worker に渡すジョブ） | 実行します | 実行します |
+| `audit` | 実行します | 実行します。run ループを通してシナリオを再生するためです |
+| `record`、`crawl`、`repl` | 実行します | 実行しません。これらはシナリオファイルを実行しないためです |
+
+#### sandbox のコンテナ（`hooks.sandbox`）
+
+worker の `sandbox` モードでは、1 つのターゲットの hook エントリは 1 つのコンテナの中で実行されます。
+そのコンテナは run の間ずっと生きています。`beforeRun` のスクリプトが起動したサーバは、`afterRun` まで
+応答し続けます。コンテナの作り方は、ターゲットの `hooks.sandbox` ブロックで宣言します。
+
+```yaml
+hooks:
+  sandbox:
+    dockerImage: "node:20-slim"   # または dockerfile: config のディレクトリ内のパス
+    ports: [8787]                 # worker のループバックインタフェースへ publish する
+```
+
+- **run ごとに 1 つのコンテナ**：Bajutsu は `beforeRun` の前にコンテナを起動します。そのとき、イメージの
+  既定コマンドの代わりに待機用のコマンドを使います。各エントリは `docker exec` でその中で実行します。
+  `afterRun` が終わると、Bajutsu はコンテナを削除します。
+- **ポート**：`ports` の各ポートを、worker のループバックインタフェースの同じポートへ publish します。
+  worker 上のブラウザやアプリは `127.0.0.1:<port>` でサーバに到達します。
+- **ファイル**：worker が用意した config のディレクトリを読み取り専用でマウントします。出力ファイルを
+  置くディレクトリは書き込み可能でマウントし、`BAJUTSU_OUTPUT` をコンテナ内のパスへ書き換えます。
+  run ディレクトリはマウントしないので、`BAJUTSU_RUN_DIR` はそこでは未設定のままです。
+
+hooks が `sandbox` モードに当たるターゲットは、このブロックを必要とします。ブロックがなければ、デバイスを
+扱う前に run が失敗します。そのメッセージはブロック名を示します。
+
+#### エビデンス
+
+コマンドの標準出力と標準エラー出力は run ディレクトリに記録されます。run 単位のリストは
+`hooks/<list>/<target>/<name-or-index>.log` に書きます。シナリオ単位のリストは
+`hooks/<list>/<target>/<scenario-index>/<name-or-index>.log` に書きます。レポートは各 hook フェーズを、
+シナリオの番号付きステップとは別のブロックとして表示します。`setup` と `cleanup` もすでに同じ扱いです。
+
+ログにもマスクが効きます。各コマンドは run ディレクトリの外にある生ファイルへ書きます。Bajutsu はその
+ファイルを run ディレクトリへコピーするときに、`${secrets.*}` の値と `mask: true` のエントリの出力値を
+置き換えます。生ファイルの置き場は所有者だけが読める権限を持ち、run の終わりに削除されます。コピーは
+シンボリックリンクと通常ファイル以外を拒否します。この制限によって、sandbox のコマンドがマシン上の内容を
+run のエビデンスへ持ち込むことはできません。
 
 ### 環境ごとの設定（`runsOn.ignoredSettings`、BE-0467）
 
@@ -636,14 +911,14 @@ orgs:
     targets: [demo, checkout]
 ```
 
-`allowedRepositories` は、人間の名簿の隣に並ぶ org の**機械**の名簿です（[BE-0414](../../roadmaps/BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)）。継続的インテグレーション（CI）のジョブが OpenID Connect（OIDC）トークンを交換して、この org として振る舞う短命のセッションを得られるリポジトリを挙げます。ロールは一切付きません。パイプラインを律するのは endpoint の許可リストであって、viewer／editor／admin ではありません。エントリには `"<owner>/<repo>"` という名前だけを書くか、その名前に `environment`、`ref`、`workflowRef` のいずれかの絞り込みを添えたオブジェクトを書きます。設定の手順、operator が指定しなければならない audience、交換の endpoint、名前の再利用とフォークにまつわる注意点は、[セルフホスティング](self-hosting.md#ci-ジョブを認証する任意be-0414)にあります。
+`allowedRepositories` は、人間の名簿の隣に並ぶ org の**機械**の名簿です（[BE-0414](../../roadmaps/BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md)）。継続的インテグレーション（CI）のジョブが OpenID Connect（OIDC）トークンを交換して、この org として振る舞う短命のセッションを得られるリポジトリを挙げます。ロールは一切付きません。パイプラインを律するのは endpoint の許可リストであって、viewer／editor／admin ではありません。エントリには `"<owner>/<repo>"` という名前だけを書くか、その名前に `environment`、`ref`、`workflowRef` のいずれかの絞り込みを添えたオブジェクトを書きます。設定の手順、operator が指定しなければならない audience、交換の endpoint、名前の再利用とフォークにまつわる注意点は、[セルフホスティング](self-hosting.md#ci-ジョブを認証するbe-0414)にあります。
 
 OAuth ログイン時にユーザは自分の org に割り当てられます。順に、明示の `members`、GitHub org メンバーシップからの `githubOrgs` 一致、直接の Team メンバーシップからの `githubTeams` または `editorTeams` 一致を見ます。Team を最後に見るのは、org に Team を足したときに既存の login の所属先を動かさないためです。以後はその org の targets だけが見え、run の artifacts／scenarios／baselines はその org 専用のオブジェクトストレージ prefix の下に置かれます。どの org にも挙げられていない target は単一の `default` org に入るので、`orgs:` ブロックの**無い** config はシングルテナントです。CLI とローカルの `serve` は `orgs:` を一切参照しません。
 
 GitHub OAuth を構成すると、org メンバーシップがアクセスも決めます（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。サインインには構成済みの org への所属が必要です。`members`、`githubOrgs`、`githubTeams`、`editorTeams` のいずれかで所属すると、**viewer** ロールが付きます。viewer より上のロールは、Team のメンバーシップで決まります。
 
 - org の `editorTeams` のいずれかの直接メンバーは、**editor** に昇格します。
-- サーバ全体で 1 つ以上の admin Team（`BAJUTSU_OAUTH_ADMIN_TEAMS`。[セルフホスティング](self-hosting.md#2-github-oauth-を足す任意)を参照）のいずれかのメンバーは、**admin** になります。
+- サーバ全体で 1 つ以上の admin Team（`BAJUTSU_OAUTH_ADMIN_TEAMS`。[セルフホスティング](self-hosting.md#2-github-oauth-を足す)を参照）のいずれかのメンバーは、**admin** になります。
 
 `editorTeams` は昇格させるだけでなく、サインインも許します。書き込みを許した Team を `githubTeams` に重ねて書く必要はありません。`editorTeams` がリストなのは、`githubOrgs` と `githubTeams` がリストなのと同じ理由です。1つの org が複数の GitHub organization にまたがることがあり、枠が1つでは organization ごとの書き込み Team を挙げられません。旧来の単数形 `editorTeam` を書いた config もそのまま動きます。`serve` がそのキーを `editorTeams` に畳み込み、名前の変更が中途半端で単数形が複数形の隣に残っている場合は両方を畳み込みます。ただし、文書に載るのは複数形だけなので、名前は変更してください。
 

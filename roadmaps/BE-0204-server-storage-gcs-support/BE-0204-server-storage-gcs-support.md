@@ -16,75 +16,77 @@
 
 ## Introduction
 
-Add a GCS (Google Cloud Storage) backend to the **server-side** object-storage seam
-(`bajutsu/serve/server/object_store.py`) that backs `ArtifactStore`, `ScenarioStore`, and the
-visual-baseline store for `bajutsu serve --backend=server` — today it only ever builds an
-`S3ObjectStore`. [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) already
-built a backend-agnostic `ObjectStore` protocol plus a `GCSObjectStore` and a single-URI factory
-(`object_store_from_uri`, `s3://…` / `gs://…`) for the separate evidence-upload path — this
-proposal reuses that same machinery for server storage, so a self-hosted deployment on Google
-Cloud is not forced to also stand up an S3-compatible bucket.
+This proposal adds a Google Cloud Storage (GCS) backend to the **server-side** object-storage seam
+(`bajutsu/serve/server/object_store.py`). That seam backs `ArtifactStore`, `ScenarioStore`, and the
+visual-baseline store for `bajutsu serve --backend=server`, and today it builds an
+`S3ObjectStore` and nothing else. [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md) already
+built a backend-agnostic `ObjectStore` protocol, a `GCSObjectStore`, and a single-URI factory
+(`object_store_from_uri`, `s3://…` / `gs://…`) for the separate evidence-upload path. This
+proposal reuses that machinery for server storage, so a self-hosted deployment on Google Cloud is
+not forced to also stand up an S3-compatible bucket.
 
 ## Motivation
 
 [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) (Bajutsu's own
 hosted service) chose Cloudflare R2 and
 [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (self-hosting) chose
-MinIO — both S3-compatible — for the server-side artifact store, and both explicitly rejected
-GCS as an alternative. That was a reasonable default for Bajutsu's own recommended stack, but the
-**implementation** hard-codes the choice: `object_store_from_env()`
-(`bajutsu/serve/server/object_store.py`) only ever constructs an `S3ObjectStore`, and
+MinIO, both S3-compatible, for the server-side artifact store. Both items explicitly rejected GCS
+as an alternative. That was a reasonable default for Bajutsu's own recommended stack, but the
+**implementation** hard-codes the choice. `object_store_from_env()`
+(`bajutsu/serve/server/object_store.py`) constructs an `S3ObjectStore` and nothing else, and
 `_build_server_state` (`bajutsu/serve/__init__.py:268-270`) raises `ValueError` unless
-`BAJUTSU_S3_BUCKET` is set. A self-hoster already running the rest of their stack on Google Cloud
-(GKE control plane, Cloud SQL, …) has no way to point the server's own storage at GCS — even
-though nothing in the seams that read and write it depends on S3 specifically.
+`BAJUTSU_S3_BUCKET` is set. A self-hoster who already runs the rest of their stack on Google Cloud
+(GKE control plane, Cloud SQL, …) has no way to point the server's own storage at GCS, even though
+nothing in the seams that read and write that storage depends on S3 specifically.
 
-BE-0110 already solved the identical problem for a different seam: evidence upload. It promoted
-`ObjectStore` to a top-level, backend-agnostic protocol precisely so `run` and `serve` could share
-one seam, added a `StoreURI` parser and `object_store_from_uri` factory that already builds either
-an `S3ObjectStore` or a working, tested `GCSObjectStore` from one URI, and wired all of that up to
-`--evidence-store` / `BAJUTSU_EVIDENCE_STORE`. The server-side consumers —
+BE-0110 already solved the identical problem for a different seam, evidence upload. It promoted
+`ObjectStore` to a top-level, backend-agnostic protocol so that `run` and `serve` could share one
+seam. It also added a `StoreURI` parser and an `object_store_from_uri` factory, which build either
+an `S3ObjectStore` or a working, tested `GCSObjectStore` from one URI, and it wired both to
+`--evidence-store` / `BAJUTSU_EVIDENCE_STORE`. The server-side consumers are
 `ObjectStorageArtifactStore` (`bajutsu/serve/server/artifacts.py`), `ObjectScenarioStorage`
 (`bajutsu/serve/server/scenarios.py`), and `ObjectBaselineStore`
-(`bajutsu/serve/server/baselines.py`) — already depend on the same `ObjectStore` protocol, not on
-`S3ObjectStore` directly. They simply never get constructed with anything but an `S3ObjectStore`,
-because the server's own factory predates BE-0110's GCS work and never adopted it.
+(`bajutsu/serve/server/baselines.py`). They already depend on the same `ObjectStore` protocol, not
+on `S3ObjectStore` directly. They receive an `S3ObjectStore` every time because the server's own factory
+predates BE-0110's GCS work and never adopted it.
 
-The result today is an inconsistency inside one deployment: evidence can already be uploaded to
+The result is an inconsistency inside one deployment. Evidence can already be uploaded to
 `gs://…`, but the same server is forced onto an S3-compatible bucket for everything else it
 stores (run artifacts, scenarios, visual baselines). Closing that gap removes an unnecessary
-two-cloud-vendor requirement for GCS-based self-hosters, and does so by reusing code that already
+two-cloud-vendor requirement for GCS-based self-hosters. It does so by reusing code that already
 exists, is already tested, and already ships behind the optional `gcs` extra.
 
 ## Detailed design
 
 ### 1. A URI-based server-storage setting
 
-Configure server storage the same way `--evidence-store` already is — one URI naming the backend,
-bucket, and prefix (e.g. `gs://bucket/prefix` or `s3://bucket/prefix`) — as its **own**,
-independent setting (a `BAJUTSU_SERVER_STORE`-style env var; exact name TBD at implementation
-time). This is deliberately **not** the same setting as `BAJUTSU_EVIDENCE_STORE`: the two stay
-independent so each deployment can point them at different buckets or backends, but both now
-accept either scheme (see *Alternatives considered* for why the settings are not merged).
+Configure server storage the way `--evidence-store` is already configured: one URI names the
+backend, bucket, and prefix (for example `gs://bucket/prefix` or `s3://bucket/prefix`). The URI is
+the value of the server's **own**, independent setting (a `BAJUTSU_SERVER_STORE`-style env var;
+exact name TBD at implementation time). The setting is deliberately **not** `BAJUTSU_EVIDENCE_STORE`.
+The two stay independent so that each deployment can point them at different buckets or backends,
+and both now accept either scheme (see *Alternatives considered* for why the settings are not
+merged).
 
 ### 2. Rebuild the server factory on the existing URI machinery
 
-`bajutsu/serve/server/object_store.py`'s `object_store_from_env()` is rebuilt on top of
-`bajutsu.object_store.parse_store_uri` / `object_store_from_uri` — the same functions
-`--evidence-store` already uses — instead of hand-rolling an S3-only `boto3` client from
-`BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_ENDPOINT` / `BAJUTSU_S3_REGION`. The factory returns whichever
-`ObjectStore` implementation (`S3ObjectStore` or `GCSObjectStore`) the URI's scheme selects, and
-raises the same "install the missing extra" error `object_store_from_uri` already raises for
-evidence storage when the corresponding SDK isn't installed.
+`object_store_from_env()` in `bajutsu/serve/server/object_store.py` is rebuilt on top of
+`bajutsu.object_store.parse_store_uri` / `object_store_from_uri`, the functions `--evidence-store`
+already uses. This replaces the hand-rolled, S3-only `boto3` client built from
+`BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_ENDPOINT` / `BAJUTSU_S3_REGION`. The factory returns the
+`ObjectStore` implementation (`S3ObjectStore` or `GCSObjectStore`) that the URI's scheme selects.
+When the corresponding SDK is not installed, the factory raises the same "install the missing
+extra" error that `object_store_from_uri` already raises for evidence storage.
 
 ### 3. No changes needed downstream of the factory
 
-The consumers already depend on the `ObjectStore` protocol, not on `S3ObjectStore`:
-`ObjectStorageArtifactStore`, `ObjectScenarioStorage`, and `ObjectBaselineStore` call only
-`exists` / `get_bytes` / `put_bytes` / `presigned_url` / `list_keys` — all backend-agnostic. The
-key-prefix helpers (`artifact_prefix`, `scenario_prefix`, `baseline_prefix`, `org_prefix`) are
-pure strings with no storage dependency at all. Swapping the factory in `object_store_from_env()`
-is the entire functional change; nothing else needs to know which backend is in play.
+The consumers already depend on the `ObjectStore` protocol, not on `S3ObjectStore`.
+`ObjectStorageArtifactStore`, `ObjectScenarioStorage`, and `ObjectBaselineStore` call nothing
+beyond `exists` / `get_bytes` / `put_bytes` / `presigned_url` / `list_keys`, all of which are
+backend-agnostic. The key-prefix helpers (`artifact_prefix`, `scenario_prefix`, `baseline_prefix`,
+`org_prefix`) are pure string functions with no storage dependency at all. Swapping the factory in
+`object_store_from_env()` is the entire functional change, and nothing else needs to know which
+backend is in play.
 
 ### 4. Wiring and error messages
 
@@ -102,25 +104,26 @@ existing S3/R2/MinIO one, mirroring how BE-0110 documented the GCS option for `-
 
 ### A. Default server storage to `BAJUTSU_EVIDENCE_STORE` when unset
 
-Rejected: evidence retention is deliberately per-run-path and often short-lived (BE-0110's whole
-point is letting feature-branch evidence auto-expire via a cloud lifecycle rule on its prefix),
-while server storage (scenarios, visual baselines, and the artifacts users browse in the report
-viewer) is long-lived and org-scoped. Defaulting one from the other would let one deployment's
+Rejected. Evidence retention is deliberately per-run-path and often short-lived: BE-0110's whole
+point is to let feature-branch evidence auto-expire via a cloud lifecycle rule on its prefix.
+Server storage (scenarios, visual baselines, and the artifacts users browse in the report viewer)
+is long-lived and org-scoped. Defaulting one setting from the other would let a deployment's
 evidence-retention lifecycle rule silently apply to data it was never meant to expire. An operator
 who wants one bucket for both can already point both settings at the same URI explicitly.
 
 ### B. Add a parallel `BAJUTSU_GCS_BUCKET` / `BAJUTSU_GCS_*` env-var family
 
-Rejected: this duplicates the `BAJUTSU_S3_*` sprawl (bucket/endpoint/region/prefix) for a second
-backend instead of reusing the single-URI form BE-0110 already proved out for evidence storage.
-A URI also keeps the two storage settings visually and operationally consistent.
+Rejected. This duplicates the `BAJUTSU_S3_*` sprawl (bucket/endpoint/region/prefix) for a second
+backend instead of reusing the single-URI form that BE-0110 already proved out for evidence
+storage. A URI also keeps the two storage settings visually and operationally consistent.
 
 ### C. Leave server storage S3-only; treat GCS support as out of scope
 
-Rejected: none of the seams that consume `ObjectStore` are actually S3-specific — BE-0110 already
-made the abstraction backend-agnostic and shipped a tested `GCSObjectStore`. The only place that
-hard-codes S3 is the small `object_store_from_env` factory, so the cost of adding GCS here is low
-relative to the real deployment constraint it removes for self-hosters running on Google Cloud.
+Rejected. None of the seams that consume `ObjectStore` is actually S3-specific, because BE-0110
+already made the abstraction backend-agnostic and shipped a tested `GCSObjectStore`. The only place
+that hard-codes S3 is the small `object_store_from_env` factory. The cost of adding GCS there is
+low relative to the real deployment constraint it removes for self-hosters running on Google
+Cloud.
 
 ## Progress
 
