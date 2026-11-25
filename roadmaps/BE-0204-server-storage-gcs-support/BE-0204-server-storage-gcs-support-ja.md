@@ -20,10 +20,10 @@
 （シナリオの保存）、visual baseline（画面比較の基準画像）ストアを支える**サーバ側**のオブジェクトストレージの
 seam（`bajutsu/serve/server/object_store.py`）に、GCS（Google Cloud Storage）バックエンドを追加します。
 現状この seam は `S3ObjectStore` しか構築しません。[BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)
-はこれとは別の evidence アップロード用の経路に、バックエンドを問わない `ObjectStore` プロトコルと
+は、これとは別の evidence アップロード用の経路に、バックエンドを問わない `ObjectStore` プロトコルと
 `GCSObjectStore`、単一 URI（`object_store_from_uri`、`s3://…` / `gs://…`）で選択するファクトリをすでに実装済みです。
-本提案はその同じ実装をサーバストレージ側でも再利用し、Google Cloud 上でセルフホストする場合に
-S3 互換バケットを別途用意しなくても済むようにします。
+本提案ではこの実装をサーバストレージ側でも再利用します。これにより、Google Cloud 上でセルフホストする場合に
+S3 互換バケットを別途用意しなくても済むようになります。
 
 ## 動機
 
@@ -38,10 +38,10 @@ MinIO を、それぞれサーバ側の成果物ストレージとして選定�
 読み書きする各 seam は、S3 に依存する実装を持っているわけではないにもかかわらずです。
 
 BE-0110 は evidence アップロードという別の seam で、まったく同じ課題をすでに解決しています。`run` と
-`serve` が一つの seam を共有できるよう `ObjectStore` をバックエンドを問わないトップレベルのプロトコルへ
-格上げし、`StoreURI` パーサーと、単一の URI から `S3ObjectStore` と検証済みの `GCSObjectStore` のどちらも
-構築できる `object_store_from_uri` ファクトリを追加し、それらを `--evidence-store` /
-`BAJUTSU_EVIDENCE_STORE` に配線しました。サーバ側の利用箇所である `ObjectStorageArtifactStore`
+`serve` が一つの seam を共有できるよう、`ObjectStore` をバックエンドを問わないトップレベルのプロトコルへ
+格上げしました。さらに、`StoreURI` パーサーと、単一の URI から `S3ObjectStore` と検証済みの
+`GCSObjectStore` のどちらも構築できる `object_store_from_uri` ファクトリを追加し、それらを
+`--evidence-store` / `BAJUTSU_EVIDENCE_STORE` に配線しました。サーバ側の利用箇所である `ObjectStorageArtifactStore`
 （`bajutsu/serve/server/artifacts.py`）、`ObjectScenarioStorage`（`bajutsu/serve/server/scenarios.py`）、
 `ObjectBaselineStore`（`bajutsu/serve/server/baselines.py`）は、すでに `S3ObjectStore` ではなくこの
 `ObjectStore` プロトコルに依存しています。それでも `S3ObjectStore` しか渡されてこないのは、サーバ側の

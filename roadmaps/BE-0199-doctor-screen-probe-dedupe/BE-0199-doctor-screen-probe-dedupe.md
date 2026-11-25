@@ -15,29 +15,27 @@
 
 ## Introduction
 
-The doctor's "grab the current screen" probe is implemented twice: once for the CLI
-(`bajutsu/cli/commands/doctor.py`, `_current_screen`) and once for the serve Web UI panel
-(`bajutsu/serve/operations/doctor.py`, `_current_screen`). The two are near-verbatim copies
-maintained independently, and the check sets around them have already drifted. This item
-extracts one shared probe and reconciles the drift.
+The doctor's "grab the current screen" probe is implemented twice: once for the command-line
+interface (CLI) in `bajutsu/cli/commands/doctor.py` (`_current_screen`), and once for the serve
+Web UI panel in `bajutsu/serve/operations/doctor.py` (`_current_screen`). The two are
+near-verbatim copies maintained independently, and the check sets around them have already
+drifted. This item extracts one shared probe and reconciles the drift.
 
 ## Motivation
 
-The serve copy's docstring says it plainly: it mirrors `cli.commands.doctor._current_screen`.
+The docstring of the serve copy states that the copy mirrors `cli.commands.doctor._current_screen`.
 The Playwright branch (build the driver, `navigate()`, `query()`,
-`contextlib.suppress(*_playwright_error_types())` on close) is verbatim in both; both do the
-xcuitest → idb fallback and the `resolve_udid` tail. The differences are exactly the injectable
-parts: the serve side passes `state.simctl`, handles the `fake` backend, and takes the first
-udid of a comma-separated list; the CLI raises `typer.Exit` on a missing `baseUrl` where serve
-raises `ValueError`.
+`contextlib.suppress(*_playwright_error_types())` on close) is verbatim in both copies. Both also
+do the xcuitest → idb fallback and the `resolve_udid` tail. The differences are exactly the
+injectable parts. The serve side passes `state.simctl`, handles the `fake` backend, and takes the
+first unique device identifier (udid) of a comma-separated list. On a missing `baseUrl`, the CLI
+raises `typer.Exit` and serve raises `ValueError`.
 
-Beyond the copy itself, the drift the duplication invites is already visible. The CLI's check
-assembly merges xcuitest and idb runnability and adds the idb version-pin check
-(`bajutsu/cli/commands/doctor.py:104-121`); the serve panel
-(`bajutsu/serve/operations/doctor.py:86-100`) has
-neither, so the Web UI's doctor silently reports less than the CLI's for the same target. A
-shared probe (and a shared check assembly where the surfaces agree) is exactly the fix that
-prevents the next divergence.
+The duplication has already produced visible drift. The CLI's check assembly merges xcuitest and
+idb runnability and adds the idb version-pin check (`bajutsu/cli/commands/doctor.py:104-121`).
+The serve panel (`bajutsu/serve/operations/doctor.py:86-100`) has neither, so for the same
+target the Web UI's doctor silently reports less than the CLI's. A shared probe, plus a shared
+check assembly where the surfaces agree, prevents the next divergence.
 
 ## Detailed design
 
@@ -55,12 +53,12 @@ prevents the next divergence.
 
 ## Alternatives considered
 
-- **Leave the copies.** The drift in the check assembly shows where this goes: the two doctors
-  keep answering "is this target healthy?" with different thoroughness, and every future check
-  lands on one side only.
-- **Share only small helpers (udid parsing, error types) and keep two probes.** The verbatim
-  Playwright branch and the backend-fallback logic are the risky parts; sharing only the
-  periphery leaves the actual duplication in place.
+- **Leave the copies.** The drift in the check assembly shows the outcome: the two doctors keep
+  answering "is this target healthy?" with different thoroughness, and every future check lands
+  on one side only.
+- **Share only small helpers (udid parsing, error types) and keep two probes.** The risky parts
+  are the verbatim Playwright branch and the backend-fallback logic. Sharing the periphery
+  leaves that duplication in place.
 
 ## Progress
 
