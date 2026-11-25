@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-worker-device-lease-broker-ja.md)
+**English** · [日本語](BE-0511-worker-device-lease-broker-ja.md)
 
-# BE-XXXX — Lease a device from a lease broker for each job a worker runs
+# BE-0511 — Lease a device from a lease broker for each job a worker runs
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-worker-device-lease-broker.md) |
+| Proposal | [BE-0511](BE-0511-worker-device-lease-broker.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0511") |
 | Topic | Device-cloud execution |
 | Related | [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
 <!-- /BE-METADATA -->
