@@ -129,18 +129,20 @@ _EVENTS = (
 
 
 def test_relaunches_picks_the_apps_own_activity_alone() -> None:
-    assert relaunches(_EVENTS, _VIEWS) == [f"{_VIEWS}/com.bajutsu.showcase.views.MainActivity"]
+    assert relaunches(_EVENTS, _VIEWS) == [
+        f"{_VIEWS}/com.bajutsu.showcase.views.MainActivity (config-change mask 80000000)"
+    ]
     assert relaunches(_EVENTS, "com.bajutsu.showcase.android.compose") == []
 
 
 def test_relaunches_reads_the_non_resumed_variant_too() -> None:
     line = f"I wm_relaunch_activity: [0,1,2,{_VIEWS}/.Main,80000000]"
-    assert relaunches(line, _VIEWS) == [f"{_VIEWS}/.Main"]
+    assert relaunches(line, _VIEWS) == [f"{_VIEWS}/.Main (config-change mask 80000000)"]
 
 
-def test_a_system_relaunch_is_named_as_the_cause_of_a_failure() -> None:
+def test_a_system_relaunch_is_named_with_its_mask_on_a_failure() -> None:
     found = violations(_scenario(ok=False), relaunches(_EVENTS, _VIEWS))
-    assert "emulator-side cause" in found[0]
+    assert "(config-change mask 80000000) mid-run" in found[0]
     assert _VIEWS in found[0]
     assert any("did not take its tap" in line for line in found[1:])
 
@@ -172,7 +174,7 @@ def test_main_names_a_relaunch_from_the_event_log(
     events = tmp_path / "device-events.log"
     events.write_text(_EVENTS)
     assert _main_with_events(tmp_path, events, _VIEWS) == 1
-    assert "emulator-side cause" in capsys.readouterr().err
+    assert "config-change mask 80000000" in capsys.readouterr().err
 
 
 def test_main_fails_on_a_missing_event_log(tmp_path: Path) -> None:
@@ -193,7 +195,7 @@ def test_main_requires_events_and_package_together(tmp_path: Path) -> None:
 
 
 def test_relaunches_skips_a_malformed_tuple() -> None:
-    assert relaunches("I wm_relaunch_activity: [0,1]", _VIEWS) == []
+    assert relaunches(f"I wm_relaunch_activity: [0,1,2,{_VIEWS}/.Main]", _VIEWS) == []
 
 
 def test_a_repeated_relaunch_is_named_once() -> None:
@@ -201,3 +203,25 @@ def test_a_repeated_relaunch_is_named_once() -> None:
     assert len(twice) == 2
     found = violations(_scenario(ok=False), twice)
     assert found[0].count(_VIEWS) == 1
+
+
+@pytest.mark.parametrize("text", ["", "--------- beginning of events\n"])
+@pytest.mark.parametrize(("alerts", "code"), [([_DISMISSAL], 0), ([], 1)])
+def test_main_warns_on_an_event_log_with_no_events(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    text: str,
+    alerts: list[dict[str, str]],
+    code: int,
+) -> None:
+    (tmp_path / "manifest.json").write_text(json.dumps({"scenarios": [_scenario(alerts=alerts)]}))
+    events = tmp_path / "device-events.log"
+    events.write_text(text)
+    assert _main_with_events(tmp_path, events, _VIEWS) == code
+    assert "holds no events" in capsys.readouterr().err
+
+
+def test_a_different_mask_is_reported_as_itself() -> None:
+    line = f"I wm_relaunch_resume_activity: [0,1,2,{_VIEWS}/.Main,80]"
+    found = violations(_scenario(ok=False), relaunches(line, _VIEWS))
+    assert "(config-change mask 80) mid-run" in found[0]

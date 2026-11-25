@@ -22,12 +22,11 @@ heads-up notification, so this is the check the Android emulator lane gates on:
   missing dismissal, and a run that could not verify the guard never passes.
 
 Given the device's event log for the run (`--events`) and the app's package, a failure also names
-the one emulator-side cause seen on CI (issue #2520): a freshly booted emulator still applying
-package changes relaunched the app's activity mid-run, which put the app back on its first tab and
-took the posted notification with it. The scenario then fails on a selector miss, which would
-otherwise read as a driver fault. The relaunch is the signal because the scenario itself never
-causes one; the cancellation that comes with it does not separate the cases, since every run's own
-teardown cancels the notification for the same recorded reason.
+every relaunch of the app's activity, with its config-change mask (issue #2520). On CI one such
+relaunch put the app back on its first tab mid-run, and the scenario failed on a selector miss that
+said nothing of it. The report states the relaunch and not its cause: the one seen followed the
+run's own APK installs on a freshly booted emulator, which the log cannot tell apart from the
+emulator's other package changes, and passing runs have carried one too.
 """
 
 from __future__ import annotations
@@ -81,12 +80,12 @@ def _notes(scenario: Mapping[str, object]) -> list[str]:
 
 
 def relaunches(events: str, package: str) -> list[str]:
-    """The activities of `package` that the system relaunched, in `logcat -b events` order."""
+    """Each relaunch of `package`'s activities with its config-change mask, in log order."""
     found: list[str] = []
     for match in _RELAUNCH.finditer(events):
         fields = match.group(1).split(",")
-        if len(fields) >= 4 and fields[3].split("/", 1)[0] == package:
-            found.append(fields[3])
+        if len(fields) >= 5 and fields[3].split("/", 1)[0] == package:
+            found.append(f"{fields[3]} (config-change mask {fields[4]})")
     return found
 
 
@@ -95,8 +94,8 @@ def violations(scenario: Mapping[str, object], relaunched: Sequence[str] = ()) -
 
     Args:
         scenario: The scenario's entry in the run manifest.
-        relaunched: The app's activities the system relaunched during the run (`relaunches`).
-            They name the cause of a failure; they never fail a run that is otherwise sound.
+        relaunched: The app's activity relaunches during the run (`relaunches`). They add context
+            to a failure; they never fail a run that is otherwise sound.
     """
     if any(BANNER_GUARD_OFF_NOTE in note for note in _notes(scenario)):
         return [
@@ -109,9 +108,10 @@ def violations(scenario: Mapping[str, object], relaunched: Sequence[str] = ()) -
         or not any(a.get("kind") == "notificationBanner" for a in _alerts(scenario))
     ):
         found.append(
-            f"the system relaunched {', '.join(dict.fromkeys(relaunched))} mid-run: the emulator "
-            "was still applying package changes, which resets the app's screen and drops a posted "
-            "notification. This is an emulator-side cause, not the driver's; re-run the job"
+            f"the system relaunched {', '.join(dict.fromkeys(relaunched))} mid-run, which can "
+            "reset the app's screen. Mask 80000000 (assets paths) is the one seen in issue #2520, "
+            "where package changes were in flight; any other mask is a different event. Read "
+            "`device-events.log` before ruling the driver out"
         )
     if scenario.get("ok") is not True:
         found.append(
@@ -165,7 +165,17 @@ def main() -> int:
         if not args.events.is_file():
             print(f"no device event log at {args.events}", file=sys.stderr)
             return 1
-        relaunched = relaunches(args.events.read_text(errors="replace"), args.package)
+        events = args.events.read_text(errors="replace")
+        # `logcat` heads an empty buffer with a `--------- beginning of` line, which is no event.
+        if not any(
+            line.strip() and not line.startswith("---------") for line in events.splitlines()
+        ):
+            print(
+                f"warning: the device event log at {args.events} holds no events, so a system "
+                "relaunch could not be ruled out",
+                file=sys.stderr,
+            )
+        relaunched = relaunches(events, args.package)
     found = violations(scenario, relaunched)
     if found:
         print("notification-banner evidence check FAILED:", file=sys.stderr)
