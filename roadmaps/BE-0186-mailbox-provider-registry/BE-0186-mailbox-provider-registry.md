@@ -15,13 +15,14 @@
 
 ## Introduction
 
-Apply Bajutsu's **backend-agnostic** philosophy — *a platform is a backend behind one interface* —
-to where the `email` step (BE-0046) reads its mail: **a mailbox is a backend behind one interface.**
-The step already talks to its inbox through a single `MailboxReader` seam that returns normalized
-messages (`MailboxMessage`); today that seam has exactly one implementation, a generic HTTP-JSON
-reader. This item turns that single hardcoded path into a **provider registry keyed by transport
-protocol** (`http`, later `imap`), selected per target in config, so adding a second kind of mailbox
-is *registering an adapter*, not *editing the runner* — the same move BE-0104 made for AI providers.
+This item applies Bajutsu's **backend-agnostic** philosophy, *a platform is a backend behind one
+interface*, to where the `email` step (BE-0046) reads its mail: **a mailbox is a backend behind one
+interface.** The step already talks to its inbox through a single `MailboxReader` seam that returns
+normalized messages (`MailboxMessage`). Today that seam has exactly one implementation, a generic
+HTTP-JSON reader. The item turns that single hardcoded path into a **provider registry keyed by
+transport protocol** (`http`, later `imap`), selected per target in config. Adding a second kind of
+mailbox then means *registering an adapter* instead of *editing the runner*, the same move BE-0104
+made for AI providers.
 
 The registry ships with its HTTP reference adapter (the existing reader, re-homed behind the
 registry) and nothing else; IMAP and any further transports are deliberately deferred to follow-up
@@ -31,11 +32,11 @@ items that plug into the seam this one defines.
 
 BE-0046 chose a generic HTTP-JSON mailbox precisely to stay provider-neutral without a vendor SDK,
 and its `messages` / `fields` mapping already absorbs the naming differences *between JSON
-providers*. What it does not cover is a mailbox that speaks a **different transport** — most
-notably IMAP, the one standard protocol real mail services share, which BE-0046 explicitly deferred
+providers*. It does not cover a mailbox that speaks a **different transport**, most
+notably IMAP, the one standard protocol real mail services share. BE-0046 explicitly deferred IMAP
 "behind the same `email` step contract if demand appears". Reaching an IMAP inbox today would mean
 editing `bajutsu/runner/mailbox.py` to branch on the source, which is exactly the factory
-`if`-chain BE-0104 replaced with a registry for AI providers.
+`if`-chain that BE-0104 replaced with a registry for AI providers.
 
 Two forces make the registry the right shape now:
 
@@ -48,34 +49,34 @@ Two forces make the registry the right shape now:
   loop, and must stay unchanged as sources multiply. A registry keeps every transport-specific
   detail on the periphery, behind the one interface the core already depends on.
 
-This is a Tier-1/config concern only: no prime directive is touched. The pass/fail judgement still
-comes from the deterministic runner; the `email` step's determinism guarantees (skew-free
-after-start selection, bounded poll, regex extract) are properties of the core, which this item
-does not modify.
+This is a Tier-1/config concern only, and no prime directive is touched. The pass/fail judgement
+still comes from the deterministic runner. The determinism guarantees of the `email` step
+(skew-free after-start selection, bounded poll, regex extract) are properties of the core, which
+this item does not modify.
 
 ## Detailed design
 
-The change is entirely on the periphery — the scenario-facing `email` contract and the
-deterministic core (`bajutsu/mailbox.py`, the `_do_email` poll loop) are unchanged.
+The change sits entirely on the periphery. The scenario-facing `email` contract and the
+deterministic core (`bajutsu/mailbox.py`, the `_do_email` poll loop) stay unchanged.
 
 ### The registry (mirrors `bajutsu/ai/registry.py`)
 
 - **Key on transport protocol, never on vendor.** The registry maps a `kind` (`http`, later
   `imap`) to an adapter that builds a `MailboxReader` from the resolved mailbox config. It does
-  **not** key on `mailosaur` / `mailslurp` / `gmail`: those differ only in JSON field names, which
+  **not** key on `mailosaur` / `mailslurp` / `gmail`: those differ merely in JSON field names, which
   the existing `fields` mapping already absorbs one level down. Keying on vendor would reproduce
-  the per-vendor client BE-0046 rejected.
+  the per-vendor client that BE-0046 rejected.
 - **`register(kind, adapter)` + fail-closed resolution.** An unknown `kind` fails closed the first
-  time a run resolves the mailbox (a clean config error), exactly as BE-0104's `_provider_name`
-  raises on an unregistered provider — never a silent fallback.
+  time a run resolves the mailbox (a clean config error), exactly as `_provider_name` in BE-0104
+  raises on an unregistered provider. It never falls back silently.
 - **Built-in HTTP reference adapter.** The existing `build_mailbox_reader` HTTP-JSON reader is
   re-homed as the built-in `http` adapter; it remains the only shipped adapter.
 
 ### Config — selection lives in config, not the scenario (`mailbox.kind`)
 
-The provider is chosen per target in config, keeping the scenario app-agnostic and credential-free
-(the BE-0046 rule), and consistent with BE-0104 selecting the AI provider in config
-(`defaults.ai` / `targets.<name>.ai`), never per call site:
+The provider is chosen per target in config. That keeps the scenario app-agnostic and
+credential-free (the BE-0046 rule) and matches BE-0104, which selects the AI provider in config
+(`defaults.ai` / `targets.<name>.ai`) and never per call site:
 
 ```yaml
 targets:
@@ -95,9 +96,9 @@ targets:
 
 ### Optional: named mailboxes referenced from the step (`email.from`)
 
-When a target legitimately has more than one inbox (e.g. one HTTP test mailbox and one IMAP box),
-the scenario names *which logical inbox* to read — it references a config entry by name, it does
-**not** embed a provider or credentials, so the scenario stays portable:
+When a target legitimately has more than one inbox (for example, one HTTP test mailbox and one
+IMAP box), the scenario names *which logical inbox* to read. It references a config entry by name
+and does **not** embed a provider or credentials, so the scenario stays portable:
 
 ```yaml
 targets:
@@ -113,9 +114,9 @@ targets:
 
 - **`from` is optional**, defaulting to the sole / `primary` mailbox, so the single-mailbox scenario
   is unchanged. `from` selects a *logical inbox name*, never a transport or a vendor.
-- This layer is **carried in the design for completeness but may ship after the registry** — the
-  registry alone already delivers "split the implementation, choose it in config". Named mailboxes
-  are only needed once a target has more than one inbox.
+- This layer is **carried in the design for completeness but may ship after the registry**. The
+  registry alone already delivers "split the implementation, choose it in config", and named
+  mailboxes become necessary only once a target has more than one inbox.
 
 ### Scope boundary
 
@@ -128,7 +129,7 @@ targets:
 
 ### Prime directives preserved
 
-- **No LLM on the run path.** The registry is a deterministic name → adapter table; resolving and
+- **No LLM on the run path.** The registry is a deterministic name → adapter table, and resolving and
   fetching a mailbox involves no LLM. The verdict still comes only from machine-checkable
   assertions.
 - **Determinism.** The `email` core (after-start baseline, bounded poll, regex extract) is
@@ -141,8 +142,8 @@ targets:
 
 - **Key the registry on the mail vendor (`mailosaur` / `mailslurp` / `gmail`).** Rejected: within a
   transport these differ only in JSON field names, which the existing `fields` mapping already
-  absorbs, so vendor-keyed adapters would be near-identical readers multiplying per vendor — the
-  per-provider client BE-0046 already rejected. Keying on transport (`http` / `imap`) keeps the
+  absorbs, so vendor-keyed adapters would be near-identical readers multiplying per vendor, the
+  per-provider client that BE-0046 already rejected. Keying on transport (`http` / `imap`) keeps the
   adapter count proportional to protocols, not vendors.
 - **Select the provider in the scenario YAML.** Rejected: it ties a scenario to a provider and
   risks credentials leaking into the scenario, breaking BE-0046's app-agnostic / credential-free
@@ -152,7 +153,7 @@ targets:
   the factory `if`-chain BE-0104 removed, and pushes a second transport's concerns into the runner.
   The registry costs one small layer now and makes every later transport a drop-in.
 - **Ship the IMAP adapter in this item.** Deferred, not rejected: BE-0104's precedent is "seam plus
-  one reference adapter, second backend follows" — proving the seam with the provider already in use
+  one reference adapter, second backend follows". Proving the seam with the provider already in use
   keeps the change small and low-risk. IMAP (client + credentials + MIME parsing) is its own
   surface and lands behind the seam this item defines.
 

@@ -2630,11 +2630,27 @@ class AdbDriver(CoordinateTreeDriver):
     def select_all(self, sel: base.Selector) -> None:
         # Focus, then Ctrl+A selects the field's whole content (BE-0265).
         self.tap(sel)
+        # Armed like `delete_text`, so `copy_selection` waits for the tree to publish after the chord: `input`
+        # returns before the app handles it, and a Compose field drops a copy that reaches it before
+        # the selection is recomposed (#2522). Only with a device clock: a selection moves no frame,
+        # so on the dump path the barrier could end only by spending its whole budget. A chord that
+        # selects nothing (an empty field) may publish nothing and spend that budget, with a warning.
         self._actuations.record(Actuation(gesture="selectAll", via="focused", unit=_UNIT))
+        # A markless barrier is the focusing tap's, when the clock did not answer: don't wait it out.
+        tap = self._catchup
+        marked = self._fetch_clock is not None and (tap is None or tap.actuation_mark is not None)
+        pre_key = self._pan_baseline() if marked else None
+        mark = self._capture_mark()
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_A]))
+        if mark is not None:
+            self._arm_catchup(pre_key, mark)
 
     def copy_selection(self, sel: base.Selector) -> None:  # noqa: ARG002  # Driver shape
         # Ctrl+C copies the selection `select_all` left live, read back by the `clipboard` assertion.
+        # Wait out its barrier first: a copy that outruns the selection is dropped silently (#2522).
+        # A markless barrier is the focusing tap's, which a selection cannot close either.
+        if self._catchup is not None and self._catchup.actuation_mark is not None:
+            self._await_catchup()
         self._actuations.record(Actuation(gesture="copy", via="focused", unit=_UNIT))
         self._act(adb.keycombination_cmd(self.serial, [adb.KEYCODE_CTRL_LEFT, adb.KEYCODE_C]))
 

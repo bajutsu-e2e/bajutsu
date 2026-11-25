@@ -136,6 +136,7 @@ Scenario ::= {
   steps:           list(<Step>),            # required
   expect?:         list(<Assertion>),       # default []  — final checks
   cleanup?:        list(<CleanupRule>),     # default []  — teardown rules run once the verdict exists (BE-0392); each declared target's `hooks.cleanup` follow these
+  hooks?:          <ScenarioHooks>,         # external commands around this scenario, outside the app session (BE-0501): { beforeScenario?: list, afterScenario?: list }, each entry a target hook entry
   capturePolicy?:  list(<CaptureRule>),     # default []
   network?:        <Network>,
   mocks?:          list(<Mock>),            # default []

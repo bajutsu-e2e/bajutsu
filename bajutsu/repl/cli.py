@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import atexit
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -21,7 +20,7 @@ from bajutsu.cli._shared import (
     _resolve_browser,
     _resolve_kind,
     _select_actuator_or_exit,
-    _start_launch_server_or_exit,
+    _start_hooks_or_exit,
     _with_headed,
     _with_worker_device,
 )
@@ -46,6 +45,8 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest_live import (
     XcuitestLiveEnvironment,
     is_webdriver_endpoint,
 )
+from bajutsu.common.run_meta.files import runs_root
+from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import launch_driver
 from bajutsu.repl.loop import repl_loop
 from bajutsu.repl.session import ReplSession
@@ -171,11 +172,17 @@ def repl(
     elif erase and is_live_route:
         typer.echo("repl: --erase is not supported on the live route to an appium grid")
         raise typer.Exit(2)
-    # Bring the app's target server up if the config declares launchServer — without it a web
-    # target opens the browser on a host that is not listening, and every `tree` reads the error
-    # page. Stopped when this command exits (atexit), the way `record` and `crawl` stop theirs.
-    stop_server = _start_launch_server_or_exit(eff)
-    atexit.register(stop_server)
+    # Run the target's `beforeRun` hooks if it declares any (BE-0491) — without them a web target
+    # opens the browser on a host that is not listening, and every `tree` reads the error page. The
+    # matching `afterRun` runs when this command exits (atexit), as `record` and `crawl` run theirs.
+    hook_run_id = new_run_id("repl-")
+    _start_hooks_or_exit(
+        eff,
+        run_id=hook_run_id,
+        runs_dir=runs_root(),
+        run_dir=runs_root() / hook_run_id,
+        teardown_at_exit=True,
+    )
 
     # Unlike `record` / `crawl`, which keep stdout for their one final result line and narrate
     # progress to stderr, this shell's output *is* the product: every command's answer goes to

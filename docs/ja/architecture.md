@@ -96,7 +96,7 @@ flowchart TB
 | `common/drivers/web_network.py` | web のネットワーク観測です。Playwright 側の `Collector` が、`requestfinished` を iOS 側と同じ `NetworkExchange` モデルへ橋渡しします。`page.route` によるプロセス内 mock スタブも持ちます。 | [drivers](drivers.md#playwrightweb) |
 | `common/drivers/webview` | `web:` ブロックが WebView の DOM を読む経路です。iOS では BajutsuKit ブリッジのクライアント（`WebViewBridge`）で、DOM 取得と tap 発行を HTTP 経由で実施します。Android では Chrome DevTools Protocol のソース（`CdpDomSource`、BE-0482）で、WebView 自身の DevTools ソケットを `adb` で転送します。 | [drivers](drivers.md) |
 | `common/drivers/zorder` | z 順応答クライアントです。BajutsuKit の `nativeZ` チャネルの Python 側です（BE-0355）。 | [drivers](drivers.md) |
-| `common/scenario/` | シナリオスキーマ（pydantic 厳格検証）と YAML 読込 / 書出です。パッケージの構成は `models` / `load` / `load_expanded` / `expand` / `select` / `serialize` / `edit` です。 | [scenarios](scenarios.md) |
+| `common/scenario/` | シナリオスキーマ（pydantic 厳格検証）と YAML 読込 / 書出です。パッケージの構成は `models` / `load` / `load_expanded` / `expand` / `select` / `serialize` / `edit` です。`tags` は、シナリオの選択と hook の `when` が共有するタグの規則を持ちます（BE-0497）。 | [scenarios](scenarios.md) |
 | `common/assertions/` | 機械アサーション評価です。総関数であり、例外を投げません。パッケージの構成は `evaluate` / `network` / `visual` / `schema` / `_common` です（BE-0250）。 | [selectors](selectors.md#アサーション評価) |
 | `common/orchestrator/` | 決定的 Tier 2 run ループ（act → wait → verify）です。パッケージの構成は `loop` / `waits` / `substitution` / `evidence_rules` / `actions` / `control_channel` です。 | [run-loop](run-loop.md) |
 | `common/cancellation.py` | 協調的キャンセル（BE-0370）です。orchestrator の wait ループと runner がポーリングする、読み取り専用の `CancelSource` を持ちます。あわせて、poll ループが安全な境界まで巻き戻すために投げる `RunCancelled` 例外と、`bajutsu run` のエントリポイントが組み込む `SIGTERM` → イベントのブリッジを持ちます。Bajutsu の他モジュールを一切 import しないため、決定的コア、CLI、`serve` のいずれからも参照できます。 | [run-loop](run-loop.md) |
@@ -617,6 +617,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - URL を受け取るのは、driver がその時点で操作しているアプリ（テスト対象のアプリか、囲んでいる `app:` ブロックが指定したアプリ）です。ステップはその後、`app:` ブロックと同じ上限で、そのアプリが前面に来るまで待ちます。
   - 新設の `Driver.open_url(url)` メソッドに乗り、`openUrl` capability でゲートされています。これを宣言するのは XCUITest と adb のバックエンドなので、`app:` ブロックの中の `openUrl` を含め、web バックエンドでは preflight で拒否します。
   - iOS では、ランナーの `POST /app/openUrl` が `XCUIApplication.open(_:)`（iOS 16.4 以降）を呼びます。例外や XCTest の失敗の記録は、そのメッセージを理由にした `not-opened` として返します。
+  - iOS の `open(_:)` は、アプリが宣言したスキームにかかわらず URL を渡します。そのため driver は、ビルドを読める環境では、渡す前にスキームをアプリの `CFBundleURLTypes` と照合します。
   - Android では、adb driver がパッケージを指定した `VIEW` intent を `am start -W --activity-single-top` で送ります。コマンドは `shlex` でクォートした 1 行のシェルコマンドです。判定は `am start` の終了ステータスではなく出力から読みます。終了ステータスは、解決できなかった intent も成功として報告するためです。起動時のディープリンクも同じ出力を読むので、開かなかったディープリンクは起動の失敗になります。
 - DSL の `attribute` アサーション（BE-0466、web 限定）は、1 つの要素の HTML 属性（`href`、`alt`、状態を表す `data-*` や `aria-*`）を、`equals` / `contains` / `matches` か `absent: true` で検証します。
   - runner は、ブロックを評価するクエリの直後に、`Driver.read_attributes(reads)` で属性をそのつど読み取ります。ブロック全体を 1 回の呼び出しで読むので、ブロック内のアサーションは同じ時点の値で判定されます。
@@ -952,7 +953,6 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 
 | 機能 | 現状 | 場所 |
 |---|---|---|
-| `services.mockServer`（外部モックコマンド） | config スキーマのみです。`cmd`/`port` の外部サーバは**未実装**で、シナリオ `mocks`（宣言的なプロトコル内スタブ、実装済み）で代替します。 | `common/config/schema/mock_server.py` `MockServer` |
 | **web** バックエンドでの `appTrace` 区間証跡 | `appTrace` はアプリ自身のログを流します（iOS は `os_log`、Android はタグで絞った `logcat`、BE-0478）。Playwright バックエンドは代わりに `video` と `deviceLog` 相当（console / page-error）の区間証跡を実装しています（BE-0054）が、`appTrace` に相当するものは持ちません。 | `evidence/intervals` · `common/drivers/playwright` |
 | **SwiftUI** と **Jetpack Compose** の画面での `nativeZ` | 報告経路は両方とも実装済みですが（BE-0355）、宣言的な UI ツールキットはどちらも自身でアクセシビリティ要素を生成し、位置の測定元となる実体を外に出しません。SwiftUI は支援技術がプロセスに接続したときに初めて要素を実体化するため、アプリ自身のビューツリーに識別子が現れません。Compose はアプリが宣言した追加データキーを自身のノード生成に通しません。opt-in したアプリの UIKit と Android の `View` による画面は値を報告し、SwiftUI と Compose の画面は `null` になります。診断専用のフィールドで、セレクタも重なり判定もこれを読みません。 | `BajutsuKit/Sources/BajutsuKit/BajutsuZOrder.swift`・`BajutsuAndroid/…/BajutsuZOrder.kt` |
 

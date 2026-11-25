@@ -124,6 +124,14 @@ concurrency:
   group: android-e2e-${{ github.ref }}
   cancel-in-progress: true
 
+# The AVD's system image, written once. Each emulator job passes it to the preinstall step and to both
+# emulator-runner steps; those copies must name the same image, or the preinstall guards the wrong
+# package and the runner downloads the real one unguarded (issue #2519).
+env:
+  ANDROID_API_LEVEL: 34
+  ANDROID_TARGET: google_apis
+  ANDROID_ARCH: x86_64
+
 jobs:
   # Decide whether a KVM run is warranted. The emulator jobs only fire when the PR touches what they
   # exercise — the adb driver, the run path, the Android showcase and app SDKs, or this workflow. The
@@ -290,13 +298,22 @@ jobs:
           # `-memory`/`-cores` below so a hardware change always earns a fresh, matching cache entry.
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           # Pin the device profile so the CI emulator's screen geometry matches the local arm64
           # validation (pixel_6). The deep-scroll scenarios (`notices`, `controls`) reach a far target
           # with a fixed number of screen-fraction swipes, sized for this device — a different default
@@ -337,9 +354,9 @@ jobs:
           # the repo root and this must not depend on any one of them doing so.
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6  # match the local validation geometry (see the create-AVD step above)
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -434,13 +451,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -461,9 +487,9 @@ jobs:
         env:
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -529,13 +555,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -553,9 +588,9 @@ jobs:
         env:
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -619,13 +654,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -643,9 +687,9 @@ jobs:
         env:
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -718,13 +762,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -745,9 +798,9 @@ jobs:
         env:
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -825,13 +878,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -851,9 +913,9 @@ jobs:
         env:
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -923,13 +985,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -939,9 +1010,9 @@ jobs:
       - name: Run the app-crash scenario and assert its evidence
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -998,13 +1069,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1020,9 +1100,9 @@ jobs:
       - name: Run the heads-up scenario and assert its evidence
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1091,13 +1171,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1107,9 +1196,9 @@ jobs:
       - name: Run the device-group lane
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1164,13 +1253,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1188,9 +1286,9 @@ jobs:
         env:
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1257,13 +1355,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1288,9 +1395,9 @@ jobs:
           # an empty tree right after launch, which a black recording and an idle compositor explain.
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           force-avd-creation: false
           emulator-options: -memory 8192 -cores 2 -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
@@ -1430,13 +1537,22 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem3072-cores1
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          target: ${{ env.ANDROID_TARGET }}
+          arch: ${{ env.ANDROID_ARCH }}
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6  # match the local validation geometry (see `smoke`'s own create step)
           avd-name: ${{ env.POOL_AVD }}
           force-avd-creation: false
@@ -1457,9 +1573,9 @@ jobs:
         env:
           BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
         with:
-          api-level: 34
-          arch: x86_64
-          target: google_apis
+          api-level: ${{ env.ANDROID_API_LEVEL }}
+          arch: ${{ env.ANDROID_ARCH }}
+          target: ${{ env.ANDROID_TARGET }}
           profile: pixel_6
           avd-name: ${{ env.POOL_AVD }}
           force-avd-creation: false

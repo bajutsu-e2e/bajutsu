@@ -20,25 +20,25 @@ iOS has an on-device e2e workflow (`.github/workflows/e2e.yml`) and the web back
 (`web-e2e.yml`), but there is no Android e2e lane. The Android backend
 ([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)) was validated once on a local
 arm64 emulator (2026-07-07), and nothing in CI keeps that validation from silently regressing. This
-item adds an Android emulator e2e workflow — a Linux runner booting an AVD under KVM and driving the
-showcase scenarios over `--backend android` — kept off the fast `make check` gate, exactly as the
-idb and web e2e lanes are.
+item adds an Android emulator e2e workflow. A Linux runner boots an AVD under KVM and drives the
+showcase scenarios over `--backend android`. As with the idb and web e2e lanes, the workflow stays
+off the fast `make check` gate.
 
 ## Motivation
 
 The on-device actuation and device-control work for Android (the Android actuation-fidelity and
-device-control items authored in this same batch) only manifests against a real device, so the fast
+device-control items authored in this same batch) manifests only against a real device, so the fast
 Linux gate cannot cover it. Without a CI emulator lane, those behaviors are validated once by hand
-and can regress unnoticed on any later change. iOS and the web both already have an e2e lane; adding
-the Android one restores that safety net for the third backend and makes the on-device slices
+and can regress unnoticed on any later change. iOS and the web both already have an e2e lane. An
+Android lane restores that safety net for the third backend and makes the on-device slices
 verifiable in CI rather than only locally. BE-0007's own phasing note already anticipated this:
 "the emulator runs on Linux CI via KVM (the `android-emulator-runner` action)".
 
 ## Detailed design
 
-The workflow mirrors the existing e2e lanes: its own file, triggered on the relevant paths, not
-part of `make check`. It runs no LLM — a deterministic `run` over fixed scenarios — so it stays
-within the prime directives.
+The workflow mirrors the existing e2e lanes: it has its own file, triggers on the relevant paths,
+and is not part of `make check`. It runs no LLM, only a deterministic `run` over fixed scenarios.
+The workflow therefore stays within the prime directives.
 
 ### Work breakdown (MECE)
 
@@ -49,20 +49,21 @@ within the prime directives.
    install it on the booted emulator.
 3. **Run the passing scenarios.** Drive the core id/tap/type/value scenarios that already pass
    on device over `--backend android`, asserting the deterministic pass/fail.
-4. **Visual/golden baseline parity.** Include the Android visual/golden baseline check, the one
-   evidence dimension the 2026-07-07 validation left unverified, as part of the lane's coverage.
+4. **Visual/golden baseline parity.** Include the Android visual/golden baseline check in the
+   lane's coverage. This is the one evidence dimension that the 2026-07-07 validation left
+   unverified.
 5. **Grow with the on-device slices.** As the actuation-fidelity and device-control items land,
    extend the scenario set to the flows they fix (`notices`, `gestures`, `controls`,
-   location/clipboard), so the lane tracks the growing on-device surface.
+   location/clipboard). The lane then tracks the growing on-device surface.
 
 ## Alternatives considered
 
-- **A self-hosted macOS runner.** Rejected: the Android emulator runs on Linux via KVM, which is
-  cheaper and matches BE-0007's phasing choice (Android exercises the lean end on Linux CI). A
-  macOS runner is only needed for the idb lane.
-- **Fold the emulator run into `make check`.** Rejected: booting an emulator is far too heavy for
-  the fast gate, which must run anywhere including Linux without a device. The e2e lane is separate
-  by design, as it is for idb and the web.
+- **A self-hosted macOS runner.** Rejected. The Android emulator runs on Linux via KVM, which is
+  cheaper and matches BE-0007's phasing choice (Android exercises the lean end on Linux CI). The idb
+  lane alone needs a macOS runner.
+- **Fold the emulator run into `make check`.** Rejected. Booting an emulator is far too heavy for
+  the fast gate, which must run anywhere, including Linux without a device. The e2e lane is
+  separate by design, as it is for idb and the web.
 
 ## Progress
 

@@ -95,7 +95,7 @@ BE ID のライフサイクルといった、汎用のレビュアーには知�
    | レビューの要約 | 当初はインラインの指摘と並べてトップレベルの要約コメントを投稿していたが、のちに取りやめた（進捗ログを参照）。再実行のたびに新しい要約を出すと、古い要約が残って矛盾するため |
    | 手動での再レビュー | 自動起動に**加えて**、任意で使える `@claude review` メンションの経路（下記） |
 
-4. **手動での再レビュー（任意・追加のみ）。** 自動起動とは別に、`issue_comment` /
+4. **手動での再レビュー（任意で、追加のみ）。** 自動起動とは別に、`issue_comment` /
    `pull_request_review_comment` の起動を用意し、コントリビューターが `@claude review` と書く（あるいはスレッドに
    返信する）ことで、新しいレビューや特定コメントへの追随を依頼できるようにします。これは
    [PR レビューコメントへの返信ルール](../../docs/ai-development.md#responding-to-pr-review-comments)が AI レビュアーに
@@ -130,11 +130,11 @@ BE ID のライフサイクルといった、汎用のレビュアーには知�
 
 7. **Copilot からの移行。並行運用してから切り替える（ドキュメント化された手動の切り替え）。** 切り替えは、
    Copilot を退役させる前に品質を確かめられるよう段階的に進めます。
-   - **フェーズ A — 並行運用。** Copilot のレビューを有効にしたまま、このワークフローを投入します。両方の
+   - **フェーズ A：並行運用。** Copilot のレビューを有効にしたまま、このワークフローを投入します。両方の
      レビュアーがすべての PR にコメントし、どちらもゲートにはなりません。
-   - **フェーズ B — 比較。** 数件の PR にわたって、Claude Code のレビューを Copilot のそれと比べます。信号、
+   - **フェーズ B：比較。** 数件の PR にわたって、Claude Code のレビューを Copilot のそれと比べます。信号、
      ノイズ、偽陽性、そしてリポジトリを理解したチェックが割に合うかどうかを見ます。
-   - **フェーズ C — 切り替え。** メンテナーが、リポジトリまたは組織の設定で **Copilot の自動レビューを無効に
+   - **フェーズ C：切り替え。** メンテナーが、リポジトリまたは組織の設定で **Copilot の自動レビューを無効に
      します**。これは**通常の PR では持ち運べないリポジトリ外の管理状態**であり、BE-0122 や BE-0089 がすでに
      指摘しているブランチ保護ルールセットの編集と同じ形をしています。したがって、この項目の差分が実行できるもの
      ではなく、明示的にドキュメント化された手動の手順です。切り替えが中途半端に終わらない（両方のレビュアーが
@@ -246,7 +246,7 @@ BE ID のライフサイクルといった、汎用のレビュアーには知�
   その信頼できる内部ボットだけを許可します。照合は大文字小文字を無視し末尾の `[bot]` を除くので、
   どちらの表記でも一致します。実装 PR: [#915](https://github.com/bajutsu-e2e/bajutsu/pull/915)。
 - レビュープロンプト自体の観点を広げました（項目 5）。ゲートのパターン照合ベースの `ruff` チェックでは
-  追えない意味論的・データフロー由来の脆弱性を見るセキュリティの観点、設計・技術的負債の観点の強化、
+  追えない意味論的・データフロー由来の脆弱性を見るセキュリティの観点、設計と技術的負債の観点の強化、
   ディスカッション認識の観点（まず `gh pr view --comments` を読み、他のレビュアーが既に指摘した点を
   繰り返さない）、実行可能な指摘には必ず具体的な変更を示すという要件、そして
   `japanese-tech-writing` スキルに沿った日本語の文章品質の観点を追加しました。実装 PR:
@@ -261,20 +261,20 @@ BE ID のライフサイクルといった、汎用のレビュアーには知�
 
 ## 参考
 
-- Claude Code 組み込みの `code-review` スキル — この項目が補う著者側のレビューパス。組み込みスキルであり、
+- Claude Code 組み込みの `code-review` スキル：この項目が補う著者側のレビューパス。組み込みスキルであり、
   [`.claude/skills`](../../.claude/skills)（リポジトリ側で定義したスキル群）の配下にはありません。リポジトリの
   [`implement-be`](../../.claude/skills/implement-be/SKILL.md) が著者側ですでに使っています（観点や
   pr-review-toolkit を伴うレビュー手順）。CI のワークフローはこのスキルを直接**呼び出しません**。同じリポジトリの
   契約に照らし、action ネイティブの `mcp__github_inline_comment__create_inline_comment` ツールでインライン指摘を投稿します。
-- [`docs/ai-development.md`](../../docs/ai-development.md) — この項目が更新する *Responding to PR review comments*
+- [`docs/ai-development.md`](../../docs/ai-development.md)：この項目が更新する *Responding to PR review comments*
   のルール（すでに AI レビュアーに言及）と、そこがならう必須ステータスチェック／管理状態の制約。
-- [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) — 唯一のマージ裁定者であり続ける決定論的なゲート。
+- [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)：唯一のマージ裁定者であり続ける決定論的なゲート。
   このワークフローがならう `concurrency` の形。
-- [`CLAUDE.md`](../../CLAUDE.md) — レビュープロンプト（項目 5）が符号化する三つの prime directive。
+- [`CLAUDE.md`](../../CLAUDE.md)：レビュープロンプト（項目 5）が符号化する三つの prime directive。
 - [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)、
   [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)、
-  [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md) — ワークフローが認証を通す、
+  [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md)：ワークフローが認証を通す、
   ベンダー中立な AI プロバイダー。
 - [BE-0122](../BE-0122-workflow-name-legibility/BE-0122-workflow-name-legibility.md)、
-  [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md) — Copilot 無効化手順
+  [BE-0089](../BE-0089-merge-time-be-id-allocation/BE-0089-merge-time-be-id-allocation.md)：Copilot 無効化手順
   （項目 7）がならう、リポジトリ外の管理状態のパターン（PR では持ち運べないルールセット／設定の編集）を持つ先行項目。

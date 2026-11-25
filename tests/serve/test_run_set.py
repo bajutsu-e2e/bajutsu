@@ -275,6 +275,20 @@ def test_a_group_job_carries_its_scenarios_route_needs(tmp_path: Path) -> None:
     assert not [t for t in caps["scenarios/tap.yaml"] if t.startswith("cap:ios-device:device")]
 
 
+def test_a_group_job_routes_by_its_own_scenarios_commands(tmp_path: Path) -> None:
+    hooked = "- name: h\n  hooks: {beforeScenario: [{cmd: ./seed.sh}]}\n  steps: [{back: {}}]\n"
+    target = "    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n"
+    scn_dir, cfg = _project(tmp_path, target, {"hooked.yaml": hooked, "tap.yaml": _TAP})
+    state, executor = _state(tmp_path, cfg, scn_dir)
+
+    _payload, status = start_run_set(state, _DF)
+
+    assert status == 200
+    caps = {j.intent.scenario: j.capabilities for j in executor.jobs if j.intent is not None}
+    assert "command-execution:operator" in caps["scenarios/hooked.yaml"]
+    assert "command-execution:operator" not in caps["scenarios/tap.yaml"]
+
+
 def test_fan_out_refuses_a_group_whose_route_no_live_worker_can_run(tmp_path: Path) -> None:
     from bajutsu.common.capability.route_tokens import route_tokens
 

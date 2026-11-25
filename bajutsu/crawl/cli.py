@@ -20,7 +20,6 @@ mirror).
 
 from __future__ import annotations
 
-import atexit
 import json
 import subprocess
 from dataclasses import dataclass
@@ -48,7 +47,7 @@ from bajutsu.cli._shared import (
     _resolve_kind,
     _resolve_language,
     _select_actuator_or_exit,
-    _start_launch_server_or_exit,
+    _start_hooks_or_exit,
     _with_headed,
     _with_worker_device,
     resolve_system_alert_handling_flag,
@@ -326,13 +325,19 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
     engine and writes the final map.
 
     Raises:
-        typer.Exit: the launch server or a device lane fails to come up (exit code 2).
+        typer.Exit: a `beforeRun` hook or a device lane fails to come up (exit code 2).
     """
-    # Bring up the app's target server (the web baseUrl host) if it declares launchServer — reused
-    # if already serving, started otherwise (waiting on its readiness probe). Stopped when this
-    # command exits (atexit), since the crawl is a single linear flow with no run-style teardown.
-    stop_server = _start_launch_server_or_exit(plan.eff)
-    atexit.register(stop_server)
+    # Run the target's `beforeRun` hooks if it declares any (BE-0491) — the bring-up that replaced
+    # `services.server`. The matching `afterRun` runs when this command exits (atexit), since the
+    # crawl is a single linear flow with no run-style teardown.
+    hook_run_id = new_run_id("crawl-")
+    _start_hooks_or_exit(
+        plan.eff,
+        run_id=hook_run_id,
+        runs_dir=runs_root(),
+        run_dir=runs_root() / hook_run_id,
+        teardown_at_exit=True,
+    )
 
     workers = len(plan.udids)  # one lane per resolved udid (the pool is already capped)
     if not plan.environment.has_devices():

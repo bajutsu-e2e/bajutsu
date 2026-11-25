@@ -20,46 +20,46 @@ per-scenario durations, the scenarios and steps that fail most often, and (folde
 [BE-0049](../BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md))
 each scenario's flakiness classification. Today every run is reported richly on its own
 (`report.html`), but nothing renders the trend *across* runs. The dashboard is a deterministic
-aggregation over data the runner already writes — `manifest.json` per run, plus the serve run
-records — with no LLM and no effect on any verdict, in the same family as the coverage map
+aggregation over data the runner already writes: `manifest.json` per run, plus the serve run
+records. It uses no LLM and has no effect on any verdict. It belongs to the same family as the coverage map
 ([BE-0050](../BE-0050-e2e-coverage-map/BE-0050-e2e-coverage-map.md)) and the
 flakiness audit (BE-0049).
 
 ## Motivation
 
 A single run answers "did *this* run pass, and where did it fail." A team running E2E continuously
-has the next question — "how is the suite trending?" — and Bajutsu has no answer surface for it.
+has the next question, "how is the suite trending?", and Bajutsu has no surface that answers it.
 The raw material already exists and is lossless:
 
 - Every run writes `manifest.json` ([reporting.md](../../docs/reporting.md)) with the top-level
   verdict, each scenario's `ok`/`failure`, each step's `duration_s`, and (BE-0049) a `provenance`
-  block stamping `scenarioHash` / `toolVersion` / `gitRevision`. So a directory of `runs/`
-  *already* encodes pass-rate, duration, and failure history — it has just never been aggregated.
+  block stamping `scenarioHash` / `toolVersion` / `gitRevision`. A directory of `runs/`
+  therefore *already* encodes pass-rate, duration, and failure history; nothing has ever aggregated it.
 - The serve backend records each finished run into its `runs` table (`status`, `ok`, `created_at`,
   `summary` JSONB) under BE-0015 7c-4, so a hosted instance accumulates the same history in a query
   -friendly store.
 
 What is missing is the layer that turns that pile into a picture: a pass-rate trend line, a ranking
-of the slowest and the flakiest scenarios, and a list of the steps/assertions that fail most. This
-is the operational complement to the two analytical reports Bajutsu already ships — coverage
-(BE-0050) answers *"what surface do we test?"* and the audit (BE-0049) answers *"is a given scenario
-reproducible?"*; this item answers *"how is the whole suite doing over time?"* It is also the
-natural companion to the per-run `report.html` and to the serve run list, which today shows
+of the slowest and the flakiest scenarios, and a list of the steps/assertions that fail most. The
+layer is the operational complement to the two analytical reports Bajutsu already ships. Coverage
+(BE-0050) answers *"what surface do we test?"*, and the audit (BE-0049) answers *"is a given scenario
+reproducible?"*. This item answers *"how is the whole suite doing over time?"* The dashboard is also
+the natural companion to the per-run `report.html` and to the serve run list, which today shows
 individual runs but no aggregate.
 
 **Why it does not strain the prime directives.** Like coverage and audit, every figure is a
-deterministic count or aggregation over already-captured artifacts — there is no model and no
+deterministic count or aggregation over already-captured artifacts. There is no model and no
 judgement call, the dashboard never changes a verdict, and it is never part of the CI gate (a team
-may *track* a number from it as informational, exactly as BE-0050 allows). It is app-agnostic: it
-reads `manifest.json` / run records, with no per-app hard-coding. The grouping key is the BE-0049
-`scenarioHash`, so the trend it draws separates *true* flakiness (verdict flips while the content
-hash is unchanged) from a scenario that was simply edited — it consumes that provenance rather than
-re-deriving it.
+may *track* a number from it as informational, exactly as BE-0050 allows). The dashboard is
+app-agnostic: it reads `manifest.json` / run records, with no per-app hard-coding. The grouping key
+is the BE-0049 `scenarioHash`, so the trend separates *true* flakiness (verdict flips while the
+content hash is unchanged) from a scenario that was simply edited. The dashboard consumes that
+provenance rather than re-deriving it.
 
 ## Detailed design
 
-Proposal altitude; the binding constraint is that the dashboard is purely observational. The work
-is MECE across five units:
+This section sits at proposal altitude, and the binding constraint is that the dashboard is purely
+observational. The work is MECE across five units:
 
 - **1. The aggregator (deterministic core).** A pure function `aggregate_runs(runs) -> Stats` that
   walks a set of run manifests and computes the metric set below. It groups scenarios by
@@ -92,13 +92,14 @@ is MECE across five units:
   `Repository` run records when a database is wired (BE-0015 7c-4), the `ArtifactStore` `manifest.json`
   files otherwise — so it follows the established *"DB if present, else the artifact store"* fallback
   and needs no new persistence. (Local serve and the stdlib path keep working with no database.)
-- **5. Scope guards (what it is *not*).** It never re-runs an assertion or recomputes a verdict — it
-  only aggregates recorded outcomes (an older manifest missing a newer field renders as "not
-  captured", per the BE-0068 re-render discipline). It introduces no LLM. It is not a CI gate; any
-  threshold a team sets on its numbers is their own informational check, outside Bajutsu's verdict.
+- **5. Scope guards (what it is *not*).** The dashboard never re-runs an assertion or recomputes a
+  verdict; it merely aggregates recorded outcomes (an older manifest missing a newer field renders as
+  "not captured", per the BE-0068 re-render discipline). It introduces no LLM. It is not a CI gate,
+  and any threshold a team sets on its numbers is their own informational check, outside Bajutsu's
+  verdict.
 
-**Open scope choices (flagged for review, not yet fixed).** These were the questions a scoping pass
-would settle; the recommendation is in brackets and the alternatives are real:
+**Open scope choices (flagged for review, not yet fixed).** A scoping pass would settle these
+questions. The recommendation is in brackets, and the alternatives are real:
 
 - *Surface ordering* — ship the CLI `stats --html` first and add the serve tab as a follow-on slice
   [recommended: yes, CLI-core then serve], versus building only one of the two.
@@ -114,21 +115,21 @@ would settle; the recommendation is in brackets and the alternatives are real:
   deliberately *one run* (BE-0068 makes it a pure re-render of one run dir). Cross-run aggregation is
   a different altitude with a different input (a *set* of runs) and belongs in its own command/tab,
   the way coverage (BE-0050) and audit (BE-0049) are their own surfaces.
-- **Fold it into `bajutsu audit`.** Rejected as the home, kept as a dependency: audit (BE-0049)
+- **Fold it into `bajutsu audit`.** Rejected as the home, kept as a dependency. Audit (BE-0049)
   *judges reproducibility* of a scenario (repeat-and-diff + a flaky/deterministic classification).
   This item *visualizes operational trend* (pass-rate, duration, failure hotspots, volume) across
-  the suite. They share the `scenarioHash` grouping and this dashboard *consumes* the audit's
-  classification, but the deliverables are distinct — merging them would overload one command.
-- **Have an LLM summarize the trend.** Rejected: non-deterministic and unnecessary — every figure is
-  an exact count/aggregation over the manifests, and an LLM in a reporting path that teams might
-  glance at before trusting CI is exactly the coupling the prime directives keep out.
+  the suite. The two share the `scenarioHash` grouping, and this dashboard *consumes* the audit's
+  classification, but the deliverables are distinct. Merging them would overload one command.
+- **Have an LLM summarize the trend.** Rejected: an LLM summary is non-deterministic and unnecessary,
+  because every figure is an exact count/aggregation over the manifests. An LLM in a reporting path
+  that teams might glance at before trusting CI is exactly the coupling the prime directives keep out.
 - **A committed, generated dashboard page (like the roadmap dashboard, BE-0094).** Rejected as the
-  model: that page derives from in-repo metadata, but run history is runtime data that lives outside
-  the repo, so the dashboard must be generated *from a run set on demand* (CLI / serve), not baked
-  into the docs site.
-- **Do nothing (status quo).** Acceptable, but the suite's trend stays invisible despite the data
-  already being on disk; a team has to script `manifest.json` parsing by hand to answer "how are we
-  trending," which is the gap this closes cheaply given the artifacts already exist.
+  model: the roadmap page derives from in-repo metadata, but run history is runtime data that lives
+  outside the repo. The dashboard must therefore be generated *from a run set on demand* (CLI /
+  serve), not baked into the docs site.
+- **Do nothing (status quo).** Acceptable, but the suite's trend stays invisible although the data
+  is already on disk. A team has to script `manifest.json` parsing by hand to answer "how are we
+  trending". This item closes that gap cheaply, because the artifacts already exist.
 
 ## Progress
 

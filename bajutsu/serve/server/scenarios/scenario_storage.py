@@ -8,6 +8,10 @@ from typing import Any, Protocol
 class ScenarioStorage(Protocol):
     """Per-project scenario storage the control plane reads and writes (a DB / object store)."""
 
+    # Whether `read` answers from the bound config's own tree, rather than from text a client saved
+    # (BE-0501): a scenario's hook commands take the config's source only in the first case.
+    config_tree: bool
+
     def has_app(self, app: str, *, session: str | None = None, org: str = "") -> bool:
         """Whether *app* is a target this deployment can serve scenarios for.
 

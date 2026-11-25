@@ -15,201 +15,113 @@
 
 ## Introduction
 
-Promote the contributor procedures that today live only as **prose** — in
-[`CLAUDE.md`](../../CLAUDE.md), the `ideation` / `implement-be` skills, and
-[`docs/ai-development.md`](../../docs/ai-development.md) — into **human-runnable commands**
-(`make` targets backed by small scripts). The same entrypoint then serves both a human starting a
-task and an AI doing it on the human's behalf, so a guardrail is no longer a recipe that only an
-agent reliably follows from prose, but a command anyone can run. This is purely developer-facing
-infrastructure: it adds no LLM, never runs inside `run`, and does not touch the deterministic gate,
-so the Prime directives ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
+This item promotes the contributor procedures that today live only as **prose** into **human-runnable commands**. The prose sits in [`CLAUDE.md`](../../CLAUDE.md), in the `ideation` and `implement-be` skills, and in [`docs/ai-development.md`](../../docs/ai-development.md). The commands are `make` targets backed by small scripts.
 
-This continues the *Contributor workflow* line.
-[BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)
-turned a hand-edited **shared ledger** (the roadmap index) into a generated artifact;
-[BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md)
-made **CI mirror `make check` by construction**, removing duplication that had silently drifted.
-Both apply one principle — a single source of truth that is *executed*, not transcribed. This item
-applies that principle to the **procedures** themselves.
+One entrypoint then serves both a human who starts a task and an AI that does it on behalf of that human. A guardrail stops being a recipe that only an agent follows reliably from prose. It becomes a command that anyone can run.
+
+The change is purely developer-facing infrastructure. It adds no LLM, never runs inside `run`, and does not touch the deterministic gate, so the prime directives ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
+
+This item continues the *Contributor workflow* line:
+
+- [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) turned a hand-edited **shared ledger** (the roadmap index) into a generated artifact.
+- [BE-0067](../BE-0067-code-quality-gate-hardening/BE-0067-code-quality-gate-hardening.md) made **CI mirror `make check` by construction**. It removed a duplication that had silently drifted.
+
+Both apply one principle: a single source of truth that is *executed*, not transcribed. This item applies that principle to the **procedures** themselves.
 
 ## Motivation
 
-Bajutsu's guardrails already split into two kinds, by whether a human can run them:
+The guardrails of Bajutsu already split into two kinds, by whether a human can run them:
 
-- **Executable** — one command a human and an AI invoke identically: [`make check`](../../Makefile)
-  (the gate), [`make setup` / `make hooks`](../../Makefile) (self-healing git config),
-  [`make roadmap-index` / `roadmap-promote` / `roadmap-id-repair`](../../Makefile). The command
-  *is* the guardrail; it cannot be forgotten or half-remembered.
-- **Prose only** — a multi-step recipe written for a reader to follow by hand:
-  - **Scaffolding a new roadmap item** — create the directory and *both* bilingual files in the
-    exact Swift-Evolution format, with a complete metadata block, the `BE-0069` placeholder, and the
-    author's GitHub handle. The `ideation` skill spends most of its text teaching this, and it is the
-    single most error-prone, highest-ceremony procedure in the repo — yet it has no command.
-  - **Worktree + branch setup** — the `git fetch origin && git worktree add … -b … origin/main &&
-    make setup` recipe in [`docs/ai-development.md`](../../docs/ai-development.md).
-  - **Pre-push routine** — `git fetch origin && git rebase origin/main && make check`, plus the
-    "definition of done" checklist (both-language docs touched? a test changed with the behavior?
-    `Status` flipped if shipping?).
-  - **Item well-formedness** — bilingual pair present, slug matches the directory, metadata block
-    complete, author is a handle link, `Status` consistent with the subdirectory, cross-referenced
-    `BE-NNNN` exist. Today this is enforced only by two narrow tests (index drift,
-    `Status`↔directory) plus a reviewer's eyes.
+- **Executable.** One command that a human and an AI invoke identically. Examples are [`make check`](../../Makefile) (the gate), [`make setup` / `make hooks`](../../Makefile) (self-healing git config), and [`make roadmap-index` / `roadmap-promote` / `roadmap-id-repair`](../../Makefile). The command *is* the guardrail, so nobody can forget it or half-remember it.
+- **Prose only.** A multi-step recipe written for a reader to follow by hand:
+  - **Scaffolding a new roadmap item.** The author creates the directory and *both* bilingual files in the exact Swift-Evolution format. The files need a complete metadata block, the `BE-0069` placeholder, and the GitHub handle of the author. The `ideation` skill spends most of its text on this procedure. It is the most error-prone, highest-ceremony procedure in the repo, yet it has no command.
+  - **Worktree and branch setup.** The recipe `git fetch origin && git worktree add … -b … origin/main && make setup` lives in [`docs/ai-development.md`](../../docs/ai-development.md).
+  - **Pre-push routine.** The routine is `git fetch origin && git rebase origin/main && make check`, plus the "definition of done" checklist. The checklist asks whether the docs of both languages were touched, whether a test changed with the behavior, and whether `Status` flipped if the item ships.
+  - **Item well-formedness.** The bilingual pair is present, the slug matches the directory, and the metadata block is complete. The author is a handle link, `Status` is consistent with the subdirectory, and every cross-referenced `BE-NNNN` exists. Today only two narrow tests (index drift and the `Status`-to-directory match) enforce this, plus the eyes of a reviewer.
 
-Three problems follow from leaving these as prose:
+Leaving these procedures as prose causes three problems:
 
-1. **Prose drifts from reality.** BE-0067 found CI had *already* drifted from `make check`; a recipe
-   that is only read, never executed, rots the same way. A command is run — and where it guards an
-   invariant, tested — so it stays true.
-2. **Only an AI reliably executes a long prose recipe.** A human authoring a BE item by hand, without
-   the `ideation` skill loaded, is unlikely to reproduce the format, the placeholder rule, and the
-   index interaction correctly. That is precisely the "AI-only" dependency this item removes.
-3. **The asymmetry is upside-down.** The most ceremonious, mistake-prone procedure (item scaffolding)
-   is the one with *no* command, while routine checks (`make check`) are one keystroke. The
-   guardrails a human most needs help running are the ones least available to them.
+1. **Prose drifts from reality.** BE-0067 found that CI had *already* drifted from `make check`. A recipe that people read and never execute rots the same way. A command is run, and the tests cover it where it guards an invariant, so it stays true.
+2. **Only an AI reliably executes a long prose recipe.** A human who authors a BE item by hand, without the `ideation` skill loaded, will likely get the format, the placeholder rule, and the index interaction wrong. That is the "AI-only" dependency this item removes.
+3. **The asymmetry is upside-down.** The most ceremonious, mistake-prone procedure (item scaffolding) has *no* command, while a routine check (`make check`) takes one keystroke. The guardrails that a human most needs help running are the ones least available.
 
-The intent that motivates this item — *move from "leave it to the AI" to "the human starts, the AI
-substitutes"* — is exactly this promotion. When the guardrail is a command, the **human owns the
-entrypoint** and the AI becomes a substitute *within* a human-runnable workflow, not the sole keeper
-of the procedure.
+The intent behind this item is to *move from "leave it to the AI" to "the human starts, the AI substitutes"*. This promotion achieves exactly that. When the guardrail is a command, the **human owns the entrypoint**. The AI substitutes *within* a human-runnable workflow and no longer serves as the sole keeper of the procedure.
 
 ## Detailed design
 
-**Principle.** Each prose procedure becomes a `make <verb>` target backed by a small script under
-[`scripts/`](../../scripts/) — Python where it manipulates roadmap files (typed; `mypy` covers
-`scripts/` since BE-0067), shell where it is git plumbing (added to the `SHELL_SCRIPTS` list
-`make lint-sh` checks), matching the existing split. The target is the single source of truth;
-`CLAUDE.md`, the skills, and the docs then **reference the command** instead of re-describing its
-steps — the same split BE-0067 used when it routed CI through the Makefile. Where a procedure yields
-a checkable invariant, a check folds into `make check`.
+**Principle.** Each prose procedure becomes a `make <verb>` target backed by a small script under [`scripts/`](../../scripts/). A script that manipulates roadmap files is Python and typed, because `mypy` covers `scripts/` since BE-0067. A script that does git plumbing is shell, and joins the `SHELL_SCRIPTS` list that `make lint-sh` checks. The split matches the existing one.
 
-Four mechanisms, in order of leverage.
+The target is the single source of truth. `CLAUDE.md`, the skills, and the docs **reference the command** instead of re-describing its steps. BE-0067 used the same split when it routed CI through the Makefile. Where a procedure yields a checkable invariant, a check folds into `make check`.
+
+Four mechanisms follow, in order of leverage.
 
 ### A. Scaffold a roadmap item — `make new-roadmap-item`
 
-`make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Approved]` →
-`scripts/new_roadmap_item.py`:
+`make new-roadmap-item SLUG=<slug> TITLE="<title>" [TOPIC="<topic>"] [STATUS=Approved]` runs `scripts/new_roadmap_item.py`:
 
-- Creates `roadmaps/proposals/BE-0069-<slug>/` with both `BE-0069-<slug>.md` and
-  `BE-0069-<slug>-ja.md`, pre-filled from a template: the bilingual header link, the metadata block
-  (`Proposal` / `Author` / `Status` / `Topic`), and the five Swift-Evolution sections
-  (`Introduction` / `Motivation` / `Detailed design` / `Alternatives considered` / `References`)
-  seeded with `TBD`.
-- **Always emits the literal `BE-0069` placeholder** — never a number. IDs are permanent and
-  monotonic, and allocation is CI's atomic job
-  ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md));
-  a scaffolder that guessed a number would reintroduce the race the placeholder exists to avoid.
-- Validates `TOPIC` against the known section map in
-  [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py) so the item lands in a
-  real section. (A `Topic` matching no section makes the index builder *crash* after CI numbers the
-  item — not merely drift — a sharp edge worth catching at creation.) Defaults: `Status=Approved`,
-  author resolved from `git config` (overridable via `HANDLE=`).
-- **Does not add a manual index row.** The generator skips `BE-0069` items, so the committed index
-  stays row-free for the placeholder and `make check` is green locally; the `roadmap-id` workflow
-  regenerates the index once it numbers the item. (This is a known trap — the scaffolder encodes the
-  correct flow so an author never hits it.)
+- It creates `roadmaps/proposals/BE-0069-<slug>/` with both `BE-0069-<slug>.md` and `BE-0069-<slug>-ja.md`, pre-filled from a template. The template holds the bilingual header link, the metadata block (`Proposal` / `Author` / `Status` / `Topic`), and the five Swift-Evolution sections seeded with `TBD`. The sections are `Introduction`, `Motivation`, `Detailed design`, `Alternatives considered`, and `References`.
+- It **always emits the literal `BE-0069` placeholder** and never a number. IDs are permanent and monotonic, and allocation is the atomic job of CI ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)). A scaffolder that guessed a number would reintroduce the race that the placeholder exists to avoid.
+- It validates `TOPIC` against the known section map in [`scripts/build_roadmap_index.py`](../../scripts/build_roadmap_index.py), so the item lands in a real section. A `Topic` that matches no section makes the index builder *crash* after CI numbers the item. That is a sharp edge, worth catching at creation, and not merely a drift. The defaults are `Status=Approved` and an author resolved from `git config` (overridable via `HANDLE=`).
+- It **does not add a manual index row.** The generator skips `BE-0069` items. The committed index thus stays row-free for the placeholder, and `make check` is green locally. The `roadmap-id` workflow regenerates the index once it numbers the item. This is a known trap, and the scaffolder encodes the correct flow so that an author never hits it.
 
-This is the human entrypoint to the procedure the `ideation` skill performs by hand; the skill is
-rewritten to **call this command**, then fill the drafted sections, rather than describe file
-authoring from scratch.
+The command is the human entrypoint to the procedure that the `ideation` skill performs by hand. The skill is rewritten to **call this command** and then fill the drafted sections. It no longer describes file authoring from scratch.
 
 ### B. Lint the roadmap — `make lint-roadmap`
 
-`make lint-roadmap` → `scripts/lint_roadmap.py`, **folded into `make check`**. For every item it
-checks the well-formedness rules now scattered across prose and reviewer judgement:
+`make lint-roadmap` runs `scripts/lint_roadmap.py` and is **folded into `make check`**. For every item, it checks the well-formedness rules that prose and reviewer judgement scatter today:
 
 - the bilingual pair exists (both files present);
-- the slug matches the directory name, and the in-file `BE-0069`/`BE-NNNN` token matches the
-  directory;
-- the metadata block is complete (`Proposal`, `Author`, `Status`, `Topic` all present);
+- the slug matches the directory name, and the in-file `BE-0069` or `BE-NNNN` token matches the directory;
+- the metadata block is complete (`Proposal`, `Author`, `Status`, and `Topic` all present);
 - `Author` is a GitHub-handle link (`[@handle](https://github.com/handle)`);
-- `Status` is one of the known values and consistent with the subdirectory (`Implemented` ⇒
-  `implemented/`, otherwise `proposals/`);
+- `Status` is one of the known values and consistent with the subdirectory (`Implemented` implies `implemented/`, and every other value implies `proposals/`);
 - every cross-referenced `BE-NNNN` resolves to an item that exists;
-- a `BE-0069` item does not cross-reference *another* `BE-0069` item (the allocator's per-item
-  rewrite cannot fix that — already a documented limitation).
+- a `BE-0069` item does not cross-reference *another* `BE-0069` item, because the per-item rewrite of the allocator cannot fix that (a documented limitation).
 
-Today only index drift and `Status`↔directory consistency are tested
-([`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py),
-[`tests/test_promote_roadmap_items.py`](../../tests/test_promote_roadmap_items.py)); the rest rely
-on a reviewer noticing. This makes well-formedness a first-class, fast, author-time check with
-actionable messages — runnable mid-edit without the full suite. Where it overlaps the existing tests,
-the invariant consolidates here and the tests call it.
+Today tests cover only index drift and `Status`-to-directory consistency ([`tests/test_roadmap_index.py`](../../tests/test_roadmap_index.py), [`tests/test_promote_roadmap_items.py`](../../tests/test_promote_roadmap_items.py)). The rest relies on a reviewer noticing.
+
+The lint makes well-formedness a first-class, fast, author-time check with actionable messages. An author can run it mid-edit without the full suite. Where the lint overlaps the existing tests, the invariant consolidates here, and the tests call it.
 
 ### C. Workspace & preflight helpers — `make worktree`, `make preflight`
 
-Turn the multi-line recipes in [`docs/ai-development.md`](../../docs/ai-development.md) into
-commands:
+These two targets turn the multi-line recipes in [`docs/ai-development.md`](../../docs/ai-development.md) into commands:
 
-- `make worktree TOPIC=<topic>` → `git fetch origin`, then
-  `git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main` (the `<user>/` prefix
-  configurable), then `make setup` in the new tree. The non-optional `git fetch origin` is baked in,
-  so the "branched off a stale `origin/main`" foot-gun the docs warn about cannot happen.
-- `make preflight` → `git fetch origin && git rebase origin/main && make check`, then print the
-  "definition of done" reminder (both-language docs? a test with the behavior change? `Status`
-  flipped if shipping?). This is **advisory and human-initiated** — the pre-push hook already *gates*
-  `make check`; `preflight` is the do-it-early version a human runs before they think they are done,
-  not a second hard gate.
+- `make worktree TOPIC=<topic>` runs `git fetch origin`. It then runs `git worktree add ../bajutsu-<topic> -b claude/<topic> origin/main`, with a configurable `<user>/` prefix. Last, it runs `make setup` in the new tree. The mandatory `git fetch origin` is baked in. The "branched off a stale `origin/main`" foot-gun that the docs warn about cannot happen.
+- `make preflight` runs `git fetch origin && git rebase origin/main && make check`. It then prints the "definition of done" reminder: docs in both languages, a test with the behavior change, and `Status` flipped if shipping. The target is **advisory and human-initiated**. The pre-push hook already *gates* `make check`. `preflight` is the do-it-early version that a human runs before they think they are done, and it is not a second hard gate.
 
 ### D. Commit / PR metadata checks — `make lint-pr` (lightest)
 
-The conventions that are prose-only and reviewer-enforced today, made checkable — strictly the
-**mechanical** ones, never judgement calls:
+This mechanism makes the prose-only conventions that reviewers enforce today checkable. It covers strictly the **mechanical** conventions and never the judgement calls:
 
 - a roadmap-touching change carries the `[BE-NNNN]` (or `[BE-0069]`) prefix on its PR title;
-- commit messages are scoped (`feat(scope): …` / `fix(scope): …` / `docs: …`);
-- a reminder when a behavior change carries no test delta.
+- commit messages are scoped (`feat(scope): …`, `fix(scope): …`, or `docs: …`);
+- a reminder appears when a behavior change carries no test delta.
 
-This stays advisory / opt-in where it needs PR context: it can run locally against the branch's
-commits, or in CI against the PR title. It deliberately never blocks on the un-mechanizable rules
-("stay in your lane", bilingual prose style) — those remain prose and human/reviewer judgement.
+The check stays advisory and opt-in where it needs PR context. It can run locally against the commits of the branch, or in CI against the PR title. It deliberately never blocks on the rules that no tool can mechanize, such as "stay in your lane" and the bilingual prose style. Those rules remain prose and the judgement of humans and reviewers.
 
 ### Where it lives, and what the prose becomes
 
-- Scripts under `scripts/`; new `make` targets in the [`Makefile`](../../Makefile); `lint-roadmap`
-  joins the `check` target so it gates by construction.
-- The prose that today *describes* these procedures is rewritten to *point at the command*:
-  `CLAUDE.md`'s Conventions, the worktree / preflight / BE-ID sections of `docs/ai-development.md`
-  (and its `docs/ja/` mirror), and the `ideation` / `implement-be` skills, which **invoke** the
-  commands rather than narrate the steps. Documentation changes are bilingual, per the repo rule.
+- The scripts live under `scripts/`, and the new `make` targets live in the [`Makefile`](../../Makefile). `lint-roadmap` joins the `check` target, so it gates by construction.
+- The prose that today *describes* these procedures is rewritten to *point at the command*. That covers the Conventions of `CLAUDE.md` and the worktree, preflight, and BE-ID sections of `docs/ai-development.md` (and its `docs/ja/` mirror). It also covers the `ideation` and `implement-be` skills, which **invoke** the commands rather than narrate the steps. Documentation changes are bilingual, per the repo rule.
 
 ### Migration, in phases
 
 1. This proposal.
-2. **B (`lint-roadmap`) first** — pure validation, no behavior change, immediately useful, and it
-   codifies invariants already half-enforced; wire it into `make check`.
-3. **A (`new-roadmap-item`)** — the highest-leverage entrypoint; update the `ideation` skill to call
-   it.
-4. **C (worktree / preflight)** — convert the doc recipes; repoint `docs/ai-development.md` and
-   `CLAUDE.md` at the commands.
-5. **D (`lint-pr`)** — lightest; advisory first, then consider a `commit-msg` hook wired by
-   `make hooks`.
+2. **B (`lint-roadmap`) first.** It is pure validation with no behavior change, and it is immediately useful. It codifies invariants that are already half enforced. Wire it into `make check`.
+3. **A (`new-roadmap-item`).** It is the highest-leverage entrypoint. Update the `ideation` skill to call it.
+4. **C (worktree / preflight).** Convert the doc recipes, and repoint `docs/ai-development.md` and `CLAUDE.md` at the commands.
+5. **D (`lint-pr`).** It is the lightest. Start advisory, then consider a `commit-msg` hook wired by `make hooks`.
 
-Each phase is a small, independent PR (the parallel-work model, BE-0043).
+Each phase is a small, independent PR, following the parallel-work model of BE-0043.
 
 ## Alternatives considered
 
-- **Keep the procedures as prose (status quo).** Rejected: prose drifts (the BE-0067 finding), and a
-  long prose recipe is reliably executed only by an AI — a human cannot own the entrypoint, which is
-  the asymmetry this item exists to remove.
-- **Encode the procedures only inside the skills** (richer `ideation` prose, or a dedicated
-  sub-agent). Rejected: that doubles down on AI-only execution, the very thing this item moves away
-  from. A skill that *calls* a command is good; a skill that is the *only* way to run the procedure is
-  not.
-- **Make the scaffolder allocate a real BE number.** Rejected: it violates the placeholder rule — IDs
-  are permanent and monotonic, and allocation is CI's atomic, race-free job
-  ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
-  The scaffolder must emit `BE-0069`.
-- **Make `preflight` a second hard gate (a pre-commit hook running `make check`).** Rejected: the
-  pre-push hook already gates `make check`; a per-commit gate slows the inner loop for no added
-  safety. `preflight` is advisory and human-initiated by design.
-- **A shipped `bajutsu dev …` CLI instead of `make` targets.** Rejected for now: `make <verb>`
-  matches every other contributor entrypoint in the repo, needs no packaging, and keeps developer
-  tooling out of the shipped `bajutsu` CLI surface. A consolidated dev CLI can come later if the
-  target count grows.
-- **A dedicated new roadmap topic.** Filed instead under *Contributor workflow* — the BE-0043
-  topic — following the precedent
-  ([BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md))
-  of not splitting a topic for a single item.
+- **Keep the procedures as prose (status quo).** Rejected. Prose drifts (the BE-0067 finding), and only an AI reliably executes a long prose recipe. A human cannot own the entrypoint, and that is the asymmetry this item exists to remove.
+- **Encode the procedures only inside the skills** (richer `ideation` prose, or a dedicated sub-agent). Rejected. That doubles down on AI-only execution, which is the thing this item moves away from. A skill that *calls* a command is good. A skill that is the *only* way to run the procedure is not.
+- **Make the scaffolder allocate a real BE number.** Rejected. It violates the placeholder rule: IDs are permanent and monotonic, and allocation is the atomic, race-free job of CI ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)). The scaffolder must emit `BE-0069`.
+- **Make `preflight` a second hard gate (a pre-commit hook running `make check`).** Rejected. The pre-push hook already gates `make check`. A per-commit gate slows the inner loop and adds no safety. `preflight` is advisory and human-initiated by design.
+- **A shipped `bajutsu dev …` CLI instead of `make` targets.** Rejected for now. `make <verb>` matches every other contributor entrypoint in the repo and needs no packaging. It also keeps developer tooling out of the shipped `bajutsu` CLI surface. A consolidated dev CLI can come later if the target count grows.
+- **A dedicated new roadmap topic.** The item is filed under *Contributor workflow*, the BE-0043 topic, instead. It follows the precedent of not splitting a topic for a single item ([BE-0065](../BE-0065-docstring-standard-api-reference/BE-0065-docstring-standard-api-reference.md)).
 
 ## Progress
 

@@ -1,0 +1,205 @@
+name: Post Bajutsu evidence
+description: >-
+  Post the result of a finished `bajutsu run` to a pull request or issue: one sticky comment
+  naming each failed scenario, its failing step and reason, with links to the evidence this action
+  uploads as artifacts (the whole run as a zip, plus the failing step's screenshot and the video
+  of the first three failed scenarios as non-zipped files). Reads manifest.json (or
+  <sid>/result.json) only; installs no Bajutsu and never changes the job's result (BE-0504).
+
+inputs:
+  run-dir:
+    description: One run directory, or a root that holds several (every */manifest.json under it).
+    required: false
+    default: runs
+  artifact-name:
+    description: >-
+      Name of the whole-run zip artifact and prefix of the non-zipped ones. A matrix job must add
+      its matrix values: one workflow run cannot hold two artifacts with the same name.
+    required: false
+    default: ${{ github.workflow }}-${{ github.job }}
+  retention-days:
+    description: Days GitHub keeps every uploaded artifact (1 to 90).
+    required: false
+    default: "14"
+  compression-level:
+    description: Zlib level of the whole-run zip (0 to 9). Use 0 for a run that is mostly video.
+    required: false
+    default: "6"
+  log-tail-kb:
+    description: A device log larger than this keeps only its last this-many KB in the zip. 0 keeps every log whole.
+    required: false
+    default: "1024"
+  size-warn-mb:
+    description: Skip the whole-run upload when the staged content exceeds this many MB. 0 disables the guard.
+    required: false
+    default: "500"
+  upload:
+    description: >-
+      When "false", upload nothing and link `artifact-url` for the whole run (use it after a step
+      that already uploaded runs/, such as the bajutsu-e2e action).
+    required: false
+    default: "true"
+  artifact-url:
+    description: URL of the already-uploaded artifact to link when `upload` is "false".
+    required: false
+    default: ""
+  issue-number:
+    description: >-
+      Pull request or issue to comment on. Defaults to the event's pull request. Without one the
+      action writes the job summary alone.
+    required: false
+    default: ${{ github.event.pull_request.number }}
+  github-token:
+    description: Token that writes the comment.
+    required: false
+    default: ${{ github.token }}
+  comment-key:
+    description: Key of the sticky comment. A matrix job must add its matrix values.
+    required: false
+    default: ${{ github.workflow }}-${{ github.job }}
+  comment-author:
+    description: Login that owns the sticky comment. Set the App's bot login when the token belongs to a GitHub App.
+    required: false
+    default: github-actions[bot]
+  max-failures:
+    description: Failed scenarios listed in full; the comment counts the rest.
+    required: false
+    default: "10"
+  evidence-base-url:
+    description: >-
+      Optional base URL that serves the run directory over HTTP. When set, screenshots render
+      inline and the comment links <base>/report.html. Nothing is uploaded there.
+    required: false
+    default: ""
+
+outputs:
+  artifact-url:
+    description: URL of the whole-run artifact (empty when it was not uploaded).
+    value: ${{ steps.publish.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    # setup-python with update-environment: false never touches the calling job's own Python, and
+    # the runner's system Python is never used: the script runs through this step's python-path.
+    - name: Set up Python for the renderer
+      id: py
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+      with:
+        python-version: "3.13"
+        update-environment: false
+
+    # Inputs reach the shell and the script through env:, never an inline ${{ }} (BE-0123).
+    - name: Stage evidence
+      id: stage
+      # A crash while staging must not change the job's result (this action's contract). The
+      # script already degrades to a warning; the publish step below runs under `always()`.
+      continue-on-error: true
+      shell: bash
+      env:
+        PYTHON: ${{ steps.py.outputs.python-path }}
+        PE_RUN_DIR: ${{ inputs.run-dir }}
+        PE_ARTIFACT_NAME: ${{ inputs.artifact-name }}
+        PE_LOG_TAIL_KB: ${{ inputs.log-tail-kb }}
+        PE_SIZE_WARN_MB: ${{ inputs.size-warn-mb }}
+        PE_UPLOAD: ${{ inputs.upload }}
+      run: '"$PYTHON" "$GITHUB_ACTION_PATH/post_evidence.py" stage'
+
+    # Uploads never fail the job: a failed upload degrades to a comment that says so.
+    - name: Upload whole run (zip)
+      id: upload_zip
+      if: always() && steps.stage.outputs.upload-zip == 'true'
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: ${{ steps.stage.outputs.artifact-name }}
+        path: ${{ steps.stage.outputs.stage-dir }}
+        retention-days: ${{ inputs.retention-days }}
+        compression-level: ${{ inputs.compression-level }}
+        if-no-files-found: ignore
+
+    # `archive: false` takes one file and names the artifact after it, so the stage step copied each
+    # selected file under a unique, prefixed name. A composite action cannot repeat a step, hence
+    # six fixed slots (three screenshots, three videos), each running only when it was filled.
+    - name: Upload screenshot 1
+      id: shot1
+      if: always() && steps.stage.outputs.screenshot-1 != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        path: ${{ steps.stage.outputs.screenshot-1 }}
+        archive: false
+        retention-days: ${{ inputs.retention-days }}
+    - name: Upload screenshot 2
+      id: shot2
+      if: always() && steps.stage.outputs.screenshot-2 != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        path: ${{ steps.stage.outputs.screenshot-2 }}
+        archive: false
+        retention-days: ${{ inputs.retention-days }}
+    - name: Upload screenshot 3
+      id: shot3
+      if: always() && steps.stage.outputs.screenshot-3 != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        path: ${{ steps.stage.outputs.screenshot-3 }}
+        archive: false
+        retention-days: ${{ inputs.retention-days }}
+    - name: Upload video 1
+      id: video1
+      if: always() && steps.stage.outputs.video-1 != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        path: ${{ steps.stage.outputs.video-1 }}
+        archive: false
+        retention-days: ${{ inputs.retention-days }}
+    - name: Upload video 2
+      id: video2
+      if: always() && steps.stage.outputs.video-2 != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        path: ${{ steps.stage.outputs.video-2 }}
+        archive: false
+        retention-days: ${{ inputs.retention-days }}
+    - name: Upload video 3
+      id: video3
+      if: always() && steps.stage.outputs.video-3 != ''
+      continue-on-error: true
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        path: ${{ steps.stage.outputs.video-3 }}
+        archive: false
+        retention-days: ${{ inputs.retention-days }}
+
+    - name: Post evidence comment
+      id: publish
+      if: always()
+      continue-on-error: true
+      shell: bash
+      env:
+        PYTHON: ${{ steps.py.outputs.python-path }}
+        PE_RUN_DIR: ${{ inputs.run-dir }}
+        PE_UPLOAD: ${{ inputs.upload }}
+        PE_ARTIFACT_URL: ${{ inputs.artifact-url }}
+        PE_ZIP_OUTCOME: ${{ steps.upload_zip.outcome }}
+        PE_ZIP_URL: ${{ steps.upload_zip.outputs.artifact-url }}
+        PE_SHOT_URL_1: ${{ steps.shot1.outputs.artifact-url }}
+        PE_SHOT_URL_2: ${{ steps.shot2.outputs.artifact-url }}
+        PE_SHOT_URL_3: ${{ steps.shot3.outputs.artifact-url }}
+        PE_VIDEO_URL_1: ${{ steps.video1.outputs.artifact-url }}
+        PE_VIDEO_URL_2: ${{ steps.video2.outputs.artifact-url }}
+        PE_VIDEO_URL_3: ${{ steps.video3.outputs.artifact-url }}
+        PE_LOG_TAIL_KB: ${{ inputs.log-tail-kb }}
+        PE_SIZE_WARN_MB: ${{ inputs.size-warn-mb }}
+        PE_ISSUE_NUMBER: ${{ inputs.issue-number }}
+        PE_TOKEN: ${{ inputs.github-token }}
+        PE_COMMENT_KEY: ${{ inputs.comment-key }}
+        PE_COMMENT_AUTHOR: ${{ inputs.comment-author }}
+        PE_MAX_FAILURES: ${{ inputs.max-failures }}
+        PE_EVIDENCE_BASE_URL: ${{ inputs.evidence-base-url }}
+      run: '"$PYTHON" "$GITHUB_ACTION_PATH/post_evidence.py" publish'

@@ -21,6 +21,7 @@ from .preconditions import (
 from .scenario import _PERMISSION_ACTIONS as _PERMISSION_ACTIONS
 from .scenario import Scenario
 from .scenario_file import SCHEMA_VERSION, ScenarioFile
+from .scenario_hooks import ScenarioHooks
 from .system_alert_rule import SystemAlertRule
 
 __all__ = [
@@ -34,5 +35,6 @@ __all__ = [
     "PreconditionsLaunch",
     "Scenario",
     "ScenarioFile",
+    "ScenarioHooks",
     "SystemAlertRule",
 ]

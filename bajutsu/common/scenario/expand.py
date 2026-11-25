@@ -399,6 +399,10 @@ def _instantiate_rows(scenario: Scenario, rows: list[dict[str, str]]) -> list[Sc
     base = scenario.model_dump(by_alias=True, exclude_none=True)
     base.pop("data", None)
     base.pop("dataFile", None)
+    if scenario.hooks is not None:
+        # Only what the author wrote: a dumped default `on` would read as one set on a
+        # `beforeScenario` entry, which the schema refuses (BE-0501).
+        base["hooks"] = scenario.hooks.model_dump(by_alias=True, exclude_unset=True)
 
     def instantiate(row: dict[str, str], index: int) -> Scenario:
         out = cast(

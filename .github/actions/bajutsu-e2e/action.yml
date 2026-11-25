@@ -40,6 +40,13 @@ inputs:
     required: false
     default: bajutsu-run
 
+outputs:
+  artifact-url:
+    description: >-
+      URL of the uploaded run artifact. Pass it to the post-evidence action with `upload: false`
+      so the run is not stored twice (BE-0504).
+    value: ${{ steps.upload.outputs.artifact-url }}
+
 runs:
   using: composite
   steps:
@@ -127,6 +134,7 @@ runs:
     # artifact-name is a `with:` value on a `uses:` step, not a shell `run:` block, so the
     # ${{ }} injection pattern does not apply — no env: indirection needed here (BE-0123).
     - name: Upload run artifacts
+      id: upload
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:

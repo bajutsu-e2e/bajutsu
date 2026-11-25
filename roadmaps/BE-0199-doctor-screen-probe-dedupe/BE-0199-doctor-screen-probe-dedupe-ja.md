@@ -15,27 +15,28 @@
 
 ## はじめに
 
-doctor の「現在の画面を取得する」プローブは 2 回実装されています。CLI 用
-（`bajutsu/cli/commands/doctor.py` の `_current_screen`）と、serve の Web UI パネル用
-（`bajutsu/serve/operations/doctor.py` の `_current_screen`）です。両者はほぼ逐語的な複製で、
+doctor の「現在の画面を取得する」プローブは 2 回実装されています。コマンドラインインターフェース
+（CLI）用の `bajutsu/cli/commands/doctor.py` の `_current_screen` と、serve の Web UI パネル用の
+`bajutsu/serve/operations/doctor.py` の `_current_screen` です。2 つはほぼ逐語的な複製で、
 独立に保守されており、周辺の検査項目にはすでにずれが生じています。本項目では 1 つの共有
 プローブに統合し、そのずれも解消します。
 
 ## 動機
 
-serve 側の docstring 自身が「`cli.commands.doctor._current_screen` を mirror する」と明言して
-います。Playwright の分岐（ドライバの構築、`navigate()`、`query()`、close 時の
-`contextlib.suppress(*_playwright_error_types())`）は両者で逐語一致で、xcuitest から idb への
+serve 側の docstring は、`cli.commands.doctor._current_screen` を mirror すると明言しています。
+Playwright の分岐（ドライバの構築、`navigate()`、`query()`、close 時の
+`contextlib.suppress(*_playwright_error_types())`）は、2 つの複製で逐語一致です。xcuitest から idb への
 フォールバックと `resolve_udid` の後始末も共通です。異なるのは、まさに注入可能な部分だけです。
-serve 側は `state.simctl` を渡し、`fake` バックエンドを扱い、カンマ区切りリストの先頭の udid を
-使います。`baseUrl` 欠落時には CLI が `typer.Exit` を、serve が `ValueError` を送出します。
+serve 側は `state.simctl` を渡し、`fake` バックエンドを扱い、カンマ区切りリストの先頭のデバイス識別子
+（udid）を使います。`baseUrl` が欠落したときは、CLI が `typer.Exit` を、serve が `ValueError` を
+送出します。
 
-複製そのものに加えて、複製が招くずれもすでに現れています。CLI 側の検査の組み立ては xcuitest と
+複製はすでに、目に見えるずれを生んでいます。CLI 側の検査の組み立ては xcuitest と
 idb の実行可否を統合し、idb のバージョンピン検査を加えています
 （`bajutsu/cli/commands/doctor.py:104-121`）。
 serve のパネル（`bajutsu/serve/operations/doctor.py:86-100`）にはどちらもないため、同じターゲットに
-対して Web UI の doctor は CLI より少ない検査結果を静かに返します。共有プローブ（と、両面で
-一致してよい範囲の共有された検査の組み立て）は、次の分岐を防ぐ手当てそのものです。
+対して Web UI の doctor は CLI より少ない検査結果を静かに返します。共有プローブと、両面で
+一致してよい範囲の共有された検査の組み立ては、次の分岐を防ぎます。
 
 ## 詳細設計
 
@@ -53,12 +54,12 @@ serve のパネル（`bajutsu/serve/operations/doctor.py:86-100`）にはどち�
 
 ## 検討した代替案
 
-- **複製のまま残す。** 検査の組み立てに生じたずれが行き先を示しています。2 つの doctor は
+- **複製のまま残す。** 検査の組み立てに生じたずれが、その結果を示しています。2 つの doctor は
   「このターゲットは健全か」という同じ問いに違う徹底度で答え続け、今後の検査追加も片側だけに
   着地します。
-- **小さなヘルパ（udid の解析、エラー型）だけ共有して、プローブは 2 つ残す。** 危険なのは逐語
-  一致の Playwright 分岐とバックエンドのフォールバックのロジックであり、周辺だけを共有しても
-  肝心の複製が残ります。
+- **小さなヘルパ（udid の解析、エラー型）だけ共有して、プローブは 2 つ残す。** 危険なのは、逐語
+  一致の Playwright 分岐とバックエンドのフォールバックのロジックです。周辺だけを共有しても、
+  この複製が残ります。
 
 ## 進捗
 
@@ -79,4 +80,4 @@ serve のパネル（`bajutsu/serve/operations/doctor.py:86-100`）にはどち�
 ## 参考
 
 - [`bajutsu/cli/commands/doctor.py`](../../bajutsu/cli/commands/doctor.py) · [`bajutsu/serve/operations/doctor.py`](../../bajutsu/serve/operations/doctor.py) · [`bajutsu/doctor.py`](../../bajutsu/doctor.py)
-- [BE-0148](../BE-0148-serve-doctor/BE-0148-serve-doctor-ja.md) — 本項目が統合するプローブ複製を持つ serve の doctor パネル
+- [BE-0148](../BE-0148-serve-doctor/BE-0148-serve-doctor-ja.md)：本項目が統合するプローブ複製を持つ serve の doctor パネル

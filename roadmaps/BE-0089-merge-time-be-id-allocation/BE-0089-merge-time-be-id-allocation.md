@@ -15,49 +15,49 @@
 
 ## Introduction
 
-A roadmap item's permanent `BE-NNNN` id is assigned the moment its pull request opens: the
-[`roadmap-id`](../../.github/workflows/roadmap-id.yml) workflow runs on `pull_request`,
-allocates the next free number, claims it atomically as a `refs/be-claims/*` ref, pushes the rename
-back onto the branch, and rewrites the PR title's `BE-XXXX` to the allocated id.
+A roadmap item's permanent `BE-NNNN` id is assigned the moment its pull request opens. The
+[`roadmap-id`](../../.github/workflows/roadmap-id.yml) workflow runs on `pull_request` and allocates
+the next free number. The workflow claims the number atomically as a `refs/be-claims/*` ref, pushes
+the rename back onto the branch, and rewrites the `BE-XXXX` in the PR title to the allocated id.
 [BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)
 hardened that path so two branches can never take the same number. The consequence is that a number
-is **spent at PR-open time — before the proposal is accepted.**
+is **spent at PR-open time, before the proposal is accepted.**
 
-This item moves allocation to **after the PR merges**, and runs it **on `main`**. An item keeps the
-`BE-XXXX` placeholder all the way through authoring, review, and the merge itself: the branch is
-merged *as-is*, with `BE-XXXX` intact, by auto-merge (or a merge queue). Then a workflow triggered by
-the push to `main` runs the existing allocator against `main`'s tree, renames the placeholder to the
-next free `BE-NNNN`, and commits the result directly to `main`. The number is therefore assigned only
-to an item that has actually shipped, in merge order — so the `BE-NNNN` sequence on `main` is
-**contiguous by construction** and a number is never burned by a proposal that is rejected or
-abandoned.
+This item moves allocation to **after the PR merges** and runs the allocation **on `main`**. An item
+keeps the `BE-XXXX` placeholder through authoring, review, and the merge itself: auto-merge (or a
+merge queue) merges the branch *as-is*, with `BE-XXXX` intact. Then a workflow triggered by the push
+to `main` runs the existing allocator against the tree of `main`, renames the placeholder to the next
+free `BE-NNNN`, and commits the result directly to `main`. The number therefore goes only to an item
+that has actually shipped, in merge order. The `BE-NNNN` sequence on `main` is **contiguous by
+construction**, and a rejected or abandoned proposal never burns a number.
 
-This direction grew out of an alternative BE-0061 set aside ("assign the real id only at merge
-time"). The reason it was awkward then — and the reason an earlier draft of *this* item, which
-allocated on approval by pushing a rename to the branch, was itself rejected — is the same: any
-commit pushed to a PR branch after approval trips branch protection's "dismiss stale approvals" and
-stalls the merge. Allocating **on `main` after the merge** removes that entirely: nothing is ever
-pushed to the reviewed branch after approval, so there is no review to dismiss. It is
-contributor-workflow infrastructure only — no LLM enters any path, `run` and CI stay deterministic,
-nothing app-specific moves into the tool — so it touches none of the prime directives. It is a direct
-sibling of BE-0061: that item made allocation *collision-proof*; this one makes it *acceptance-gated*
-and *gap-free*.
+This direction grew out of an alternative that BE-0061 set aside ("assign the real id only at merge
+time"). The alternative was awkward for the same reason that an earlier draft of *this* item, which
+allocated on approval by pushing a rename to the branch, was rejected: any commit pushed to a PR
+branch after approval trips branch protection's "dismiss stale approvals" and stalls the merge.
+Allocating **on `main` after the merge** removes the problem entirely. Nothing is ever pushed to the
+reviewed branch after approval, so no review is left to dismiss.
+
+The item is contributor-workflow infrastructure only: no LLM enters any path, `run` and CI stay
+deterministic, and nothing app-specific moves into the tool. It therefore touches none of the prime
+directives. The item is a direct sibling of BE-0061, which made allocation *collision-proof*; this
+item makes allocation *acceptance-gated* and *gap-free*.
 
 ## Motivation
 
 ### A number is spent before the item is accepted
 
-Allocation at PR-open means every opened roadmap PR consumes a `BE-NNNN`, whether or not it is ever
-accepted. The existing machinery softens this but does not remove it:
+Allocation at PR-open means every opened roadmap PR consumes a `BE-NNNN`, whether or not the
+proposal is ever accepted. The existing machinery softens the effect but does not remove it:
 
 - **Rejected PRs free their claim.** When a roadmap PR closed — merged or not — the (since-retired)
   `roadmap-claims-gc` workflow released the `refs/be-claims/*` it introduced, and the branch rename
   never reached `main`, so a rejection alone leaves no row on `main`.
-- **But the number sequence can still gap.** Allocation is **monotonic** — `max(used) + 1`, never the
-  smallest free number. So when allocation order and merge order diverge and a *lower*-numbered PR is
-  rejected, its number becomes a permanent hole. Concretely: PR-A allocates `BE-0080`, PR-B allocates
-  `BE-0081`; `BE-0081` merges first; PR-A is then rejected. The next item allocates `BE-0082`, and
-  `BE-0080` is gone for good.
+- **But the number sequence can still gap.** Allocation is **monotonic**: `max(used) + 1`, never the
+  smallest free number. When allocation order and merge order diverge and a *lower*-numbered PR is
+  rejected, its number becomes a permanent hole. Concretely, PR-A allocates `BE-0080` and PR-B
+  allocates `BE-0081`; `BE-0081` merges first, and PR-A is then rejected. The next item allocates
+  `BE-0082`, and `BE-0080` is gone for good.
 
 So the `BE-NNNN` ids on `main` are not guaranteed contiguous, and an id can be permanently spent on a
 proposal that never ships. Gaps are not catastrophic — ids are permanent and monotonic by design, and
@@ -70,18 +70,18 @@ so it never reaches the allocator and never consumes a number; and because alloc
 
 ### Why allocate *after* the merge rather than at approval
 
-The obvious place to defer allocation to is the *approval* — allocate when a reviewer approves, push
-the rename to the branch, then auto-merge. That is what an earlier draft of this item proposed, and
-it does not work cleanly: the allocator's commit lands on the PR branch *after* the approving review,
-which trips branch protection's "dismiss stale pull request approvals when new commits are pushed".
-The approval is dismissed and auto-merge stalls. Avoiding that needs either disabling stale-approval
-dismissal repo-wide (blunt — every post-approval push then keeps its approval) or a bot re-approval
-that GitHub does not reliably count toward required reviews.
+The obvious place to defer allocation to is the *approval*: allocate when a reviewer approves, push
+the rename to the branch, then auto-merge. An earlier draft of this item proposed exactly that, and
+the approach does not work cleanly. The allocator's commit lands on the PR branch *after* the
+approving review, which trips branch protection's "dismiss stale pull request approvals when new
+commits are pushed". The approval is dismissed and auto-merge stalls. Avoiding the dismissal needs
+either disabling stale-approval dismissal repo-wide (blunt, because every post-approval push then
+keeps its approval) or a bot re-approval that GitHub does not reliably count toward required reviews.
 
-Allocating on `main` after the merge sidesteps the whole problem: the reviewed branch is merged
-exactly as approved, with `BE-XXXX` still in it, and the number is assigned by a commit to `main`,
-not to the branch. No post-approval push to the branch means no dismissal — and, as a bonus, the
-trigger collapses from "approval, then auto-merge, then rename" to a single "push to `main`".
+Allocating on `main` after the merge sidesteps the whole problem. The reviewed branch is merged
+exactly as approved, with `BE-XXXX` still in it, and a commit to `main` (not to the branch) assigns
+the number. No post-approval push to the branch means no dismissal. As a bonus, the trigger
+collapses from "approval, then auto-merge, then rename" to a single "push to `main`".
 
 ## Detailed design
 

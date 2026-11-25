@@ -6,15 +6,14 @@
 > ([BE-0016](../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) covers running
 > the bajutsu web UI ([cli](cli.md#serve)) on hardware you own, reachable by your team over a
 > private Tailscale network.
-> Two tiers are available today, both made safe to expose by
-> [BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md)'s
-> auth + input validation:
+> Two tiers are available today. Both are safe to expose because of the auth and input validation in
+> [BE-0051](../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting.md):
 >
 > - **Tier A — a single Mac.** A token-authenticated `bajutsu serve` and a local `bajutsu worker`
->   that runs its jobs, both on one Mac. The rest of this page up to *Tier B* covers it.
+>   that runs its jobs, both on one Mac. The rest of this page up to *Tier B* covers Tier A.
 > - **Tier B — a self-hosted server backend.** BE-0015's control plane (FastAPI + Postgres +
->   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers. It runs
->   single-tenant by default and supports **multiple orgs** when you declare them in config (see
+>   S3-compatible storage + GitHub OAuth + RBAC + quotas) on a Linux node, with Mac workers. Tier B
+>   runs single-tenant by default and supports **multiple orgs** when you declare them in config (see
 >   *[Tier B — self-hosting the server backend](#tier-b--self-hosting-the-server-backend)*).
 >
 > The fully managed public cloud offering (a hosted MacStadium worker pool + IaC) remains future
@@ -23,15 +22,15 @@
 ## The macOS constraint
 
 The runner drives an **iOS Simulator**, which needs a **GUI login session** (the Aqua session) —
-it will not run from a headless daemon. Every choice below follows from that:
+the Simulator will not run from a headless daemon. Every choice below follows from that requirement:
 
 - Run serve as a per-user **`LaunchAgent`** (GUI session), **not** a `LaunchDaemon`.
 - **Auto-login** the Mac so a GUI session is recovered after a reboot (FileVault needs one
   interactive login after a cold boot before auto-login proceeds).
 - **Disable sleep** so the session stays alive: `sudo pmset -a sleep 0 disablesleep 1`.
 
-These constraints are specific to the **iOS Simulator (XCUITest)** backend. The **web (Playwright)**
-backend runs a headless browser and needs none of them — it can serve from any Mac or Linux host
+These constraints apply to the **iOS Simulator (XCUITest)** backend alone. The **web (Playwright)**
+backend runs a headless browser and needs none of them. It can serve from any Mac or Linux host
 (including the Tier B node), so a web-only deployment skips this section.
 
 ## 1. Generate the LaunchAgent
@@ -40,14 +39,18 @@ backend runs a headless browser and needs none of them — it can serve from any
 > runs `python -m bajutsu serve` directly, so — unlike `make serve` — it does **not** install them
 > on demand. Install the backend's **runtime closure** — the single extra that names everything a run
 > reaches, including the `visual` (screenshot) and `schema` (`responseSchema`) assertion deps
-> (BE-0173): for the web (Playwright) backend, `uv sync --extra worker-web && playwright install
-> chromium`; for the iOS Simulator (XCUITest) backend, `uv sync --extra worker-ios` (the XCUITest
-> backend needs no backend pip extra — Xcode supplies `xcodebuild`, and the target supplies its
-> prebuilt `driver.runner.testRunner` — so `worker-ios` is just the `visual` + `schema` assertion deps).
-> Installing a bare backend extra (e.g. `web`) under-installs — such a run fails lazily at assertion
-> time — and skipping the closure entirely makes runs fail at dispatch with `no available actuator`.
+> (BE-0173):
+>
+> - Web (Playwright) backend: `uv sync --extra worker-web && playwright install chromium`.
+> - iOS Simulator (XCUITest) backend: `uv sync --extra worker-ios`. The XCUITest backend needs no
+>   backend pip extra: Xcode supplies `xcodebuild`, and the target supplies its prebuilt
+>   `driver.runner.testRunner`. So `worker-ios` holds just the `visual` + `schema` assertion deps.
+>
+> Installing a bare backend extra (e.g. `web`) under-installs, and such a run fails lazily at
+> assertion time. Skipping the closure entirely makes runs fail at dispatch with
+> `no available actuator`.
 
-`bajutsu serve --emit-launchagent` prints a launchd plist matching the serve flags you pass, then
+`bajutsu serve --emit-launchagent` prints a launchd plist that matches the serve flags you pass, then
 exits without starting a server. Pick a strong token and write the plist into your LaunchAgents:
 
 ```bash
@@ -67,15 +70,15 @@ The emitted plist:
 
 Two settings the emitted plist leaves out, both added under `EnvironmentVariables`:
 
-- **`ANTHROPIC_API_KEY`** — needed for the AI paths (`record`, `--system-alert-handling`); it isn't baked
-  in for you. (For the Bedrock provider, set `BAJUTSU_AI_PROVIDER` / `BAJUTSU_BEDROCK_MODEL` and the
-  AWS credentials here instead.)
+- **`ANTHROPIC_API_KEY`** — needed for the AI paths (`record`, `--system-alert-handling`); the
+  emitted plist does not include it. (For the Bedrock provider, set `BAJUTSU_AI_PROVIDER` /
+  `BAJUTSU_BEDROCK_MODEL` and the AWS credentials here instead.)
 - **`PATH`** — for the iOS (XCUITest) backend only. launchd starts the agent with a minimal `PATH`,
   and bajutsu locates `xcodebuild` / `xcrun` / `simctl` through `PATH`, so without it a run fails with
   `no available actuator`. Include the Xcode command-line tools' bin, Homebrew's bin, and the venv's
   bin. (The web backend finds Playwright by import, not `PATH`, so it needs no `PATH` entry.)
 
-PlistBuddy makes both edits without hand-editing XML (run from the repo root so `.venv` resolves):
+PlistBuddy makes both edits without hand-editing XML. Run it from the repo root so `.venv` resolves:
 
 ```bash
 PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
@@ -110,21 +113,21 @@ launchctl print gui/$(id -u)/com.bajutsu.serve        # verify it's loaded
 To reload after editing the plist: `launchctl bootout gui/$(id -u)/com.bajutsu.serve` then
 bootstrap again.
 
-## 3. Expose it over Tailscale (recommended)
+## 3. Expose it over Tailscale
 
-serve stays on `127.0.0.1`; **Tailscale** publishes it inside your tailnet only — identity-based
+serve stays on `127.0.0.1`. The recommended way to reach it is **Tailscale**, which publishes it inside your tailnet only — identity-based
 access plus automatic TLS, no public surface:
 
 ```bash
 tailscale serve --bg 8765    # → https://<machine>.<tailnet>.ts.net (reachable only in the tailnet)
 ```
 
-Teammates open that URL; the UI prompts for the token on first load (the browser then carries a
-session cookie). API clients send `Authorization: Bearer $TOKEN`.
+Teammates open that URL. The UI prompts for the token on first load, and the browser then carries a
+session cookie. API clients send `Authorization: Bearer $TOKEN`.
 
 > **Do not bind `0.0.0.0` to the public internet.** Even with a token, the safe default is a
 > private tailnet. serve refuses a non-loopback `--host` without a token, but a public bind widens
-> the surface needlessly. If you need a real internal hostname, front serve with **Caddy** for TLS
+> the attack surface needlessly. If you need a real internal hostname, front serve with **Caddy** for TLS
 > (+ basic auth) and keep it off the open internet.
 
 ## Security recap (BE-0051)
@@ -137,10 +140,11 @@ dispatch. Keep the token secret, keep the Mac on a tailnet, and keep the OS patc
 
 The CSRF/Origin check and a **`Host`-header allowlist** run **unconditionally**
 ([BE-0121](../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist.md)) —
-not only when a token is set. Running these checks unconditionally matters most for the common
-`make serve` default (loopback, no token): a cross-origin `POST` from a page open in another tab is blocked, and a request whose `Host`
-does not name a bound interface is refused, so a rebound hostname can't reach a loopback endpoint
-such as `GET /api/apikey`. A non-browser client (no `Origin` header) is unaffected. The
+not only when a token is set. Unconditional checks matter most for the common `make serve` default
+(loopback, no token). There, serve blocks a cross-origin `POST` from a page open in another tab, and
+it refuses a request whose `Host` does not name a bound interface. A rebound hostname therefore can't
+reach a loopback endpoint such as `GET /api/apikey`. A non-browser client (no `Origin` header) is
+unaffected. The
 `Host` allowlist is derived from the interface `serve` binds — the loopback names for a loopback
 bind, that host otherwise; a wildcard bind (`0.0.0.0` / `::`), whose reachable names can't be
 enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
@@ -149,7 +153,8 @@ enumerated, disables the `Host` check and leaves CSRF as the cross-origin guard.
 
 A config can declare commands that Bajutsu runs on the machine that carries out a run:
 
-- `services.server.cmd` starts the server that hosts the app under test.
+- A `hooks.*` entry's `cmd` prepares what a scenario needs. Starting the server that hosts the app
+  under test is one such preparation.
 - `subject.build` builds the app when its binary is missing.
 - `driver.runner.build` builds the XCUITest runner when its `.xctestrun` file is missing.
 
@@ -175,6 +180,24 @@ terminal or CI run labels its config `operator`, because the person who started 
 The worker passes the label to each `run`, `record`, or `crawl` it spawns. It also passes its own
 `--worker-config` to each of them.
 
+### The source of a scenario
+
+A scenario can declare [commands of its own](scenarios.md#hooks-external-commands-around-one-scenario).
+Most often the scenario comes with the config, and its commands take the config's source. A client
+can write the scenario apart from the config in two cases:
+
+- A `scenariosArtifact` replaces the scenarios of one job.
+- A store holds saved scenarios apart from the config's own tree.
+
+In both cases the scenario's commands take the source `uploaded`. The config's commands keep the
+config's source. `serve` puts the label in the job, and the worker passes it to the `run` it spawns
+as `--scenario-source`. A label in the job's command line has no effect. A job from a server that
+predates the label reads as `uploaded` too, when it ships its scenario.
+
+A scenario saved into the config's own tree takes the config's source. Anyone who may save there can
+thus run commands under that source's mode. Set that mode to `named` or `deny` where you do not trust
+everyone who may save.
+
 ### The `commandExecution` block
 
 The `commandExecution` block in `worker.yaml` sets one mode per source:
@@ -193,7 +216,8 @@ The mode decides what happens to each governed command:
 
 | Command | `allow` | `sandbox` | `named` | `deny` |
 |---|---|---|---|---|
-| `services.server.cmd` | runs on the worker's host | runs in a Docker container | refused | refused |
+| a `hooks.*` entry's `cmd` | runs on the worker's host | runs in one container per run | refused | refused |
+| a `hooks.*` entry's `use` | runs on the worker's host | runs on the worker's host | runs on the worker's host | refused |
 | `subject.build` | runs on the host when the binary is missing | does not run | does not run | does not run |
 | `driver.runner.build` | runs on the host when the runner is missing | does not run | does not run | does not run |
 | a named command | runs on the host | runs on the host | runs on the host | refused |
@@ -208,25 +232,27 @@ ships its runner prebuilt at `driver.runner.testRunner` too. A run that finds ei
 fails. Its error names the mode that kept the build from running. An uploaded bundle already ships
 its binary this way.
 
-Under `allow` and `sandbox`, the run reuses a server that already answers the readiness URL. No
-command runs then. Under `named` and `deny`, the run refuses a declared `services.server.cmd`. It
-does so even when a server already answers. The policy decides before any probe, so the run never probes the readiness
-URL of a refused config.
+Under `named` and `deny`, the run refuses every command line a config spells out. The policy
+decides before any device work. A run whose command will never run therefore fails before it
+reserves a device. An entry that names a worker-installed script with `use` runs under every mode
+but `deny`: that script is the operator's own code.
 
-### Running a server command in a container
+### Running a config's commands in a container
 
-Under `sandbox`, the server command runs in a throwaway Docker container on the worker's host. The
-config declares the runtime under `services.server` with **exactly one** of two fields, plus a
-port:
+Under `sandbox`, a target's hook commands run in a throwaway Docker container on the worker's host.
+One container serves the whole run. A server a `beforeRun` script starts therefore keeps serving
+until `afterRun`. The config declares the runtime under `hooks.sandbox` with **exactly one** of two
+fields, plus the ports to publish:
 
 - `dockerImage` names a published base image, such as `node:20-slim`.
 - `dockerfile` names a path inside the config's directory. The worker builds it with
   `docker build`.
-- `port` names the port the server listens on inside the container.
+- `ports` lists the ports the commands listen on inside the container.
 
-The container drops all capabilities and forbids new privileges. It runs as a non-root user on a
-read-only root filesystem, with a `tmpfs` scratch. CPU, memory, and process caps bound it. It
-publishes its one port to a loopback port on the host, and the worker removes it after the run.
+The container drops all capabilities and forbids new privileges. It runs as the worker's own
+non-root user on a read-only root filesystem, with a `tmpfs` scratch. CPU, memory, and process caps
+bound it. It publishes each declared port to the same loopback port on the host, and the worker
+removes it after the run.
 
 The worker's host needs Docker. Suppose a worker's file sets a source to `sandbox` explicitly. The
 worker then checks for `docker` on its `PATH` at startup. When `docker` is missing, the worker exits
@@ -257,10 +283,11 @@ The worker checks each entry at startup and refuses a file that breaks one of th
   `NODE_OPTIONS`, and `PYTHONPATH`, plus any `LD_*` or `DYLD_*` name.
 
 A named command runs on the worker's host under every mode except `deny`. Its code belongs to the
-operator. No config field can name a named command yet. The hook entries of
-[BE-0491](../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks.md) add that field.
-Suppose a worker holds secrets and runs untrusted configs. Its operator can set `uploaded: named`
-and `remote: named` there today. Those modes refuse every server command from the two sources.
+operator. A hook entry names one with `use:` in place of its `cmd`
+([BE-0491](../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks.md)). Suppose a
+worker holds secrets and runs untrusted configs. Its operator can set `uploaded: named` and
+`remote: named` there. Those modes refuse every command line from the two sources, and leave the
+installed scripts a config may still ask for by name.
 
 ### How the policy reaches routing and the run
 
@@ -272,9 +299,11 @@ The worker advertises its policy as routing tokens
 - `named-execution:<source>` for each source whose mode is not `deny`.
 - `named-command:<name>` for each entry of `namedCommands`.
 
-A job whose config declares `services.server.cmd` requires `command-execution:<source>` for its
-source. A build adds no token, because `serve` cannot know whether a worker already holds the
-binary. A job keeps waiting while no connected worker matches it. Workers older than BE-0492
+A job whose config declares a `hooks.*` command line requires `command-execution:<source>` for its
+source. One that uses a named command requires `named-execution:<source>` and that script's own
+`named-command:<name>`. The commands of a job's scenario files add the same tokens, under the
+scenario's source. A build adds no token, because `serve` cannot know whether a worker already
+holds the binary. A job keeps waiting while no connected worker matches it. Workers older than BE-0492
 advertise none of these tokens, and they never lease such a job.
 
 The run checks the policy again before any device work, against the `worker.yaml` it reads. This
@@ -289,10 +318,10 @@ provenance of `manifest.json`. Each entry holds these fields:
 
 | Field | Meaning |
 |---|---|
-| `field` | where the config declared the command, such as `services.server.cmd` |
+| `field` | where the config declared the command, such as `hooks.beforeRun[server].cmd` |
 | `cmd` | the command line, with `${secrets.*}` values masked |
 | `source`, `mode` | the config source and the mode that applied |
-| `decision` | `ran`, `sandboxed`, or `refused` |
+| `decision` | `ran`, `sandboxed`, `refused`, or `skipped` (a hook entry whose [`when`](configuration.md#running-an-entry-for-some-scenarios-when-be-0497) did not match) |
 | `exitCode` | the command's exit code, when it ran |
 | `sha256` | the hash of the command line, and of the executable when that file sits inside the config's directory |
 
@@ -346,9 +375,9 @@ is not world-readable). A PAT is tied to a *person*, though: it carries that per
 working when they rotate it or leave. A service that reads private repos unattended should
 authenticate **as itself** — a GitHub App.
 
-### GitHub App (recommended for a service)
+### GitHub App
 
-A GitHub App installation token is short-lived, limited to the installation's repositories, and tied
+For a service, we recommend a GitHub App. A GitHub App installation token is short-lived, limited to the installation's repositories, and tied
 to the service rather than a person. Create an App with **Contents: read**, install it on the target
 repositories, then supply:
 
@@ -372,7 +401,7 @@ other, not both, unless you intend the App identity to authenticate all fetches.
 
 The "Open config" dialog's **"From a Git repository"** source has a credential field. Enter a
 fine-grained PAT or App token and it is stored **write-once** through serve's secret store — the same
-store as the [Claude API key](#operator-secrets-the-claude-api-key): masked, never echoed back. On a
+store as the [Claude API key](#operator-secrets-and-the-claude-api-key): masked, never echoed back. On a
 **local** serve it is held for the lifetime of the process in a bajutsu-owned variable
 (`BAJUTSU_GIT_CONFIG_TOKEN`) that the fetch reads ahead of an ambient `GITHUB_TOKEN` — deliberately
 *not* `GITHUB_TOKEN` itself, so entering or clearing a UI credential never disturbs a token you
@@ -387,11 +416,11 @@ credential with Contents: read for `<owner>/<repo>`") rather than a bare 404.
 
 ## Tier B — self-hosting the server backend
 
-Tier A is a server and its local worker on one Mac. **Tier B** runs BE-0015's **server backend** — the FastAPI control
-plane with Postgres, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota — on a
-Linux node, with one or more Macs as workers. It runs **single-tenant** by default (every
-user in one default org) and supports **multiple orgs** once you declare them in config — see
-*[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
+Tier A is a server and its local worker on one Mac. **Tier B** runs BE-0015's **server backend** on a
+Linux node, with one or more Macs as workers. The server backend is the FastAPI control plane with
+Postgres, S3-compatible storage (MinIO), GitHub OAuth, RBAC, and a per-user quota. Tier B runs
+**single-tenant** by default (every user in one default org) and supports **multiple orgs** once you
+declare them in config — see *[Multiple orgs](#multiple-orgs)* below. The ready-to-run stack is in
 [`deploy/self-host/`](../deploy/self-host/) (compose + Dockerfile + `.env.example`).
 
 ![Tier B topology diagram: team laptops reach the Linux control-plane node (bajutsu serve --asgi, Postgres, MinIO) over HTTPS via Tailscale or Caddy; the control plane dispatches jobs over HTTP to a pool of bare-metal Mac iOS (XCUITest) workers and, over the same Tailscale tailnet, to containerized Linux web (Playwright/Chromium) workers, both returning results to the control plane.](assets/diagrams/self-hosting-tier-b-topology.svg)
@@ -416,31 +445,35 @@ flowchart TB
 
 </details>
 
-The Linux control plane is cheap; the **Mac workers** carry the Simulator runs and are the scarce
-part. The fleet is **heterogeneous by backend**: a Mac iOS worker runs **bare metal** because it needs
-the Aqua GUI session for the iOS Simulator (exactly like Tier A), while a **Linux web (Playwright)
-worker runs headless in a container** (BE-0173) — the web backend has no GUI-session constraint. Both
-lease from the same control plane over HTTP; the web-worker container needs **no cloud SDK or
-object-store secrets** (BE-0160), only the control-plane URL and a token. Running a mixed fleet is
-optional — an iOS-only deploy is the default and unchanged; add web workers when you host web runs
-([§ Add a Linux web worker](#5-add-a-linux-web-worker-container-optional)).
+The Linux control plane is cheap. The **Mac workers** carry the Simulator runs and are the scarce
+part. The fleet is **heterogeneous by backend**:
+
+- A Mac iOS worker runs **bare metal**, because it needs the Aqua GUI session for the iOS Simulator,
+  exactly as in Tier A.
+- A **Linux web (Playwright) worker runs headless in a container** (BE-0173), because the web backend
+  has no GUI-session constraint.
+
+Both kinds of worker lease from the same control plane over HTTP. The web-worker container needs
+**no cloud SDK or object-store secrets** (BE-0160), only the control-plane URL and a token. A mixed
+fleet is optional: an iOS-only deploy is the default and unchanged, and you add web workers when you
+host web runs ([§ Add a Linux web worker](#5-add-a-linux-web-worker-container)).
 
 **Config sources are deployment-aware (BE-0108).** The "Open config" dialog binds the active config
 from up to three sources: a **Git repository**, an **uploaded `.zip` bundle**, and a **file browser
-over the serve host's `--root`**. On the server backend (this tier) the file browser is dropped —
-both hidden in the UI and refused server-side (`/api/fs` and the path branch of `POST /api/config`
-return `403`) — leaving only Git and upload. A hosted user has no filesystem relationship to the
-shared worker, so browsing the operator's `--root` could bind nothing they own; removing it also
-avoids handing every logged-in user a directory listing of that tree. A local start (Tier A, a
-self-hosted single Mac) keeps all three: there the filesystem is the operator's own.
+over the serve host's `--root`**. On the server backend (this tier) the file browser is dropped — hidden in the UI and refused
+server-side (`/api/fs` and the path branch of `POST /api/config` return `403`) — leaving only Git and
+upload. A hosted user has no filesystem relationship to the shared worker, so browsing the operator's
+`--root` could bind nothing they own. Dropping the browser also avoids handing every logged-in user a
+directory listing of that tree. A local start (Tier A, a self-hosted single Mac) keeps all three
+sources, because there the filesystem is the operator's own.
 
 ### Local vs. hosted, across config, scenario, and the app binary
 
-The walkthrough above is organized by *how you deploy*; this box collects *what changes for each kind
-of state `serve` manages*, so the tier-by-tier detail is easier to place. "Local" below covers both
+The walkthrough above is organized by *how you deploy*. This section collects *what changes for each
+kind of state `serve` manages*, so the tier-by-tier detail is easier to place. "Local" below covers both
 Tier A and a bare `make serve` on a laptop. Both run with `hosted: false`. Tier B's server backend
 names a bucket in `BAJUTSU_SERVER_STORE`, which makes it `hosted: true`. A server backend on one
-machine with no bucket stays `hosted: false`. The section *The server backend on one machine*,
+machine with no bucket stays `hosted: false`; the section *The server backend on one machine*,
 below, covers that case.
 
 | State | Local (`hosted: false` — Tier A, or a bare `make serve`) | Hosted (`hosted: true` — Tier B server backend) |
@@ -451,7 +484,7 @@ below, covers that case.
 | **Authoring against a live screen** | Capture mode and Edit's live picker both hold a driver open in the `serve` process | Neither is offered: both controls are disabled, each carrying the reason (#1721) |
 
 - **Config.** Both sides bind from up to three sources, but the file browser disappears the moment
-  `hosted` is true (just above). Path confinement follows the *source*, not the tier: a local-file
+  `hosted` is true. Path confinement follows the *source*, not the tier: a local-file
   config resolves against its own directory and is unconfined (it may point at a sibling), while a Git-
   or upload-sourced config is untrusted and its `paths.scenarios` / `paths.baselines` / `subject.path` are confined to
   the checkout or bundle root regardless of which tier bound it
@@ -802,9 +835,9 @@ the prefix into the URI's path — `BAJUTSU_S3_BUCKET=bajutsu` + `BAJUTSU_S3_PRE
 `BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/`; otherwise existing keys under that prefix stop resolving
 once the prefix is dropped.
 
-### 2. Add GitHub OAuth (optional)
+### 2. Add GitHub OAuth
 
-The shared token (`BAJUTSU_SERVE_TOKEN`) alone is enough for a couple of operators. For per-user
+This step is optional. The shared token (`BAJUTSU_SERVE_TOKEN`) alone is enough for a couple of operators. For per-user
 browser login, create a GitHub OAuth app (callback `https://<your-host>/api/oauth/callback`) and set
 in `.env`: `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI`.
 
@@ -832,79 +865,90 @@ hand-maintained login list:
   Team so that an org spanning more than one GitHub organization can name the writing Team of
   each. A configuration on the older singular `editorTeam` still works: `serve` folds that key
   into `editorTeams`. Rename it anyway; the plural name is the documented one.
-- **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS` (a
-  comma-separated list, each written `"<github-org>/<team-slug>"`, where `<team-slug>` is GitHub's
-  own lowercased slug and not the Team's display name; like `githubTeams` and `editorTeams`, each
-  entry names one flat Team — a Team nested beneath it does not match — and is compared
-  case-insensitively, as GitHub itself resolves an org login and a Team slug), whose members also
-  change server settings
-  (config / API key / provider). Admin is a single deployment-wide tier, so name only Teams whose
-  members you trust across every org. Unlike the viewer/editor roles above, a member of any
-  configured admin Team clears the sign-in gate directly — the Team itself does *not* need to
-  appear in any org's `members`, `githubOrgs`, `githubTeams`, or `editorTeams` — so an admin can sign
-  in and repoint
-  the server at a corrected config even when the `orgs:` block is broken or missing entirely. One
-  failure still closes that door: `/user/teams` fails closed, so while GitHub's Teams API is
-  erroring, a login whose only claim is admin-Team membership is turned away like any other.
-  Because of that, `BAJUTSU_OAUTH_ADMIN_TEAMS` is now a sign-in credential and not only a
-  role mapping: every entry's GitHub-organization half must name an organization you actually
-  control, since anyone who controls it can create a Team with the matching slug and sign in as
-  admin.
+- **Admin** follows one or more server-wide GitHub Teams, `BAJUTSU_OAUTH_ADMIN_TEAMS`, whose members
+  also change server settings (config / API key / provider). The value is a comma-separated list. Each
+  entry is written `"<github-org>/<team-slug>"`, where `<team-slug>` is GitHub's own lowercased slug
+  and not the Team's display name. Like `githubTeams` and `editorTeams`, each entry names one flat
+  Team (a Team nested beneath it does not match) and is compared case-insensitively, as GitHub itself
+  resolves an org login and a Team slug. Admin is a single deployment-wide tier, so name only Teams
+  whose members you trust across every org.
+
+  Unlike the viewer and editor roles above, a member of any configured admin Team clears the sign-in
+  gate directly. The Team itself does *not* need to appear in any org's `members`, `githubOrgs`,
+  `githubTeams`, or `editorTeams`. An admin can therefore sign in and repoint the server at a
+  corrected config even when the `orgs:` block is broken or missing entirely. One failure still
+  closes that door: `/user/teams` fails closed, so while GitHub's Teams API is erroring, a login whose
+  only claim is admin-Team membership is turned away like any other.
+
+  Because of that gate, `BAJUTSU_OAUTH_ADMIN_TEAMS` is a sign-in credential and not only a role
+  mapping. Every entry's GitHub-organization half must name an organization you actually control,
+  since anyone who controls it can create a Team with the matching slug and sign in as admin.
 
 Membership is re-read on every login, so leaving a GitHub org or Team takes effect at the affected
 user's next sign-in — no server-side list to edit. Login always requests the `read:org` scope to read
 these memberships, so the consent screen mentions organization access.
 
-**Upgrading from the login lists.** Two things change beyond the role-source swap: sign-in now admits
-*everyone* in a configured `members` / `githubOrgs` / `githubTeams` / `editorTeams` entry, not just
-the logins that were on the old
-`BAJUTSU_OAUTH_ALLOWED_USERS` — if that allowlist was narrower than the org's full membership, tighten
-`orgs:` before switching, or the org gate alone will widen who can sign in. And
-`BAJUTSU_OAUTH_ALLOWED_USERS` / `_ADMINS` / `_VIEWERS` are simply ignored now, so re-declare every
-admin and editor as a Team membership before cutting over — anyone not yet covered by `editorTeams`
-or
-`BAJUTSU_OAUTH_ADMIN_TEAMS` drops to viewer on their next login. A deployment that already set the
-older, singular `BAJUTSU_OAUTH_ADMIN_TEAM` renames it to `BAJUTSU_OAUTH_ADMIN_TEAMS` at the same
-time — the old name is no longer read. `serve` warns on stderr at startup when the retired name is
-still set, when `BAJUTSU_OAUTH_ADMIN_TEAMS` resolves to an empty list, when an entry is not a
-well-formed `"<github-org>/<team-slug>"` pair, and when GitHub OAuth is only partly configured — one
-of `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` left unset 404s every GitHub
-sign-in and silently re-enables the shared-token login instead (or, with no `BAJUTSU_SERVE_TOKEN` set
-either, leaves every endpoint unauthenticated). Read the first lines of the log after upgrading. Each
-of these warnings is also re-emitted through the structured log under `event=server.startup_warning`
-(with a stable `check` field naming which one — see [Operational logging](#operational-logging)), so a
-deployment can alert on them rather than relying on someone reading boot output. A sign-in the org
-gate turned away is recorded under `event=oauth.denied`, naming the reason the org model did not
-match — the `orgs:` block, or the org table on a deployment whose database holds the membership; it
-is `WARNING` only when no admin Team is *usable* — the list is empty, or every entry is malformed, so
-no admin can sign in to fix `orgs:` either — and `INFO` for an ordinary denial (a configured admin
-Team simply didn't match this login) and for four earlier failures reachable with no GitHub account
-at all — OAuth not configured, a CSRF state mismatch, an exchange that raised, and one that returned no
-identity. Anyone with a GitHub account can otherwise reach an ordinary denial, so key an alert on
-`WARNING` rather than on the bare event name, or a curious visitor's sign-in attempt buries the shape
-worth paging on.
+**Upgrading from the login lists.** Three things change beyond the role-source swap.
 
-A third thing: disabling `POST /api/login` stops **minting** new token-cookie sessions once OAuth is
-configured, but it doesn't invalidate one already issued — a browser that logged in with the shared
-token before OAuth was turned on keeps that session's full, unchecked access (a token-minted session
-carries no identity, so the role gate never applies to it) until it expires on its own
-(`BAJUTSU_SESSION_TTL`, seven days by default). A deployment moving from token-only to OAuth should
-rotate the session store (or otherwise force-clear existing cookies) at cutover, rather than count on
-the seven-day window to close it.
+1. **Sign-in admits more people.** Sign-in now admits *everyone* in a configured `members` /
+   `githubOrgs` / `githubTeams` / `editorTeams` entry, not just the logins on the old
+   `BAJUTSU_OAUTH_ALLOWED_USERS`. If that allowlist was narrower than the org's full membership,
+   tighten `orgs:` before switching, or the org gate alone will widen who can sign in.
+2. **The old login lists are ignored.** `BAJUTSU_OAUTH_ALLOWED_USERS` / `_ADMINS` / `_VIEWERS` are
+   simply ignored now. Re-declare every admin and editor as a Team membership before cutting over:
+   anyone not yet covered by `editorTeams` or `BAJUTSU_OAUTH_ADMIN_TEAMS` drops to viewer on their
+   next login. A deployment that already set the older, singular `BAJUTSU_OAUTH_ADMIN_TEAM` renames
+   it to `BAJUTSU_OAUTH_ADMIN_TEAMS` at the same time, because the old name is no longer read.
+3. **Existing token sessions survive.** Disabling `POST /api/login` stops **minting** new
+   token-cookie sessions once OAuth is configured, but it doesn't invalidate one already issued. A
+   browser that logged in with the shared token before OAuth was turned on keeps that session's
+   full, unchecked access until it expires on its own (`BAJUTSU_SESSION_TTL`, seven days by
+   default). A token-minted session carries no identity, so the role gate never applies to it. A
+   deployment moving from token-only to OAuth should rotate the session store (or otherwise
+   force-clear existing cookies) at cutover, rather than count on the seven-day window to close it.
+
+`serve` warns on stderr at startup in four cases:
+
+- the retired name is still set;
+- `BAJUTSU_OAUTH_ADMIN_TEAMS` resolves to an empty list;
+- an entry is not a well-formed `"<github-org>/<team-slug>"` pair;
+- GitHub OAuth is only partly configured. One of `BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET`
+  / `_REDIRECT_URI` left unset 404s every GitHub sign-in and silently re-enables the shared-token
+  login instead (or, with no `BAJUTSU_SERVE_TOKEN` set either, leaves every endpoint
+  unauthenticated).
+
+Read the first lines of the log after upgrading. Each of these warnings is also re-emitted through
+the structured log under `event=server.startup_warning` (with a stable `check` field naming which
+one — see [Operational logging](#operational-logging)), so a deployment can alert on them rather
+than relying on someone reading boot output.
+
+A sign-in the org gate turned away is recorded under `event=oauth.denied`. The record names the
+reason the org model did not match: the `orgs:` block, or the org table on a deployment whose
+database holds the membership. The level depends on the denial:
+
+- `WARNING` only when no admin Team is *usable* — the list is empty, or every entry is malformed, so
+  no admin can sign in to fix `orgs:` either.
+- `INFO` for an ordinary denial (a configured admin Team simply didn't match this login), and for
+  four earlier failures reachable with no GitHub account at all: OAuth not configured, a CSRF state
+  mismatch, an exchange that raised, and one that returned no identity.
+
+Anyone with a GitHub account can otherwise reach an ordinary denial, so key an alert on `WARNING`
+rather than on the bare event name, or a curious visitor's sign-in attempt buries the shape worth
+paging on.
 
 Once OAuth is configured, the shared token narrows to **worker traffic only**: it authorizes the
 worker control-plane routes (the `/api/worker/*` endpoints and the run evidence-upload URL request)
-and nothing else. The browser token-login endpoint
-(`POST /api/login`) is disabled — a human signs in exclusively through GitHub OAuth — and a raw
+and nothing else. The browser token-login endpoint (`POST /api/login`) is disabled, so a human signs
+in exclusively through GitHub OAuth, and a raw
 `Authorization: Bearer <token>` no longer reaches any non-worker endpoint. A deployment that scripted
 non-worker endpoints with the token loses that path once OAuth is on. Without OAuth (the single-Mac,
 private-network shape) the token is unchanged and still reaches everything.
 
-### Authenticating a CI job (optional, BE-0414)
+### Authenticating a CI job (BE-0414)
 
-A continuous-integration (CI) job is neither of the two callers above. It cannot complete a browser
-sign-in, and the paragraph just above is its problem: once OAuth is on, the shared token no longer
-reaches a non-worker endpoint. Rather than hand every pipeline a long-lived secret,
+This section is optional. A continuous-integration (CI) job is neither of the two callers above. It cannot complete a browser
+sign-in, and once OAuth is on, the shared token no longer reaches a non-worker endpoint. Rather than
+hand every pipeline a long-lived secret,
 [BE-0414](../roadmaps/BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md) lets a
 job authenticate with the **OpenID Connect (OIDC) token its CI platform already issues it**, and
 exchanges that once for a short-lived **machine session**. The pipeline stores no secret at all, and
@@ -1064,9 +1108,10 @@ curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" -b cookies.txt
   -H 'Content-Type: application/json' -d '{"repository": "acme/app"}'
 ```
 
-An admin action, like the rest of `/api/orgs/…`, so it needs an admin's session rather than the
-pipeline's.  Match the repository the way your roster spells it: casing is folded on both sides. Omitting `repository` ends every machine session in
-the org, the reach you want when the roster itself is what went wrong. Retiring an org ends its
+Revocation is an admin action, like the rest of `/api/orgs/…`, so it needs an admin's session rather
+than the pipeline's. Match the repository the way your roster spells it: casing is folded on both
+sides. Omitting `repository` ends every machine session in the org, the reach you want when the
+roster itself is what went wrong. Retiring an org ends its
 machine sessions too.
 
 Two bounds shape what a revocation reaches:
@@ -1094,7 +1139,7 @@ The feature needs three prerequisites:
   The check goes to the repository that the machine session verified;
 - a GitHub App with the **Checks: write** permission, installed on each repository it publishes to;
 - the App's credentials in the environment of `serve`. These are the variables the Git config
-  source reads ([GitHub App](#github-app-recommended-for-a-service)), and the `githubapp` extra.
+  source reads ([GitHub App](#github-app)), and the `githubapp` extra.
   A check resolves the App's installation from its repository and ignores
   `BAJUTSU_GITHUB_APP_INSTALLATION_ID`.
 
@@ -1174,7 +1219,7 @@ a `group_event.contended` log line as the sole trace.
 **Roll out a new sink within 46 minutes.** A replica claims the events of its own sinks alone. A replica abandons an event whose sink no file on it defines. The replica
 waits until the event is about 46 minutes old. Update every replica's sink file within that time.
 
-### Operator secrets (the Claude API key)
+### Operator secrets and the Claude API key
 
 The **API key** an admin sets through the settings panel is an *operator secret*, and on the hosted
 control plane it is **write-once and encrypted at rest**
@@ -1235,9 +1280,9 @@ bajutsu worker
 The worker holds **no object-store credentials** (BE-0160): no `BAJUTSU_SERVER_STORE` /
 `BAJUTSU_S3_ENDPOINT` / `AWS_*`, and no cloud SDK. It downloads the run's baselines, uploads the
 finished `runs/<id>/` tree, and persists a `record` job's authored scenario over **presigned URLs
-the control plane signs** — the control plane is the only place the object store's credentials live.
-The bytes still flow worker→storage directly (the signed URL points at MinIO), so the worker needs
-network reachability to the object store, just not its secrets.
+that the control plane signs**. The control plane is the only place the object store's credentials
+live. The bytes still flow from the worker to storage directly, because the signed URL points at
+MinIO. The worker therefore needs network reachability to the object store, but not its secrets.
 
 A run off an **uploaded bundle** travels the same way. The control plane binds a dropped zip, or a
 composed `(config, scenarios, binary)` triple. It keeps that tree on its own disk, out of any
@@ -1286,7 +1331,7 @@ cancelling the jobs. A restarted worker then resumes the runs.
 [Running on AWS Device Farm](devicefarm.md#the-job-budget) covers the budget and the check before
 each submission.
 
-Wrap it in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
+Wrap the worker in a `LaunchAgent` (as in Tier A) so it survives reboots. The worker polls the control
 plane's `/api/worker/lease` endpoint over HTTP (no Redis needed), runs each job on a fresh
 Simulator, uploads the `runs/<id>/` tree (including `console.log`), and posts the result back to
 `/api/worker/result`. The control plane records the finished run into Postgres — the worker needs no
@@ -1343,9 +1388,9 @@ Caddy for a real hostname (`docker compose --profile caddy up -d`, with `BAJUTSU
 The worker reaches the control plane (`:8765`) and MinIO (`:9000`) over the tailnet, so keep the
 node on the private tailnet.
 
-### 5. Add a Linux web worker container (optional)
+### 5. Add a Linux web worker container
 
-The web (Playwright) backend runs headless on Linux, so its worker is a **container** rather than a
+This step is optional. The web (Playwright) backend runs headless on Linux, so its worker is a **container** rather than a
 bare-metal Mac (BE-0173). The compose stack ships an optional `worker-web` service, **off by default**
 (behind a profile), so an iOS-only deploy is unchanged. Enable it — on the Linux node or any other
 Docker host that can reach the control plane — with:
@@ -1358,16 +1403,18 @@ docker compose --profile web-worker up -d --build
 
 The service builds [`worker-web.Dockerfile`](../deploy/self-host/worker-web.Dockerfile), a multi-stage
 image that installs only the worker's runtime closure (`bajutsu[worker-web]` = the `web` backend +
-`visual` + `schema`) and the headless Chromium the browser needs. It deliberately omits the control
-plane's stack (`server` / `db` / `oauth`), the cloud SDKs, and the AI SDK — the worker talks to the
-control plane and object store over plain HTTP and, per BE-0160, holds **no object-store credentials**
-(it needs only `BAJUTSU_SERVER_URL` and `BAJUTSU_TOKEN`). To keep the image small it installs
-Chromium's **headless shell** (`playwright install --with-deps --only-shell chromium`) instead of the
-full headed build: the shell is what Playwright already uses for headless runs, so nothing in a run
-changes, and it saves tens of MB of browser plus a lighter system-library set. A Linux worker is
-always headless, so the headed-only features the shell drops don't apply. The image installs only the
-**Chromium** shell, so it serves Chromium web runs (the default engine); a scenario pinned to Firefox
-or WebKit (BE-0076) needs a worker with those browsers, not this slim image.
+`visual` + `schema`) and the headless Chromium the browser needs. The image deliberately omits the
+control plane's stack (`server` / `db` / `oauth`), the cloud SDKs, and the AI SDK. The worker talks
+to the control plane and object store over plain HTTP and, per BE-0160, holds **no object-store
+credentials** (it needs only `BAJUTSU_SERVER_URL` and `BAJUTSU_TOKEN`).
+
+To keep the image small, it installs Chromium's **headless shell**
+(`playwright install --with-deps --only-shell chromium`) instead of the full headed build. The shell
+is what Playwright already uses for headless runs, so nothing in a run changes, and it saves tens of
+MB of browser plus a lighter system-library set. A Linux worker is always headless, so the
+headed-only features the shell drops don't apply. The image installs only the **Chromium** shell, so
+it serves Chromium web runs (the default engine). A scenario pinned to Firefox or WebKit (BE-0076)
+needs a worker with those browsers, not this slim image.
 
 To run a web worker outside compose (e.g. a separate Linux box), build and run the image directly:
 
@@ -1387,13 +1434,13 @@ queues](#capability-routed-queues-be-0166) below).
 
 A real Mac pool is rarely uniform: machines carry different iOS runtimes, some are set up for iPad
 and others for iPhone, and a web worker runs a different backend entirely. With one undifferentiated
-queue any worker could lease any job, so an iOS job could land on a Linux web worker and fail
-— not for a real defect, but because it was routed to the wrong machine. **Capability routing** stops
-that: a job is only ever leased by a worker that can actually run it.
+queue any worker could lease any job, so an iOS job could land on a Linux web worker and fail —
+not for a real defect, but because it was routed to the wrong machine. **Capability routing** stops
+that failure: a job is only ever leased by a worker that can actually run it.
 
-Each worker advertises a set of **capability tokens** when it polls for work, and a job carries the
-set it **requires**; the control plane leases a job to a worker only when the worker advertises every
-token the job requires. Routing decides *which* idle worker picks a job up — it never changes the
+Each worker advertises a set of **capability tokens** when it polls for work, and each job carries
+the set it **requires**. The control plane leases a job to a worker only when the worker advertises
+every token the job requires. Routing decides *which* idle worker picks a job up — it never changes the
 deterministic `run` verdict.
 
 - **A worker's advertised set** comes from its `--platform` and from the machine itself. The
@@ -1511,9 +1558,9 @@ deterministic `run` verdict.
   `setting:`, `job:`, `platform:`, `kind:`, `command-execution:`, `named-execution:`, or
   `named-command:` prefix, which the worker fills itself. A worker rejects such a token at startup.
   An override thus cannot claim a config source that the worker's `commandExecution` block refuses.
-- **A job with a server command needs a worker that runs it.** A job whose config declares
-  `services.server.cmd` requires `command-execution:<source>`, where the source is `uploaded`, `remote`, or
-  `operator`. A worker advertises that token for a source whose mode is `allow`, or `sandbox` with
+- **A job with a config-declared command needs a worker that runs it.** A job whose config
+  declares a `hooks.*` command line requires `command-execution:<source>`, where the source is
+  `uploaded`, `remote`, or `operator`. A worker advertises that token for a source whose mode is `allow`, or `sandbox` with
   Docker present. It also advertises `named-execution:<source>` for each source not set to `deny`,
   and `named-command:<name>` for each named command. A build adds no token. The worker decides the
   build at run time
@@ -1550,9 +1597,9 @@ deterministic `run` verdict.
 > `bajutsu_unroutable_jobs`. A worker started with `--capabilities platform:…` or `kind:…` used to
 > start, and now refuses to start. Remove the token, since the worker fills both prefixes itself.
 
-### Evidence upload to object storage (optional, BE-0110)
+### Evidence upload to object storage (BE-0110)
 
-The worker upload above writes each run tree to the **artifact store** the control plane serves reports
+Evidence upload is optional. The worker upload above writes each run tree to the **artifact store** the control plane serves reports
 from. Separately, you can archive every run's **evidence** to a lifecycle-managed bucket — retain
 main-branch evidence for audit, expire feature-branch evidence after a few days — by setting one URI
 on the control plane:
@@ -1622,17 +1669,19 @@ An **Orgs** page appears in the web UI for admins, backed by four admin-only end
 | `POST /api/orgs/<slug>/membership` | Replace `{"members": [...], "githubOrgs": [...], "githubTeams": [...], "editorTeams": [...]}` as one unit. `allowedRepositories` is the exception: omitting the key leaves the machine roster untouched, and only an explicit list — `[]` included — replaces it. A body still carrying the retired singular `editorTeam` is refused with a 400: it names no `editorTeams`, and obeying it would strip the org's write access. |
 | `DELETE /api/orgs/<slug>` | Retire an org. Refused outright for `default`. |
 
-The audit log records every one of the four. `default` is reserved on all three mutations — created,
-re-membered, and retired are each refused for it. It is the org an unmatched sign-in falls into,
-including every admin admitted by the admin-Team bypass, so a real tenant there would take the
-namespace an admin recovers through; giving it a roster would do that just as surely as creating it,
-since membership is what places a login in an org. It is still *listed*, marked as the fallback,
-because a bypassed admin is sitting in it and hiding that would hide where their own runs, secrets,
-and evidence land. Deleting an org is a soft delete: it stops admitting sign-ins
-and leaves the list, and every session its members already hold is revoked at the same moment, so
-nobody keeps acting as the retired tenant on a cookie issued before it. Its runs and audit entries
-stay queryable — an admin action removes a tenant's ability to act, not the record of what it
-already did — and its slug stays reserved, so it cannot be re-created under the same name.
+The audit log records every one of the four. `default` is reserved on all three mutations: the
+server refuses to create it, re-member it, or retire it. `default` is the org an unmatched sign-in
+falls into, including every admin admitted by the admin-Team bypass. A real tenant there would take
+the namespace an admin recovers through, and giving `default` a roster would do the same, since
+membership is what places a login in an org. The list still shows `default`, marked as the fallback,
+because a bypassed admin is sitting in it, and hiding it would hide where that admin's own runs,
+secrets, and evidence land.
+
+Deleting an org is a soft delete. The org stops admitting sign-ins and leaves the list, and every
+session its members already hold is revoked at the same moment, so nobody keeps acting as the retired
+tenant on a cookie issued before the deletion. Its runs and audit entries stay queryable — an admin
+action removes a tenant's ability to act, not the record of what it already did — and its slug stays
+reserved, so it cannot be re-created under the same name.
 
 Which targets an org owns still comes from the `orgs:` block above, so an org created this way owns
 none until an entry there names some. Two orgs may each claim a target of the same name, and each is
@@ -1672,22 +1721,27 @@ the caller switches while it runs.
 
 **Upgrading a database-backed deployment.** Run the Alembic migration as usual; it adds columns and
 seeds nothing. `serve` itself copies the bound config's `orgs:` membership into the database on its
-next start, once per org, so an existing deployment keeps admitting the same people it did before. From
-then on the file no longer decides those four fields, and `serve` writes a warning under
+next start, once per org, so an existing deployment keeps admitting the same people it did before.
+
+From then on the file no longer decides those four fields. `serve` writes a warning under
 `event=org.membership.ignored` (with `check=orgs_membership_ignored`) naming any org whose entry
-still declares them. Pare those entries down to `targets:` at your convenience — that field is still
-read, and paring before the first copy is as safe as paring after: an entry declaring only `targets:`
-is skipped rather than copied, so it is left uncopied for a later config to seed rather than fixed at
-admitting nobody. Two behaviors change with the cutover, both by design: an unreadable or unbound config no
-longer denies anyone, because the database alone decides sign-in, and a database `serve` cannot read
-answers a sign-in with HTTP 503 naming the store rather than a 403 blaming the user's GitHub
-membership. That 503 is recorded under its own `event=oauth.store_unavailable` at `WARNING`, not
-under `oauth.denied` — nobody was turned away, and an alert on a denial should point at your GitHub
-configuration, never at an outage of the store.
+still declares them. Pare those entries down to `targets:` at your convenience, since that field is
+still read. Paring before the first copy is as safe as paring after: an entry declaring only
+`targets:` is skipped rather than copied, so it is left uncopied for a later config to seed rather
+than fixed at admitting nobody.
+
+Two behaviors change with the cutover, both by design:
+
+- An unreadable or unbound config no longer denies anyone, because the database alone decides
+  sign-in.
+- A database `serve` cannot read answers a sign-in with HTTP 503 naming the store, rather than a 403
+  blaming the user's GitHub membership. The server records that 503 under its own
+  `event=oauth.store_unavailable` at `WARNING`, not under `oauth.denied`. Nobody was turned away, and
+  an alert on a denial should point at your GitHub configuration, never at an outage of the store.
 
 **Bootstrapping the first org.** A brand-new database has no org, so nobody matches the sign-in gate.
 A member of a configured `BAJUTSU_OAUTH_ADMIN_TEAMS` Team clears that gate regardless of how many
-orgs exist (see [Add GitHub OAuth](#2-add-github-oauth-optional) above), signs in as admin, and
+orgs exist (see [Add GitHub OAuth](#2-add-github-oauth) above), signs in as admin, and
 creates the first one from the Orgs page.
 
 **Keeping the Mac pool fair across orgs.** Set `BAJUTSU_MAX_CONCURRENT_PER_ORG` to cap how many runs
@@ -1699,19 +1753,23 @@ and the caps apply when a worker leases a job, so the fan-out runs in turns as s
 (Fair *scheduling* across orgs — holding the rejected work in a per-org queue and dispatching it
 round-robin — is still future work; today the cap rejects a plain run.)
 
-**Deleting runs, and how long the trash is kept.** A run (and its report) can be deleted through the
-API (BE-0239): `DELETE /api/runs/{id}` soft-deletes it — the run drops out of the history list but is
-moved to a trash and stays restorable via `POST /api/runs/{id}/restore`; `DELETE /api/runs/{id}?purge=true`
-skips the trash and removes the bytes immediately. Soft-delete and restore are **editor** actions; the
-immediate purge is **admin**. `POST /api/runs/bulk-delete` (body `{"ids": [...], "purge": <bool>}`) does
-many at once. A soft-deleted run is purged for good once it has been in the trash longer than the
-retention window, checked opportunistically on the next history read (there is no background job).
+**Deleting runs, and how long the trash is kept.** The API can delete a run and its report
+(BE-0239):
+
+- `DELETE /api/runs/{id}` soft-deletes the run. The run drops out of the history list, moves to a
+  trash, and stays restorable via `POST /api/runs/{id}/restore`.
+- `DELETE /api/runs/{id}?purge=true` skips the trash and removes the bytes immediately.
+- `POST /api/runs/bulk-delete` (body `{"ids": [...], "purge": <bool>}`) does many at once.
+
+Soft-delete and restore are **editor** actions; the immediate purge is **admin**. A soft-deleted run
+is purged for good once it has been in the trash longer than the retention window. The server checks
+this opportunistically on the next history read, because there is no background job.
 
 | Variable | Default | Meaning |
 |---|---|---|
 | `BAJUTSU_RUN_RETENTION_DAYS` | `30` | Days a soft-deleted run stays in the trash before it is permanently purged. `0` (or less) disables the automatic purge — the trash is then kept until an explicit `?purge=true`. |
 
-(The Web UI surface for this — a per-row delete affordance and a Trash view — is still to come; the API above is live today.)
+The Web UI surface for this — a per-row delete affordance and a Trash view — is still to come; the API above is live today.
 
 ## Operational logging
 
@@ -1719,7 +1777,7 @@ The hosted serve emits its own diagnostic trace — **structured JSON, written t
 secrets redacted** — so you can follow one user action across the control plane and its workers.
 This trace is separate from the three log surfaces you already have: the test subject's **evidence**, the
 live **run output** stream, and the **audit log** of who-did-what. Aggregating these lines (shipping
-stdout to your log stack) is the deployment's job — the tool only produces them.
+stdout to your log stack) is the deployment's job; the tool merely produces them.
 
 Two environment variables select the format and verbosity (read once at startup):
 
@@ -1745,20 +1803,27 @@ across processes. A line looks like:
 The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `worker.job.started`,
 `worker.job.finished`, `artifact.upload.failed`, `group_event.retry`, `group_event.abandoned`,
 `server.startup_warning`, `oauth.login`,
-`oauth.denied`, …) so you can grep and alert on it. `server.startup_warning` also carries a `check`
-field (e.g. `admin_teams_empty`) naming which startup condition fired, distinct from the free-text
-`msg` — key an alert on `check` rather than on message text that can reword. `oauth.login` records
-every successful sign-in and carries a `bypass` field, true only when a configured admin Team — not
-`orgs:` — is what admitted the login; that field is the only record a bypass admission leaves. Most
-bypass admissions are `INFO`, since an admin Team in an operations-only organization bypasses on
-every sign-in by design; `oauth.login` is `WARNING` only when the bypass admitted a login while the
-org model itself was unusable. Which state that is depends on where the org model comes from: on a
-deployment whose `orgs:` block is the source, no config bound, a config that failed to load, or one
-declaring no `orgs:` block; on a deployment whose database holds the membership, an `orgs` table in
-which no row declares any membership yet — an empty table, but equally one whose rows all carry an
-empty roster: the passive row a bypass sign-in creates for itself, or orgs an admin created on the
-Orgs page and has not filled in yet. So alert on `WARNING`, and grep `bypass` when
-auditing who signed in and when.
+`oauth.denied`, …) so you can grep and alert on it.
+
+`server.startup_warning` also carries a `check` field (e.g. `admin_teams_empty`) naming which startup
+condition fired, distinct from the free-text `msg`. Key an alert on `check` rather than on message
+text that can reword.
+
+`oauth.login` records every successful sign-in and carries a `bypass` field. The field is true only
+when a configured admin Team — not `orgs:` — is what admitted the login, and it is the only record a
+bypass admission leaves. Most bypass admissions are `INFO`, since an admin Team in an
+operations-only organization bypasses on every sign-in by design. `oauth.login` is `WARNING` only
+when the bypass admitted a login while the org model itself was unusable. Which state counts as
+unusable depends on where the org model comes from:
+
+- On a deployment whose `orgs:` block is the source: no config bound, a config that failed to load,
+  or one declaring no `orgs:` block.
+- On a deployment whose database holds the membership: an `orgs` table in which no row declares any
+  membership yet. That covers an empty table, but equally a table whose rows all carry an empty
+  roster — the passive row a bypass sign-in creates for itself, or orgs an admin created on the Orgs
+  page and has not filled in yet.
+
+So alert on `WARNING`, and grep `bypass` when auditing who signed in and when.
 
 **Redaction is structural.** A single filter sits at the root logger, so *every* line — including
 ones from third-party libraries — is scrubbed before it is written; correctness does not depend on

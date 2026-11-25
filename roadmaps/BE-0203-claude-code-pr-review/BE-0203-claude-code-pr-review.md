@@ -15,22 +15,22 @@
 
 ## Introduction
 
-Every pull request to this repository is reviewed automatically by **GitHub Copilot** today —
-it posts inline comments when a PR opens and re-reviews on each push. This item replaces that
-reviewer with **Claude Code**, running from a GitHub Actions workflow on every PR: auto-triggered
-on open and on each push, posting **inline line-level comments** via the action's native
-inline-comment tool — including GitHub *suggested-change* blocks. (It initially also posted a
-top-level summary; that was later dropped — see the Progress log — because a fresh summary on every
-re-run left stale, contradictory overviews on the PR.) The gain over Copilot is that Claude Code
-reviews against **this repository's own contract** — the three [prime
-directives](../../CLAUDE.md#prime-directives-do-not-violate), the docstring standard, the
-bilingual-docs rule, the BE-ID lifecycle — which a generic reviewer cannot know.
+Today **GitHub Copilot** reviews every pull request (PR) to this repository automatically. Copilot
+posts inline comments when a PR opens and re-reviews on each push. This item replaces that
+reviewer with **Claude Code**, running from a GitHub Actions workflow on every PR. The workflow
+triggers on open and on each push, and posts **inline line-level comments**, including GitHub
+*suggested-change* blocks, via the action's native inline-comment tool. (The workflow initially
+also posted a top-level summary. The Progress log records why that was dropped: a fresh summary on
+every re-run left stale, contradictory overviews on the PR.) The gain over Copilot is that Claude
+Code reviews against **this repository's own contract**, which a generic reviewer cannot know:
+the three [prime directives](../../CLAUDE.md#prime-directives-do-not-violate), the docstring
+standard, the bilingual-docs rule, and the BE-ID lifecycle.
 
 The one hard boundary this item never crosses is **prime directive 1**: the automated review is
-**advisory**. It posts comments a human weighs, exactly as any bot comment; it is **never a
-required status check** and never sits on the `run` / CI **verdict**. The deterministic `check`
-and `E2E` gates remain the only arbiters of whether a PR can merge — this item adds a reviewer,
-not a judge.
+**advisory**. It posts comments that a human weighs, exactly as any bot comment does. It is
+**never a required status check** and never sits on the `run` / CI **verdict**. The deterministic
+`check` and `E2E` gates remain the only arbiters of whether a PR can merge. This item adds a
+reviewer, not a judge.
 
 ## Motivation
 
@@ -38,54 +38,58 @@ not a judge.
   move the automated-review surface from Copilot to Claude Code while keeping the experience a
   contributor already relies on (auto-review on open, re-review on push, inline comments).
 - **A repo-aware reviewer catches what a generic one cannot.** Copilot reviews against general
-  code-quality heuristics; it has no knowledge of Bajutsu's prime directives, so it cannot flag
-  the mistakes this project cares about most — an LLM call creeping onto the `run` / CI verdict
-  path, a fixed `sleep` instead of a condition wait, an ambiguous selector that "taps whatever
-  matched first", a per-app difference hardcoded instead of living in `targets.<name>` config, a
-  documented behavior changed on only one language side, or a roadmap PR that doesn't link its BE
-  item. Claude Code reviewing with a repo-authored prompt pulls the same way the runner does.
+  code-quality heuristics. Because Copilot has no knowledge of Bajutsu's prime directives, it
+  cannot flag the mistakes this project cares about most:
+  - an LLM call creeping onto the `run` / CI verdict path;
+  - a fixed `sleep` instead of a condition wait;
+  - an ambiguous selector that "taps whatever matched first";
+  - a per-app difference hardcoded instead of living in `targets.<name>` config;
+  - a documented behavior changed on only one language side;
+  - a roadmap PR that does not link its BE item.
+
+  Claude Code reviewing with a repo-authored prompt pulls the same way the runner does.
 - **The building blocks already exist; this item wires them to the PR.** Claude Code's built-in
   `code-review` skill already produces findings and, with `--comment`,
   **posts them as inline PR comments**. [`implement-be`](../../.claude/skills/implement-be/SKILL.md)
-  already codifies the review lenses this repo trusts (silent-failure → *fail loudly*,
-  type-design under strict `mypy`, test-coverage of new logic). Today those run only **author-side,
-  inside a session before the PR exists** — they never reach a human-authored PR, an externally
-  authored one, or a re-push. This item takes the same review and runs it *on the PR*, where a
-  reviewer is expected.
+  already codifies the review lenses this repo trusts: silent failure (*fail loudly*), type design
+  under strict `mypy`, and test coverage of new logic. Today those lenses run only **author-side,
+  inside a session before the PR exists**. They never reach a human-authored PR, an externally
+  authored PR, or a re-push. This item runs the same review *on the PR*, where a reviewer is
+  expected.
 - **The AI provider is already vendor-neutral.** [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md)
   gave the Tier-1 AI paths a vendor-neutral backend, with [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md)
   (Amazon Bedrock) and [BE-0163](../BE-0163-ant-cli-oauth-provider/BE-0163-ant-cli-oauth-provider.md)
   (OAuth) as alternatives to the direct Anthropic application programming interface (API). The
   review workflow authenticates through the same provider choice rather than hardcoding one
-  vendor, so no new credential model is introduced.
+  vendor, so it introduces no new credential model.
 
 ## Detailed design
 
 The work is a new advisory Actions workflow plus its review prompt, a documented migration off
-Copilot, and the bilingual docs — no change to the deterministic gate, the drivers, or the
+Copilot, and the bilingual docs. It changes nothing in the deterministic gate, the drivers, or the
 runner.
 
-1. **The review workflow** — a new `.github/workflows/claude-review.yml`. It triggers on
-   `pull_request` with `types: [opened, synchronize, reopened]` (auto-review on open, re-review on every push,
-   matching Copilot), runs the official Anthropic `claude-code-action` (pinned to a full commit
-   SHA, like every other action in this repo), and invokes the built-in **`/code-review
+1. **The review workflow.** A new `.github/workflows/claude-review.yml` triggers on
+   `pull_request` with `types: [opened, synchronize, reopened]`, matching Copilot: auto-review on
+   open and re-review on every push. It runs the official Anthropic `claude-code-action`, pinned to
+   a full commit SHA like every other action in this repo, and invokes the built-in **`/code-review
    --comment`** so the findings land as **inline PR comments**. Permissions are the minimum the
    surface needs: `pull-requests: write` (post review comments) and `contents: read` (read the
-   diff) — and nothing else. It carries a `concurrency` block (`group: claude-review-${{ github.ref }}`,
-   `cancel-in-progress: true`), mirroring `ci.yml`, so a rapid push sequence supersedes a stale
-   review instead of stacking several.
+   diff), and nothing else. The workflow carries a `concurrency` block
+   (`group: claude-review-${{ github.ref }}`, `cancel-in-progress: true`), mirroring `ci.yml`, so a
+   rapid push sequence supersedes a stale review instead of stacking several.
 
-2. **Advisory, never a gate — the prime-directive guardrail.** Two properties keep the review off
-   the verdict path, and both are explicit:
+2. **Advisory, never a gate: the prime-directive guardrail.** Two explicit properties keep the
+   review off the verdict path:
    - **Not a required status check.** The job's `name:` is *not* added to `main`'s
      branch-protection `required_status_checks` (the ruleset that pins `check` / `E2E` / `require
-     two approvals for BE proposals`). A PR merges on the deterministic gates alone; the review
+     two approvals for BE proposals`). A PR merges on the deterministic gates alone, and the review
      never blocks it.
    - **The workflow's own result is decoupled from the findings.** A review that *found issues* is
-     a successful review, not a failed check — the step exits `0` whether or not it posted
-     comments. The only way the job goes red is an infrastructure failure (the action itself
-     erred), never "the reviewer disliked the code". This is what makes it a comment surface and
-     not a smuggled LLM verdict.
+     a successful review, not a failed check: the step exits `0` whether or not it posted
+     comments. The job goes red only on an infrastructure failure (the action itself erred),
+     never because "the reviewer disliked the code". This decoupling makes the workflow a comment
+     surface and not a smuggled LLM verdict.
 
 3. **Feature parity with Copilot.** Each Copilot review capability maps to a concrete piece here:
 
@@ -95,96 +99,99 @@ runner.
    | Re-review on each new push | `pull_request` with `types: [synchronize]` |
    | Inline line-level comments | `/code-review --comment` (posts inline PR comments) |
    | Suggested changes (one-click apply) | the review prompt asks for a GitHub ```` ```suggestion ```` block wherever a concrete, mechanical fix fits |
-   | A summary of the review | shipped as a top-level summary comment alongside the inline notes, then later dropped (see the Progress log) — a fresh summary on every re-run left stale, contradictory overviews |
+   | A summary of the review | shipped as a top-level summary comment alongside the inline notes, then later dropped (see the Progress log): a fresh summary on every re-run left stale, contradictory overviews |
    | On-demand re-review | an opt-in `@claude review` mention path (below) *in addition to* the auto-trigger |
 
 4. **On-demand re-review (opt-in, additive).** Beyond the auto-trigger, an `issue_comment` /
    `pull_request_review_comment` trigger lets a contributor write `@claude review` (or reply to a
-   thread) to request a fresh pass or a follow-up on a specific comment — the same affordance the
+   thread) to request a fresh pass or a follow-up on a specific comment. The
    [PR-review-comment reply rule](../../docs/ai-development.md#responding-to-pr-review-comments)
-   already assumes for AI reviewers. This is purely additive to item 1; the auto-review is the
-   default and needs no mention.
+   already assumes the same affordance for AI reviewers. This path is purely additive to item 1:
+   the auto-review is the default and needs no mention.
 
 5. **The repo-flavored review prompt.** A committed prompt (e.g. `.github/claude-review-prompt.md`,
    or the `claude_args` the action passes to `/code-review`) points the review at *this
-   repository's* contract, so it catches what a generic reviewer misses:
-   - the three **prime directives** — flag any LLM call reaching the `run` / CI verdict, any fixed
-     `sleep` where a condition wait belongs, any ambiguous-selector "tap the first match", any
+   repository's* contract, so the review catches what a generic reviewer misses:
+   - the three **prime directives**: flag any LLM call reaching the `run` / CI verdict, any fixed
+     `sleep` where a condition wait belongs, any ambiguous-selector "tap the first match", and any
      per-app knob hardcoded outside `targets.<name>` config;
-   - the **review lenses** `implement-be` already trusts — swallowed errors / weak fallbacks
-     (determinism = fail loudly), type invariants under strict `mypy`, whether new logic is
-     actually covered by a test;
-   - the **house conventions** the gate can't judge — bilingual docs updated on both language
+   - the **review lenses** `implement-be` already trusts: swallowed errors and weak fallbacks
+     (determinism means fail loudly), type invariants under strict `mypy`, and whether a test
+     actually covers new logic;
+   - the **house conventions** the gate cannot judge: bilingual docs updated on both language
      sides, the [docstring standard](../../docs/ai-development.md#code-documentation-comments-docstrings--be-0065),
-     a roadmap PR that links its BE item both ways, `## Progress` kept current.
+     a roadmap PR that links its BE item both ways, and a `## Progress` section kept current.
 
-   The prompt stays a review *aid*: it shapes what the reviewer looks at, never what merges.
+   The prompt stays a review *aid*. It shapes what the reviewer looks at and never what merges.
 
 6. **Credential scope and fork safety.** The workflow authenticates through the provider
    [BE-0104](../BE-0104-vendor-neutral-ai-backend/BE-0104-vendor-neutral-ai-backend.md) already
    selects (`ANTHROPIC_API_KEY`, the OAuth token, or Amazon Web Services (AWS) credentials for
-   Bedrock), stored as an Actions secret scoped via an Environment so an unrelated job can't read
-   it. Because a plain `pull_request` event from a **fork** does not expose secrets (by GitHub's
-   design), auto-review covers same-repo `claude/<topic>` / `<user>/<topic>` branches — the model
-   [CLAUDE.md](../../CLAUDE.md) already assumes — and a fork PR is reviewed on demand by a
-   maintainer instead. This item deliberately does **not** use `pull_request_target` (which would
-   run with secrets against untrusted fork code); that trade-off is recorded under *Alternatives*.
+   Bedrock). The credential is stored as an Actions secret scoped via an Environment, so an
+   unrelated job cannot read it. By GitHub's design, a plain `pull_request` event from a **fork**
+   does not expose secrets. Auto-review therefore covers the same-repo `claude/<topic>` /
+   `<user>/<topic>` branches that [CLAUDE.md](../../CLAUDE.md) already assumes, and a maintainer
+   reviews a fork PR on demand instead. This item deliberately does **not** use
+   `pull_request_target`, which would run with secrets against untrusted fork code. *Alternatives
+   considered* records that trade-off.
 
-7. **Migration off Copilot — parallel, then switch (a documented manual cut-over).** The cut-over
+7. **Migration off Copilot: parallel, then switch (a documented manual cut-over).** The cut-over
    is staged so quality is proven before Copilot is retired:
-   - **Phase A — parallel.** Land this workflow with Copilot review still on. Both reviewers
-     comment on every PR; neither gates.
-   - **Phase B — compare.** Over a handful of PRs, judge Claude Code's review against Copilot's —
-     signal, noise, false positives, whether the repo-aware checks earn their keep.
-   - **Phase C — switch.** A maintainer **disables Copilot's automatic review in the repository /
-     organization settings**. This is **out-of-repo admin state a normal PR cannot carry** — the
-     same shape as the branch-protection ruleset edits BE-0122 and BE-0089 already call out — so it
-     is an explicit, documented manual step, not something this item's diff can perform. The docs
-     (item 8) record it so the cut-over isn't half-done (both reviewers left on forever).
+   - **Phase A, parallel.** Land this workflow with Copilot review still on. Both reviewers
+     comment on every PR, and neither gates.
+   - **Phase B, compare.** Over a handful of PRs, judge Claude Code's review against Copilot's on
+     signal, noise, false positives, and whether the repo-aware checks earn their keep.
+   - **Phase C, switch.** A maintainer **disables Copilot's automatic review in the repository /
+     organization settings**. This is **out-of-repo admin state that a normal PR cannot carry**,
+     the same shape as the branch-protection ruleset edits BE-0122 and BE-0089 already call out.
+     The step is therefore an explicit, documented manual one, and this item's diff cannot perform
+     it. The docs (item 8) record the step so the cut-over is not left half-done, with both
+     reviewers on forever.
 
 8. **Document the reviewer (bilingual).** Update the *Responding to PR review comments* section of
-   [`docs/ai-development.md`](../../docs/ai-development.md) — which already names "GitHub Copilot
-   and other AI reviewers" — to name **Claude Code** as *the* automated reviewer, and add a short
-   subsection describing the automated-review workflow: that it is advisory (never a required
+   [`docs/ai-development.md`](../../docs/ai-development.md), which already names "GitHub Copilot
+   and other AI reviewers", to name **Claude Code** as *the* automated reviewer. Add a short
+   subsection describing the automated-review workflow: it is advisory (never a required
    check), what it comments on, the `@claude review` on-demand path, the fork limitation, and the
-   manual Copilot-disable step from item 7. Mirror it in [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md)
-   under the [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill.
+   manual Copilot-disable step from item 7. Mirror the update in
+   [`docs/ja/ai-development.md`](../../docs/ja/ai-development.md) under the
+   [`japanese-tech-writing`](../../.claude/skills/japanese-tech-writing/) skill.
 
 9. **Verification.** `actionlint` (already in `make check`) validates the new workflow's YAML, so
-   the gate stays green with no new automated test to add — the review *behavior* can't be
-   unit-tested, since it needs a live PR and a provider call. Verification is therefore the same
-   manual shape BE-0122 used: open a test PR, confirm the review auto-posts inline comments and a
-   summary on open, re-posts on a follow-up push, that a ```` ```suggestion ```` block renders as a
-   one-click apply, and that the review's check is **not** listed among the required checks (it
-   cannot block the merge).
+   the gate stays green with no new automated test to add. The review *behavior* cannot be
+   unit-tested, since it needs a live PR and a provider call. Verification therefore takes the
+   same manual shape BE-0122 used. Open a test PR and confirm four things: the review auto-posts
+   inline comments and a summary on open; it re-posts on a follow-up push; a
+   ```` ```suggestion ```` block renders as a one-click apply; and the review's check is **not**
+   listed among the required checks, so it cannot block the merge.
 
 ## Alternatives considered
 
-- **Keep Copilot (do nothing).** Rejected: it's the explicit request to move to Claude Code, and
-  Copilot structurally cannot review against the prime directives — the mistakes this repo most
-  wants caught (an LLM on the verdict path, a fixed `sleep`, a one-language-only doc change) are
-  invisible to a reviewer that doesn't know the contract.
-- **Make the Claude review a required status check.** Rejected outright — it violates prime
-  directive 1 by putting an LLM on the merge verdict. The review must stay advisory; the
-  deterministic `check` / `E2E` gates remain the only arbiters. This is the single boundary the
-  whole item is shaped around.
+- **Keep Copilot (do nothing).** Rejected: the explicit request is to move to Claude Code, and
+  Copilot structurally cannot review against the prime directives. A reviewer that does not know
+  the contract cannot see the mistakes this repo most wants caught: an LLM on the verdict path, a
+  fixed `sleep`, a one-language-only doc change.
+- **Make the Claude review a required status check.** Rejected outright, because a required check
+  violates prime directive 1 by putting an LLM on the merge verdict. The review must stay
+  advisory, and the deterministic `check` / `E2E` gates remain the only arbiters. This is the
+  single boundary the whole item is shaped around.
 - **Leave review author-side only (the existing `implement-be` step 7).** Rejected as
-  insufficient: the in-session `simplify` / `code-review` / pr-review-toolkit pass runs *before*
-  the PR exists and only for an agent-driven change. It never reaches a human-authored PR, an
-  externally-authored one, or a re-push — exactly the cases a PR reviewer exists for. This item
-  complements that author-side pass rather than replacing it.
-- **`pull_request_target` so fork PRs are auto-reviewed too.** Rejected (deferred): it runs the
-  workflow with repository secrets in the context of untrusted fork code, a well-known
-  token-exfiltration risk not worth it for a repo whose contribution model is same-repo topic
-  branches. Fork PRs get on-demand maintainer-triggered review instead; revisit only if external
-  fork contributions become common.
+  insufficient. The in-session `simplify` / `code-review` / pr-review-toolkit pass runs *before*
+  the PR exists, and only for an agent-driven change. It never reaches a human-authored PR, an
+  externally authored PR, or a re-push, which are exactly the cases a PR reviewer exists for. This
+  item complements the author-side pass and does not replace it.
+- **`pull_request_target` so fork PRs are auto-reviewed too.** Rejected (deferred). The trigger
+  runs the workflow with repository secrets in the context of untrusted fork code, a well-known
+  token-exfiltration risk that is not worth taking for a repo whose contribution model is
+  same-repo topic branches. Fork PRs get on-demand maintainer-triggered review instead. Revisit
+  the decision only if external fork contributions become common.
 - **Hand-roll a reviewer (call the provider API from a bespoke script).** Rejected: the official
-  `claude-code-action` plus the repo's own `/code-review --comment` skill already do this;
-  a bespoke script duplicates the skill and drifts from it. Reuse the skill so the CI reviewer and
-  the author-side reviewer stay one implementation.
-- **A single summary comment instead of inline comments.** Rejected as a downgrade from Copilot:
-  inline line-level comments (and suggestion blocks) are the affordance contributors rely on, and
-  `code-review --comment` already supports them, so there's no reason to ship less.
+  `claude-code-action` plus the repo's own `/code-review --comment` skill already do this, and a
+  bespoke script would duplicate the skill and drift from it. Reusing the skill keeps the CI
+  reviewer and the author-side reviewer one implementation.
+- **A single summary comment instead of inline comments.** Rejected as a downgrade from Copilot.
+  Inline line-level comments and suggestion blocks are the affordance contributors rely on, and
+  `code-review --comment` already supports them, so there is no reason to ship less.
 
 ## Progress
 

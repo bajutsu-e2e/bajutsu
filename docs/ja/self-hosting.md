@@ -2,19 +2,19 @@
 
 # Web UI のセルフホスティング
 
-> bajutsu の Web UI（[cli](cli.md#serve)）を、自前のハードウェア上で、プライベートな Tailscale ネットワーク
-> 越しにチームから到達できるよう動かします（セルフホスティングロードマップ
-> [BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）。今日使える
-> 段階は 2 つあり、どちらも
+> セルフホスティングロードマップ
+> （[BE-0016](../../roadmaps/BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、
+> bajutsu の Web UI（[cli](cli.md#serve)）を自前のハードウェア上で動かし、プライベートな Tailscale
+> ネットワーク越しにチームから到達できるようにするものです。今日使える段階は 2 つあり、どちらも
 > [BE-0051](../../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
 > の認証と入力検証で公開を安全にしています。
 >
 > - **Tier A、単一 Mac。** トークン認証付きの `bajutsu serve` と、その job を実行するローカルの
->   `bajutsu worker` を、1 台の Mac で動かします。本ページの「Tier B」節より前がこれを扱います。
+>   `bajutsu worker` を、1 台の Mac で動かします。本ページの「Tier B」節より前が Tier A を扱います。
 > - **Tier B、セルフホストのサーバ backend。** BE-0015 のコントロールプレーン（FastAPI、Postgres、
->   S3 互換ストレージ、GitHub OAuth、RBAC、クォータ）を Linux ノードで動かし、Mac をワーカーにします。既定では
->   シングルテナントで動き、config で org を宣言すれば**複数 org**に対応します（後述の「Tier B、サーバ backend の
->   セルフホスティング」節を参照）。
+>   S3 互換ストレージ、GitHub OAuth、RBAC、クォータ）を Linux ノードで動かし、Mac をワーカーにします。
+>   Tier B は既定ではシングルテナントで動き、config で org を宣言すれば**複数 org**に対応します
+>   （後述の「Tier B、サーバ backend のセルフホスティング」節を参照）。
 >
 > フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は将来のままです
 > （[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
@@ -22,14 +22,14 @@
 ## macOS の制約
 
 ランナーは **iOS Simulator** を駆動し、Simulator は **GUI ログインセッション**（Aqua セッション）を必要と
-します。ヘッドレスな daemon では動きません。以下の選択はすべてここから来ます:
+します。ヘッドレスな daemon では動きません。以下の選択はすべて、この要件から導かれます。
 
 - serve は per-user の **`LaunchAgent`**（GUI セッション）として動かします。**`LaunchDaemon` ではありません**。
 - 再起動後に GUI セッションを回復するよう Mac を **auto-login** にします（FileVault はコールドブート後、
   auto-login が進む前に一度だけ対話ログインが必要）。
-- セッションを生かし続けるためスリープを無効化します: `sudo pmset -a sleep 0 disablesleep 1`。
+- セッションを生かし続けるためスリープを無効化します。コマンドは `sudo pmset -a sleep 0 disablesleep 1` です。
 
-これらの制約は **iOS Simulator（XCUITest）** backend に固有のものです。**web（Playwright）** backend はヘッドレスの
+これらの制約は **iOS Simulator（XCUITest）** backend だけに当てはまります。**web（Playwright）** backend はヘッドレスの
 ブラウザを動かすため、どれも必要ありません。Mac でも Linux でも（Tier B のノード上でも）serve でき、web だけの
 構成ならこの節は読み飛ばせます。
 
@@ -37,18 +37,21 @@
 
 > **先に、この agent が使う venv へ backend のランタイム依存を入れてください。** agent は
 > `python -m bajutsu serve` を直接起動するため、`make serve` と違って依存をオンデマンドでは入れません。
-> 入れるのは backend の**ランタイムクロージャ**、つまり実行が到達するものをすべて名前で束ねた 1 つの
-> extra です。ここには `visual`（スクリーンショット）と `schema`（`responseSchema`）のアサーション依存も
-> 含まれます（BE-0173）。web（Playwright）backend なら `uv sync --extra worker-web && playwright install
-> chromium`、iOS Simulator（XCUITest）backend なら `uv sync --extra worker-ios` です（XCUITest backend は
-> backend の pip extra を必要としません。`xcodebuild` は Xcode が供給し、target が事前ビルドの
-> `driver.runner.testRunner` を供給するので、`worker-ios` は `visual` / `schema` のアサーション依存だけです）。
-> backend の extra 単体（たとえば `web`）では入れ足りず、その実行は
-> アサーションの時点で遅延的に失敗します。クロージャをまったく入れずに飛ばすと、実行のディスパッチ時に
-> `no available actuator` で失敗します。
+> 入れるのは backend の**ランタイムクロージャ**です。ランタイムクロージャとは、実行が到達するものを
+> すべて名前で束ねた 1 つの extra で、`visual`（スクリーンショット）と `schema`（`responseSchema`）の
+> アサーション依存も含みます（BE-0173）。
+>
+> - web（Playwright）backend：`uv sync --extra worker-web && playwright install chromium`
+> - iOS Simulator（XCUITest）backend：`uv sync --extra worker-ios`。XCUITest backend は backend の
+>   pip extra を必要としません。`xcodebuild` は Xcode が供給し、target が事前ビルドの
+>   `driver.runner.testRunner` を供給します。そのため `worker-ios` は `visual` / `schema` の
+>   アサーション依存だけを持ちます。
+>
+> backend の extra 単体（たとえば `web`）では入れ足りず、その実行はアサーションの時点で遅延的に失敗します。
+> クロージャをまったく入れずに飛ばすと、実行のディスパッチ時に `no available actuator` で失敗します。
 
 `bajutsu serve --emit-launchagent` は、渡した serve フラグに対応する launchd plist を出力して、サーバを
-起動せずに終了します。強いトークンを選び、plist を LaunchAgents に書き出します:
+起動せずに終了します。強いトークンを選び、plist を LaunchAgents に書き出します。
 
 ```bash
 export TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
@@ -57,24 +60,26 @@ bajutsu serve --emit-launchagent --config bajutsu.config.yaml --token "$TOKEN" \
 chmod 600 ~/Library/LaunchAgents/com.bajutsu.serve.plist   # plist はトークンを含む
 ```
 
-出力される plist は、次のように動きます:
+出力される plist は、次のように動きます。
 
-- `python -m bajutsu serve --host 127.0.0.1 --port 8765 --config …` を、**`RunAtLoad`** + **`KeepAlive`**
-  付きで実行します（コマンドを動かしたのと同じインタプリタ、つまりあなたの venv を使います）。
+- `python -m bajutsu serve --host 127.0.0.1 --port 8765 --config …` を、**`RunAtLoad`** と **`KeepAlive`**
+  付きで実行します。インタプリタはコマンドを動かしたものと同じなので、あなたの venv を使います。
 - トークンを **`EnvironmentVariables`**（`BAJUTSU_SERVE_TOKEN`）に入れます。argv には載せないので、`ps` からは
   見えません。
 - stdout/stderr を `~/Library/Logs/bajutsu-serve.{out,err}.log` に書きます。
 
 出力された plist が設定しない項目が 2 つあり、どちらも `EnvironmentVariables` に追記します。
 
-- `ANTHROPIC_API_KEY`：AI パス（`record`、`--system-alert-handling`）に必要です（自動では埋め込みません）。Bedrock
-  プロバイダを使うなら、代わりにここへ `BAJUTSU_AI_PROVIDER` と `BAJUTSU_BEDROCK_MODEL`、AWS の認証情報を置きます。
-- `PATH`：iOS（XCUITest）backend のときだけ必要です。launchd は最小の `PATH` で agent を起動し、bajutsu は
-  `xcodebuild` / `xcrun` / `simctl` を `PATH` 経由で探すため、これがないと実行が `no available actuator` で
-  失敗します。Xcode のコマンドラインツールの bin、Homebrew の bin、venv の bin を含めてください（web backend は
-  Playwright を import で見つけるので `PATH` の追記は要りません）。
+- `ANTHROPIC_API_KEY`：AI パス（`record`、`--system-alert-handling`）に必要です。出力された plist には
+  含まれません。Bedrock プロバイダを使うなら、代わりにここへ `BAJUTSU_AI_PROVIDER` と
+  `BAJUTSU_BEDROCK_MODEL`、AWS の認証情報を置きます。
+- `PATH`：iOS（XCUITest）backend のときだけ必要です。launchd は最小の `PATH` で agent を起動します。
+  bajutsu は `xcodebuild` / `xcrun` / `simctl` を `PATH` 経由で探すため、`PATH` がないと実行が
+  `no available actuator` で失敗します。Xcode のコマンドラインツールの bin、Homebrew の bin、venv の bin を
+  含めてください。web backend は Playwright を import で見つけるので、`PATH` の追記は要りません。
 
-XML を手で編集せずに、PlistBuddy で両方を追記できます（`.venv` が解決できるよう、リポジトリ root で実行してください）。
+XML を手で編集せずに、PlistBuddy で両方を追記できます。`.venv` が解決できるよう、リポジトリ root で実行して
+ください。
 
 ```bash
 PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
@@ -97,7 +102,7 @@ PLIST=~/Library/LaunchAgents/com.bajutsu.serve.plist
 
 worker が問い合わせるまで job はすべてキューに残り、UI は使える worker がないことを示します。
 
-serve のバインドは `127.0.0.1` のままで、これを到達可能にするのは次の手順です。
+serve のバインドは `127.0.0.1` のままです。ほかのマシンから到達できるようにするのは、次の手順です。
 
 ## 2. ロードする
 
@@ -108,16 +113,16 @@ launchctl print gui/$(id -u)/com.bajutsu.serve        # ロード確認
 
 plist を編集した後に再読み込みするには、`launchctl bootout gui/$(id -u)/com.bajutsu.serve` の後で再度 bootstrap します。
 
-## 3. Tailscale で公開する（推奨）
+## 3. Tailscale で公開する
 
-serve は `127.0.0.1` のままで、**Tailscale** が tailnet 内にだけ公開します。identity ベースのアクセスと
-自動 TLS が備わり、公開面はありません:
+serve は `127.0.0.1` のままです。到達させる方法としては **Tailscale** を推奨します。Tailscale は serve を
+tailnet 内にだけ公開します。identity ベースのアクセスと自動 TLS が備わり、公開面はありません。
 
 ```bash
 tailscale serve --bg 8765    # → https://<machine>.<tailnet>.ts.net（tailnet 内のみ到達可能）
 ```
 
-チームがその URL を開くと、初回に UI がトークンを尋ねます（以後はブラウザがセッション Cookie を持ちます）。
+チームがその URL を開くと、初回に UI がトークンを尋ねます。以後はブラウザがセッション Cookie を持ちます。
 API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 
 > **`0.0.0.0` をインターネットに公開しないでください。** トークンがあっても、安全な既定はプライベートな
@@ -129,24 +134,32 @@ API クライアントは `Authorization: Bearer $TOKEN` を送ります。
 
 セルフホストの serve は
 [BE-0051](../../roadmaps/BE-0051-serve-hardening-for-hosting/BE-0051-serve-hardening-for-hosting-ja.md)
-のハードニングに依存します。全リクエストのトークン認証、`/api/run` と `/api/record` をアプリの scenarios dir
-に限定して `backend`/`udid` を検証すること、CSRF Origin チェックとセキュリティヘッダ、run dispatch の同時実行上限です。
+のハードニングに依存します。内容は次のとおりです。
+
+- 全リクエストのトークン認証。
+- `/api/run` と `/api/record` をアプリの scenarios dir に限定し、`backend` と `udid` を検証すること。
+- CSRF Origin チェックとセキュリティヘッダ。
+- run dispatch の同時実行上限。
+
 トークンは秘匿し、Mac は tailnet 上に置き、OS は更新し続けてください。
 
 CSRF の Origin チェックと **`Host` ヘッダの許可リスト**は、トークンが設定されているときだけでなく**無条件で**動きます
-（[BE-0121](../../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)）。これがいちばん
-効くのは `make serve` の既定（ループバック、トークンなし）です。別タブで開いたページからのクロスオリジンの `POST` は
-ブロックされ、`Host` がバインド済みのインタフェースを指さないリクエストは拒否されるので、リバインドされたホスト名では
-`GET /api/apikey` のようなループバックのエンドポイントに到達できません。`Origin` ヘッダを持たない非ブラウザの
-クライアントは影響を受けません。`Host` の許可リストは `serve` がバインドするインタフェースから導かれます。ループバックに
-バインドすればループバックの名前、それ以外はそのホストです。ワイルドカードのバインド（`0.0.0.0` や `::`）は到達しうる
-名前を列挙できないため `Host` チェックを無効化し、クロスオリジンの防御は CSRF が担います。
+（[BE-0121](../../roadmaps/BE-0121-serve-csrf-host-allowlist/BE-0121-serve-csrf-host-allowlist-ja.md)）。無条件の
+チェックがいちばん効くのは、`make serve` の既定（ループバック、トークンなし）です。この構成では、serve は別タブで
+開いたページからのクロスオリジンの `POST` をブロックします。`Host` がバインド済みのインタフェースを指さない
+リクエストも拒否します。そのため、リバインドされたホスト名では `GET /api/apikey` のようなループバックの
+エンドポイントに到達できません。`Origin` ヘッダを持たない非ブラウザのクライアントは影響を受けません。
+
+`Host` の許可リストは、`serve` がバインドするインタフェースから導かれます。ループバックにバインドすれば
+ループバックの名前、それ以外はそのホストです。ワイルドカードのバインド（`0.0.0.0` や `::`）は、到達しうる
+名前を列挙できないため `Host` チェックを無効化します。その場合、クロスオリジンの防御は CSRF が担います。
 
 ## worker が実行する config のコマンド（BE-0492）
 
 config は、run を実行するマシンで Bajutsu が実行するコマンドを宣言できます。
 
-- `services.server.cmd` は、テスト対象のアプリをホストするサーバーを起動します。
+- `hooks.*` のエントリの `cmd` は、シナリオが必要とするものを用意します。テスト対象のアプリをホストする
+  サーバーの起動もここに含まれます。
 - `subject.build` は、アプリのバイナリがないときにアプリをビルドします。
 - `driver.runner.build` は、`.xctestrun` ファイルがないときに XCUITest runner をビルドします。
 
@@ -171,6 +184,24 @@ config は、run を実行するマシンで Bajutsu が実行するコマンド
 選んでいるからです。worker は、起動する `run`、`record`、`crawl` にラベルを渡します。自分の
 `--worker-config` も合わせて渡します。
 
+### シナリオの出所
+
+シナリオは[自身のコマンド](scenarios.md#hooks1-本のシナリオの前後で実行する外部コマンド)を宣言できます。
+多くの場合、シナリオは config とともに届き、コマンドは config の出所に従います。次の 2 つの場合は、
+クライアントが config とは別にシナリオを書きます。
+
+- `scenariosArtifact` が、1 つの job のシナリオを差し替える場合です。
+- 保存されたシナリオを、config 自身のツリーとは別のストアが持つ場合です。
+
+どちらの場合も、シナリオのコマンドの出所は `uploaded` になります。config のコマンドは config の出所のままです。
+`serve` がラベルを job に載せ、worker が起動する `run` に `--scenario-source` として渡します。job の
+コマンドラインに書かれたラベルは効きません。このラベルより前のサーバーから届いた job も、シナリオを同梱していれば
+`uploaded` とみなします。
+
+config 自身のツリーに保存したシナリオは、config の出所に従います。したがって、そこへ保存できる人は誰でも、
+その出所のモードでコマンドを実行できます。保存できる人全員を信頼しているのでなければ、その出所のモードを
+`named` か `deny` にします。
+
 ### `commandExecution` ブロック
 
 `worker.yaml` の `commandExecution` ブロックは、出所ごとにモードを1つ定めます。
@@ -189,7 +220,8 @@ commandExecution:
 
 | コマンド | `allow` | `sandbox` | `named` | `deny` |
 |---|---|---|---|---|
-| `services.server.cmd` | worker のホストで実行します | Docker コンテナの中で実行します | 拒否します | 拒否します |
+| `hooks.*` のエントリの `cmd` | worker のホストで実行します | run ごとに 1 つのコンテナの中で実行します | 拒否します | 拒否します |
+| `hooks.*` のエントリの `use` | worker のホストで実行します | worker のホストで実行します | worker のホストで実行します | 拒否します |
 | `subject.build` | バイナリがないとき、ホストで実行します | 実行しません | 実行しません | 実行しません |
 | `driver.runner.build` | runner がないとき、ホストで実行します | 実行しません | 実行しません | 実行しません |
 | named command | ホストで実行します | ホストで実行します | ホストで実行します | 拒否します |
@@ -204,23 +236,26 @@ Linux のコンテナはそれを提供しないからです。`allow` 以外の
 どちらかがないと run は失敗し、エラーはビルドを止めたモードを示します。アップロードされたバンドルは、
 もともとこの形でバイナリを同梱しています。
 
-`allow` と `sandbox` では、readiness URL がすでに応答するサーバーを再利用し、コマンドは実行しません。
-`named` と `deny` では、サーバーがすでに応答していても、宣言された `services.server.cmd` を拒否します。
-ポリシーはプローブより前に決まるので、拒否した config の readiness URL を run がプローブすることはありません。
+`named` と `deny` では、config が書き下したコマンドラインをすべて拒否します。ポリシーはデバイスを扱う前に
+決まるので、コマンドが実行されない run はデバイスを予約する前に失敗します。`use` で worker 導入済みの
+スクリプトを指すエントリは、`deny` 以外のすべてのモードで実行されます。そのスクリプトは運用者自身の
+コードだからです。
 
-### サーバーコマンドをコンテナで実行する
+### config のコマンドをコンテナで実行する
 
-`sandbox` では、サーバーコマンドを worker のホスト上の使い捨ての Docker コンテナで実行します。
-config は `services.server` に、ランタイムを示す2つのフィールドのうち**ちょうど1つ**と、ポートを書きます。
+`sandbox` では、ターゲットの hook コマンドを worker のホスト上の使い捨ての Docker コンテナで実行します。
+1 つのコンテナが run 全体を受け持つので、`beforeRun` のスクリプトが起動したサーバーは `afterRun` まで
+応答し続けます。config は `hooks.sandbox` に、ランタイムを示す2つのフィールドのうち**ちょうど1つ**と、
+publish するポートを書きます。
 
 - `dockerImage` は、公開済みのベースイメージを指定します。例は `node:20-slim` です。
 - `dockerfile` は、config のディレクトリの中のパスを指定します。worker が `docker build` でビルドします。
-- `port` は、コンテナの中でサーバーが待ち受けるポートを指定します。
+- `ports` は、コンテナの中でコマンドが待ち受けるポートを並べます。
 
-コンテナは全ケーパビリティを剥奪し、権限昇格を禁じます。非 root ユーザーで、読み取り専用のルート
-ファイルシステムと `tmpfs` のスクラッチの上で動きます。CPU、メモリ、プロセス数には上限があります。
-公開するのは1つのポートだけで、ホストのループバックのポートへ publish します。worker は run の後に
-コンテナを破棄します。
+コンテナは全ケーパビリティを剥奪し、権限昇格を禁じます。worker 自身の非 root ユーザーで、読み取り専用の
+ルートファイルシステムと `tmpfs` のスクラッチの上で動きます。CPU、メモリ、プロセス数には上限があります。
+宣言された各ポートを、ホストの同じループバックポートへ publish します。worker は run の後にコンテナを
+破棄します。
 
 worker のホストには Docker が必要です。ファイルで出所を明示的に `sandbox` にした worker は、起動時に
 `PATH` 上の `docker` を確かめます。`docker` がなければ、該当するキーを示すメッセージを出して終了します。
@@ -250,10 +285,11 @@ worker は起動時に各エントリを確かめ、次の3つの規則のどれ
   `PYTHONPATH` と、`LD_*` や `DYLD_*` で始まる変数が該当します。
 
 named command は、`deny` 以外のどのモードでも worker のホストで実行します。コードが運用者のものだからです。
-今のところ、named command を参照できる config のフィールドはありません。そのフィールドは
-[BE-0491](../../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md) の hook のエントリが加えます。
+hook のエントリは、`cmd` の代わりに `use:` で named command を指定します
+（[BE-0491](../../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)）。
 秘密情報を持つ worker で信頼できない config を実行するなら、運用者はそこで `uploaded: named` と
-`remote: named` を設定できます。この2つのモードは、2つの出所のサーバーコマンドをすべて拒否します。
+`remote: named` を設定できます。この2つのモードは、2つの出所のコマンドラインをすべて拒否し、
+config が名前で指定できる導入済みのスクリプトだけを残します。
 
 ### ポリシーがルーティングと run に届く仕組み
 
@@ -264,7 +300,9 @@ worker は、ポリシーをルーティングトークンとして広告しま�
 - `named-execution:<source>`：モードが `deny` でない出所ごとに広告します。
 - `named-command:<name>`：`namedCommands` のエントリごとに広告します。
 
-config が `services.server.cmd` を宣言する job は、その出所の `command-execution:<source>` を要求します。
+config が `hooks.*` のコマンドラインを宣言する job は、その出所の `command-execution:<source>` を要求します。
+named command を使う job は、`named-execution:<source>` とそのスクリプトの `named-command:<name>` を要求します。
+job のシナリオファイルのコマンドも、シナリオの出所で同じトークンを足します。
 ビルドはトークンを足しません。worker がビルド済みのバイナリを持っているかを、`serve` は知りえないからです。
 条件に合う worker が接続していないあいだ、job は待ち続けます。BE-0492 より前の worker はこれらの
 トークンを1つも広告しないので、そうした job を lease しません。
@@ -281,10 +319,10 @@ run は、出会った統制対象のコマンドを記録します。記録は 
 
 | フィールド | 意味 |
 |---|---|
-| `field` | config がコマンドを宣言した場所。例は `services.server.cmd` です |
+| `field` | config がコマンドを宣言した場所。例は `hooks.beforeRun[server].cmd` です |
 | `cmd` | コマンドライン。`${secrets.*}` の値はマスクします |
 | `source`、`mode` | config の出所と、適用したモード |
-| `decision` | `ran`、`sandboxed`、`refused` のいずれか |
+| `decision` | `ran`、`sandboxed`、`refused`、`skipped` のいずれか。`skipped` は、[`when`](configuration.md#一部のシナリオでだけエントリを実行するwhenbe-0497) が一致しなかった hook のエントリです |
 | `exitCode` | コマンドを実行したときの終了コード |
 | `sha256` | コマンドラインのハッシュ。実行ファイルが config のディレクトリの中にあれば、そのファイルのハッシュも記録します |
 
@@ -312,9 +350,9 @@ config の run が失敗するようになりました。サーバーがすで�
 
 ## Git config source の非公開リポジトリへのアクセス（BE-0224）
 
-`serve`（や CLI）が config を **非公開**の GitHub リポジトリから読むとき、すなわち `github:` の spec
-（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）のときは、読み取りを
-許可する資格情報が要ります。公開リポジトリには要りません。資格情報は**取得のたびに**解決するので、
+`serve`（や CLI）が config を**非公開**の GitHub リポジトリから読むときは、読み取りを許可する資格情報が
+要ります。このときの config は `github:` の spec
+（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）で指定します。公開リポジトリには要りません。資格情報は**取得のたびに**解決するので、
 ローテーションしても再起動なしで反映されます。解決の順序は次のとおりです。
 
 1. 設定済みの **GitHub App installation**（無人ホストではこれを推奨します。下記参照）
@@ -330,16 +368,17 @@ installation を選んでください。
 
 ### 無人のデーモンへトークンを渡す
 
-launchd や systemd の `serve` には対話的な `gh` セッションが無いので、デーモンのレベルでトークンを注入します。
+launchd や systemd の `serve` には対話的な `gh` セッションがないので、デーモンのレベルでトークンを注入します。
 [手順 1](#1-launchagent-を生成する) の LaunchAgent なら plist の `EnvironmentVariables` に加えます。Linux や
 systemd では unit の `Environment=`（または誰でも読めるわけではない `EnvironmentFile=`）を使います。ただし PAT は
 **人**に紐づき、その人のアクセスを帯び、ローテーションや離任で失効します。無人で非公開リポジトリを読むサービスは、
 **サービス自身として**認証すべきで、それが GitHub App です。
 
-### GitHub App（サービスに推奨）
+### GitHub App
 
-GitHub App の installation トークンは短命で、その installation のリポジトリに限定され、人ではなくサービスに紐づきます。
-**Contents: read** を持つ App を作り、対象のリポジトリにインストールしたうえで、次を与えます。
+サービスには GitHub App を推奨します。GitHub App の installation トークンは短命で、その installation の
+リポジトリに限定され、人ではなくサービスに紐づきます。**Contents: read** を持つ App を作り、対象の
+リポジトリにインストールしたうえで、次を与えます。
 
 ```bash
 export BAJUTSU_GITHUB_APP_ID=123456
@@ -359,25 +398,28 @@ identity ですべての取得を認証させたいのでなければ、どち�
 ### Web UI から資格情報を入力する
 
 「Open config」ダイアログの **「From a Git repository」** ソースには資格情報の入力欄があります。細粒度の PAT や
-App トークンを入力すると、serve の秘密ストアを通じて **write-once** で保存します。[Claude API キー](#オペレータのシークレットclaude-api-キー)
+App トークンを入力すると、serve の秘密ストアを通じて **write-once** で保存します。[Claude API キー](#オペレータのシークレットと-claude-api-キー)
 と同じストアで、値はマスクして表示し、読み出すことはありません。**ローカル**の serve では、bajutsu 専用の変数
-（`BAJUTSU_GIT_CONFIG_TOKEN`）にプロセスの寿命のあいだ保持し、取得時には環境の `GITHUB_TOKEN` より先に読みます。あえて
-`GITHUB_TOKEN` そのものは使いません。UI で資格情報を入力したり消したりしても、起動時にエクスポートしたトークンに
-触れないためです。データベースを持つサーバは保存時に暗号化し、**組織ごと**にスコープするので、各テナントの保存した
-資格情報はそれぞれ独立です。ローカル起動と**ホスト型**バックエンドは、どちらもこのデータベースを持ちます。
-バインドは、組織が保存した値を自身の取得処理に渡します（BE-0449）。この値の優先順位は、設定した GitHub App の次で、
-環境のトークンより前です。値は取得処理にだけ届き、レスポンスには載りません。アクセス不足で
-バインドが失敗したときは、ダイアログ内にその場で診断を表示します。メッセージは、レート制限、組織のシングルサインオン
-（SSO）の認可不足、トークンの拒否、あるいは「`<owner>/<repo>` に Contents: read を持つ資格情報を用意してください」
-といった、**本当の原因**を名指します。素の 404 では終わりません。
+（`BAJUTSU_GIT_CONFIG_TOKEN`）にプロセスの寿命のあいだ保持し、取得時には環境の `GITHUB_TOKEN` より先に読みます。
+`GITHUB_TOKEN` そのものはあえて使いません。UI で資格情報を入力したり消したりしても、起動時にエクスポートした
+トークンに触れないためです。
+
+データベースを持つサーバは、保存時に資格情報を暗号化し、**組織ごと**にスコープします。各テナントの保存した
+資格情報は、それぞれ独立です。ローカル起動と**ホスト型**バックエンドは、どちらもこのデータベースを持ちます。
+バインドは、組織が保存した値を自身の取得処理に渡します（BE-0449）。この値の優先順位は、設定した GitHub App の
+次で、環境のトークンより前です。値は取得処理にだけ届き、レスポンスには載りません。
+
+アクセス不足でバインドが失敗したときは、ダイアログ内にその場で診断を表示します。メッセージは、**本当の原因**を
+名指します。たとえば、レート制限、組織のシングルサインオン（SSO）の認可不足、トークンの拒否、あるいは
+「`<owner>/<repo>` に Contents: read を持つ資格情報を用意してください」です。素の 404 では終わりません。
 
 ## Tier B、サーバ backend のセルフホスティング
 
-Tier A は、1 台の Mac で動くサーバとそのローカルの worker です。**Tier B** は BE-0015 の**サーバ backend**、すなわち FastAPI の
-コントロールプレーン（Postgres、S3 互換ストレージ（MinIO）、GitHub OAuth、RBAC、per-user クォータ）を Linux
-ノードで動かし、1 台以上の Mac をワーカーにします。既定では**シングルテナント**（全ユーザが 1 つの
-default org）で動き、config で org を宣言すれば**複数 org**に対応します（後述の「複数 org」を参照）。すぐ動かせる
-一式は [`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
+Tier A は、1 台の Mac で動くサーバとそのローカルの worker です。**Tier B** は BE-0015 の**サーバ backend**を
+Linux ノードで動かし、1 台以上の Mac をワーカーにします。サーバ backend は、FastAPI のコントロールプレーンに
+Postgres、S3 互換ストレージ（MinIO）、GitHub OAuth、RBAC、per-user クォータを組み合わせたものです。
+Tier B は既定で**シングルテナント**（全ユーザが 1 つの default org）で動き、config で org を宣言すれば
+**複数 org**に対応します（後述の「複数 org」を参照）。すぐ動かせる一式は [`deploy/self-host/`](../../deploy/self-host/)（compose、Dockerfile、`.env.example`）にあります。
 
 ![Tier B トポロジー図。チームの端末は Tailscale または Caddy 経由の HTTPS で Linux コントロールプレーンノード（bajutsu serve --asgi、Postgres、MinIO）に到達します。コントロールプレーンは HTTP で job をベアメタルの Mac iOS（XCUITest）ワーカー群へ、同じ Tailscale tailnet 経由でコンテナ化された Linux web（Playwright/Chromium）ワーカーへ振り分け、どちらも結果をコントロールプレーンへ返します。](assets/diagrams/self-hosting-tier-b-topology-ja.svg)
 
@@ -401,14 +443,19 @@ flowchart TB
 
 </details>
 
-Linux のコントロールプレーンは安価で、**Mac ワーカー**が Simulator の run を担う希少な部分です。フリートは
-**backend ごとに異なる構成**になります。Mac の iOS ワーカーは iOS Simulator のために Aqua の GUI セッションが
-要るので **ベアメタル**で動かし（Tier A と同じ）、**Linux の web（Playwright）ワーカーはヘッドレスなので
-コンテナで動かします**（BE-0173）。web backend には GUI セッションの制約がないためです。どちらも同じ
-コントロールプレーンから HTTP でリースを受けます。web ワーカーのコンテナは cloud SDK もオブジェクトストレージの
-秘密情報も不要で（BE-0160）、必要なのはコントロールプレーンの URL とトークンだけです。混在フリートは任意です。
-既定は iOS だけの構成で、これは変わりません。web の run をホストするときに web ワーカーを足してください
-（[§ Linux web ワーカーを足す](#5-linux-web-ワーカーを足すコンテナ任意)）。
+Linux のコントロールプレーンは安価です。**Mac ワーカー**が Simulator の run を担い、希少な部分になります。
+フリートは **backend ごとに異なる構成**になります。
+
+- Mac の iOS ワーカーは、iOS Simulator のために Aqua の GUI セッションが要るので、Tier A と同じく
+  **ベアメタル**で動かします。
+- **Linux の web（Playwright）ワーカーは、ヘッドレスなのでコンテナで動かします**（BE-0173）。web backend には
+  GUI セッションの制約がないためです。
+
+どちらのワーカーも、同じコントロールプレーンから HTTP でリースを受けます。web ワーカーのコンテナは
+cloud SDK もオブジェクトストレージの秘密情報も不要で（BE-0160）、必要なのはコントロールプレーンの URL と
+トークンだけです。混在フリートは任意です。既定は iOS だけの構成で、これは変わりません。web の run を
+ホストするときに、web ワーカーを足してください
+（[§ Linux web ワーカーを足す](#5-linux-web-ワーカーのコンテナを足す)）。
 
 **config のソースはデプロイ形態で変わります（BE-0108）。**「Open config」ダイアログは、アクティブな config
 を最大3つのソースからバインドします。**Git リポジトリ**、アップロードした **`.zip` バンドル**、そして
@@ -416,17 +463,18 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 外します。UI から隠すだけでなくサーバ側でも拒否し（`/api/fs` と `POST /api/config` の path ブランチは `403`
 を返します）、Git とアップロードの2つだけを残します。ホスト型のユーザは共有ワーカーのファイルシステムと
 関係を持たないため、オペレータの `--root` を辿っても自分が所有する config はバインドできません。ファイル
-ブラウザを外すことで、ログイン済みの全ユーザにそのツリーのディレクトリ一覧を見せてしまう露出も避けられ
-ます。ローカル起動（Tier A、セルフホストの単一 Mac）では3つのソースすべてを残します。そこではファイル
-システムがオペレータ自身のものだからです。
+ブラウザを外せば、ログイン済みの全ユーザにそのツリーのディレクトリ一覧を見せてしまう露出も避けられます。
+ローカル起動（Tier A、セルフホストの単一 Mac）では、3つのソースすべてを残します。そこではファイルシステムが
+オペレータ自身のものだからです。
 
 ### config、シナリオ、アプリバイナリ全体で見る、ローカルとホスト型の違い
 
-ここまでの説明は「どうデプロイするか」を軸にしています。ここでは視点を変え、`serve` が管理する状態の種類
+ここまでの説明は「どうデプロイするか」を軸にしています。この節では視点を変え、`serve` が管理する状態の種類
 ごとに何が変わるかをまとめます。
+
 以下の「ローカル」は、Tier A と、ノート PC 上で素の `make serve` を動かす場合の両方を指します。どちらも
 `hosted: false` で動作します。Tier B のサーバ backend は `BAJUTSU_SERVER_STORE` にバケットを指定するので、
-`hosted: true` になります。バケットを指定せずに1台のマシンで起動したサーバ backend は `hosted: false` の
+`hosted: true` になります。バケットを指定せずに1台のマシンで起動したサーバ backend は、`hosted: false` の
 ままです。この場合は、後の節「1台のマシンで動かすサーバ backend」で扱います。
 
 | 状態 | ローカル（`hosted: false`。Tier A、または素の `make serve`） | ホスト型（`hosted: true`。Tier B のサーバ backend） |
@@ -437,17 +485,16 @@ serve ホストの `--root` を辿る**ファイルブラウザ**です。サー
 | **実機の画面を見ながらの作成** | Capture モードと Edit モードのライブピッカーが、`serve` プロセス内に driver を開いたまま保持 | どちらも提供しない。2つの操作は理由付きで無効化（#1721） |
 
 - **config。** どちらの側も最大3つのソースからバインドしますが、`hosted` が true になった瞬間にファイル
-  ブラウザだけが消えます（前述のとおりです）。パスの閉じ込めを決めるのは Tier ではなく**ソース**です。ローカル
+  ブラウザだけが消えます。パスの閉じ込めを決めるのは Tier ではなく**ソース**です。ローカル
   ファイルの config は自分自身のディレクトリを基準に解決し、閉じ込めはありません（兄弟ディレクトリを指すことも
   できます）。一方、Git またはアップロード由来の config は信頼できない入力として扱われ、`paths.scenarios` /
-  `paths.baselines` / `subject.path` は、どちらの Tier でバインドしたかに関わらずチェックアウトまたはバンドルのルートに
-  閉じ込められます（[configuration](configuration.md)の「Git リポジトリからの config」の節を参照してください）。
+  `paths.baselines` / `subject.path` は、どちらの Tier でバインドしたかに関わらず、チェックアウトまたは
+  バンドルのルートに閉じ込められます（[configuration](configuration.md)の「Git リポジトリからの config」の節を参照してください）。
   ホスト型ではローカルファイルのソースをそもそも提供しないため、ホスト型の config は結果としてすべて閉じ込め
   られます。これはファイルブラウザを外したことの副作用であり、別立てのルールではありません。
 - **シナリオと run の成果物。** ローカルでは、シナリオストアと run の履歴がふつうのディレクトリツリー
-  （`scenarios/`、`runs/`）を読み書きします。ソフトデリートすると、run のツリーに `.deleted` の
-  目印が付きます。ホスト型
-  では、両方ともコントロールプレーンのオブジェクトストレージ（`BAJUTSU_SERVER_STORE`。S3 互換または GCS）と、
+  （`scenarios/`、`runs/`）を読み書きします。ソフトデリートすると、run のツリーに `.deleted` の目印が
+  付きます。ホスト型では、両方ともコントロールプレーンのオブジェクトストレージ（`BAJUTSU_SERVER_STORE`。S3 互換または GCS）と、
   run ごとの Postgres の行に置かれます。そのためソフトデリートは、ディスク上でバイトを移動させる代わりに
   `deleted_at` を設定するだけです（後述の「run の削除と、ゴミ箱の保持期間」を参照してください）。
 - **実機の画面を見ながらの作成。** Capture モードは、スクリーンショットをクリックしてシナリオを記録します。
@@ -733,7 +780,7 @@ docker compose up -d            # postgres + minio + migrate（alembic upgrade h
 作成します。コントロールプレーンは `:8765` で待ち受けます。
 
 web UI のバージョンバッジ（BE-0272）に、このイメージが動作しているコミットを表示したい場合は、そのコミットを
-ビルド時に渡します（BE-0277）。イメージには読み取れる `.git` が含まれないため、バッジはこの埋め込み値に
+ビルド時に渡します（BE-0277）。イメージには読み取れる `.git` が含まれないため、バッジは埋め込んだこの値に
 フォールバックします。
 
 ```bash
@@ -750,120 +797,141 @@ docker build --build-arg GIT_COMMIT=$(git rev-parse HEAD) -f deploy/self-host/Do
 
 公開ポートは `BIND_ADDR`（既定は `127.0.0.1`）にバインドします。Mac の worker が別ホストから MinIO に届く
 ようにするには、`.env` の `BIND_ADDR` をノードの tailnet IP に設定してください。公開インターフェースを
-持つホストで `0.0.0.0` にはしないでください。成果物バケットを露出させてしまいます。
+持つホストで `0.0.0.0` にはしないでください。公開バインドは、成果物バケットを露出させてしまいます。
 
-アーティファクト／シナリオ／ベースラインに加え、アップロードされた zip バンドル（BE-0243）のストアも、
-`BAJUTSU_SERVER_STORE` という1本の URI で選びます（BE-0204）。`s3://bucket/prefix`（S3 互換。
-この compose が同梱する MinIO）と `gs://bucket/prefix`
-（Google Cloud Storage）のどちらかを指定できます。すでに Google Cloud 上で他のスタックを動かしているなら、
-`docker-compose.yml` から `minio` と `minio-init` サービスを外し、`BAJUTSU_SERVER_STORE` を GCS バケットに
-向けて、コントロールプレーンのイメージの [`deploy/self-host/Dockerfile`](../../deploy/self-host/Dockerfile)
-のインストール行に `gcs` extra を追加してください（`.[server,worker,db,oauth,gcs]`）。S3 互換バケットを
-別途用意する必要はなくなります。
+アーティファクト、シナリオ、ベースラインのストアは、1 本の URI の `BAJUTSU_SERVER_STORE` で選びます
+（BE-0204）。アップロードされた zip バンドル（BE-0243）のストアも、同じ URI で選びます。指定できるのは次の
+どちらかです。
+
+- `s3://bucket/prefix`：S3 互換のストアです。この compose が同梱する MinIO もこれにあたります。
+- `gs://bucket/prefix`：Google Cloud Storage のバケットです。
+
+すでに Google Cloud 上で他のスタックを動かしているなら、次の 3 つの変更で S3 互換バケットが要らなくなります。
+
+1. `docker-compose.yml` から `minio` と `minio-init` サービスを外します。
+2. `BAJUTSU_SERVER_STORE` を GCS バケットに向けます。
+3. コントロールプレーンのイメージの [`deploy/self-host/Dockerfile`](../../deploy/self-host/Dockerfile) の
+   インストール行に、`gcs` extra を追加します（`.[server,worker,db,oauth,gcs]`）。
 
 以前の `BAJUTSU_S3_BUCKET` / `BAJUTSU_S3_PREFIX` の組み合わせを使っていた環境からアップグレードするときは、
-prefix を URI のパスに畳み込んでください。`BAJUTSU_S3_BUCKET=bajutsu` と `BAJUTSU_S3_PREFIX=tenant/` の
-組み合わせは `BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/` になります。prefix を畳み込まずに設定すると、
-その prefix 配下にあった既存のキーが解決できなくなります。
+prefix を URI のパスに畳み込んでください。たとえば `BAJUTSU_S3_BUCKET=bajutsu` と
+`BAJUTSU_S3_PREFIX=tenant/` の組み合わせは、`BAJUTSU_SERVER_STORE=s3://bajutsu/tenant/` になります。
+prefix を畳み込まずに設定すると、その prefix 配下にあった既存のキーが解決できなくなります。
 
-### 2. GitHub OAuth を足す（任意）
+### 2. GitHub OAuth を足す
 
-オペレータが数人なら共有トークン（`BAJUTSU_SERVE_TOKEN`）だけで十分です。ユーザごとのブラウザログインには、
-GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/callback`）、`.env` に
-`BAJUTSU_OAUTH_GITHUB_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` を設定します。
+この手順は任意です。オペレータが数人なら、共有トークン（`BAJUTSU_SERVE_TOKEN`）だけで十分です。ユーザごとの
+ブラウザログインには、GitHub OAuth アプリを作り（callback は `https://<your-host>/api/oauth/callback`）、
+`.env` に `BAJUTSU_OAUTH_GITHUB_CLIENT_ID`／`_SECRET`／`_REDIRECT_URI` を設定します。
 
 OAuth を構成すると、アクセスは手作業の login リストではなく **GitHub organization と Team のメンバーシップ**に
 従います（[BE-0313](../../roadmaps/BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md)）。
 
-- **サインインと viewer ロール**は org メンバーシップに従います。構成済みの org のメンバー（明示の
-  `members`、`githubOrgs` に挙げた GitHub org の一員、または `githubTeams` に挙げた Team か `editorTeams` に
-  挙げた Team の
-  直接メンバー。[`orgs:`](configuration.md#orgorgsマルチテナントのサーバ-backend)
-  を参照）だけがサインインでき、成功すると **viewer**（閲覧のみ）が付きます。`githubTeams` は粒度の細かい
-  指定で、GitHub org 全体を通さずに 1 つの Team だけを通します。複数チームで共有している organization の
-  うち、1 つの Team だけがこのデプロイに触れてよい場合に必要になる単位です。GitHub の Teams API が
-  エラーを返している間は、`/user/teams` が fail closed なので、所属が Team だけの login は障害が続く
-  あいだ拒否されます。どの org にも一致しない login は
-  拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。ただし、構成済みの admin Team の
-  メンバーだけは例外で、このゲートを直接通過します（下の **admin** を参照）。データベースも繋いだ構成では、
-  このメンバーシップを config ファイルではなくデータベースが持ちます。最初の一度だけ同じ `orgs:` ブロック
-  から書き写し、以後は Web UI から管理します（下の[複数 org](#複数-org)を参照）。どちらの構成でも、どの org
-  がどの target を持つかは引き続き `orgs:` ブロックが決めます。
+- **サインインと viewer ロール**は org メンバーシップに従います。サインインできるのは、構成済みの org の
+  メンバーだけです。メンバーとは、次のいずれかに当てはまる人を指します
+  （[`orgs:`](configuration.md#orgorgsマルチテナントのサーバ-backend)を参照）。
+  - 明示の `members` に挙げた人。
+  - `githubOrgs` に挙げた GitHub org の一員。
+  - `githubTeams` に挙げた Team か、`editorTeams` に挙げた Team の直接メンバー。
+
+  サインインに成功すると **viewer**（閲覧のみ）が付きます。`githubTeams` は粒度の細かい指定で、GitHub org
+  全体を通さずに 1 つの Team だけを通します。複数チームで共有している organization のうち、1 つの Team
+  だけがこのデプロイに触れてよい場合に必要になる単位です。GitHub の Teams API がエラーを返している間は、
+  `/user/teams` が fail closed なので、所属が Team だけの login は障害が続くあいだ拒否されます。
+
+  どの org にも一致しない login は拒否されるので、OAuth を使う構成では `orgs:` ブロックの宣言が必須です。
+  ただし、構成済みの admin Team のメンバーだけは例外で、このゲートを直接通過します（下の **admin** を参照）。
+  データベースも繋いだ構成では、このメンバーシップを config ファイルではなくデータベースが持ちます。最初の
+  一度だけ同じ `orgs:` ブロックから書き写し、以後は Web UI から管理します（下の[複数 org](#複数-org)を参照）。
+  どちらの構成でも、どの org がどの target を持つかは引き続き `orgs:` ブロックが決めます。
 - **editor** は org の `editorTeams` に従います。挙げたフラットな GitHub Team のいずれかの直接メンバーが、run、
   record、scenario の編集をできます。`editorTeams` は昇格させるだけでなくサインインも許すので、ここに挙げた
   Team を `githubTeams` に重ねて書く必要はありません。1つの Team ではなくリストを持つのは、複数の GitHub
   organization にまたがる org が organization ごとの書き込み Team を挙げられるようにするためです。旧来の
   単数形 `editorTeam` を書いた config もそのまま動きます。`serve` がそのキーを `editorTeams` に畳み込む
   からです。ただし、文書に載るのは複数形だけなので、名前は変更してください。
-- **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS`（カンマ区切りのリスト。各要素は
-  `"<github-org>/<team-slug>"` の形で、`<team-slug>` は GitHub 自身が小文字化した slug であり、Team の
-  表示名ではありません。`githubTeams` や `editorTeams` と同様、各エントリは 1 つのフラットな Team を指し、
-  その下にネストした Team は一致しません。また、GitHub が org login と Team slug を大文字小文字の区別なく
-  解決するのに合わせて、大文字小文字を区別せずに比較します）に従います。そのメンバーはサーバ設定（config、API キー、provider）も変更
-  できます。admin はデプロイ全体で 1 段のロールなので、どの org を越えても信頼できるメンバーの Team だけを
-  指定します。上の viewer と editor の場合とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
+- **admin** はサーバ全体で 1 つ以上の GitHub Team、`BAJUTSU_OAUTH_ADMIN_TEAMS` に従います。そのメンバーは
+  サーバ設定（config、API キー、provider）も変更できます。値はカンマ区切りのリストで、各要素は
+  `"<github-org>/<team-slug>"` の形で書きます。`<team-slug>` は GitHub 自身が小文字化した slug であり、
+  Team の表示名ではありません。`githubTeams` や `editorTeams` と同様、各エントリは 1 つのフラットな Team を
+  指し、その下にネストした Team は一致しません。また、GitHub が org login と Team slug を大文字小文字の
+  区別なく解決するのに合わせて、大文字小文字を区別せずに比較します。admin はデプロイ全体で 1 段のロール
+  なので、どの org を越えても信頼できるメンバーの Team だけを指定します。
+
+  上の viewer と editor の場合とは異なり、構成済みの admin Team のいずれかのメンバーは、サインインのゲートを
   直接通過します。admin Team を、どこかの org の `githubTeams` や `editorTeams` に挙げる必要も、その
-  organization を `githubOrgs` に含める必要も、そのメンバーを `members` に列挙する必要もありません。そのため、`orgs:` ブロックが壊れている、あるいは
-  存在しない状態でも、admin はサインインして、サーバの向き先を修正済みの config へ張り替えられます。
-  ただし、この経路も GitHub の Teams API の障害までは越えられません。`/user/teams` は fail closed
-  なので、障害のあいだは admin Team のメンバーシップだけを頼りにした login も、ほかの login と同じく
-  拒否されます。この性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS`
-  は、ロールの対応づけだけでなくサインインの資格情報そのものになります。各エントリの GitHub organization
-  側は、実際に自分が管理する organization でなければなりません。その organization を管理する人は誰でも、
-  一致する slug の Team を作って admin としてサインインできてしまうからです。
+  organization を `githubOrgs` に含める必要も、そのメンバーを `members` に列挙する必要もありません。そのため、
+  `orgs:` ブロックが壊れている、あるいは存在しない状態でも、admin はサインインして、サーバの向き先を
+  修正済みの config へ張り替えられます。ただし、この経路も GitHub の Teams API の障害までは越えられません。
+  `/user/teams` は fail closed なので、障害のあいだは admin Team のメンバーシップだけを頼りにした login も、
+  ほかの login と同じく拒否されます。
+
+  このゲートの性質により、`BAJUTSU_OAUTH_ADMIN_TEAMS` は、ロールの対応づけだけでなくサインインの資格情報
+  そのものになります。各エントリの GitHub organization 側は、実際に自分が管理する organization でなければ
+  なりません。その organization を管理する人は誰でも、一致する slug の Team を作って admin としてサインイン
+  できてしまうからです。
 
 メンバーシップはログインのたびに読み直されるので、GitHub org や Team を抜けると、対象ユーザの次のサインインで
 反映されます。サーバ側のリストを編集する必要はありません。ログインは常にこれらのメンバーシップを読むために
 `read:org` scope を要求するので、同意画面には organization へのアクセスが表示されます。
 
-**ログインリストからの移行にあたって。** ロールの由来が変わること以外にも、2 点変わります。1 つ目は、サインインが
-今後は構成済みの `members`／`githubOrgs`／`githubTeams`／`editorTeams` の**全員**を通すようになることです。旧来の `BAJUTSU_OAUTH_ALLOWED_USERS`
-がその org の全メンバーより狭い範囲を許可していたなら、切り替え前に `orgs:` を絞ってください。org のゲートだけに
-なると、その分アクセスが広がります。2 つ目は、`BAJUTSU_OAUTH_ALLOWED_USERS`／`_ADMINS`／`_VIEWERS` が単純に無視さ
-れるようになることです。切り替える前に、admin と editor のそれぞれを Team メンバーシップとして宣言し直してくだ
-さい。`editorTeams` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次のログインで viewer に
-落ちます。すでに旧来の単数形 `BAJUTSU_OAUTH_ADMIN_TEAM` を設定していたデプロイは、同じタイミングで
-`BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。`serve` は、次の 4 つの
-いずれかに当てはまるとき、起動時に stderr へ警告を出します。廃止名がまだ設定されているとき、
-`BAJUTSU_OAUTH_ADMIN_TEAMS` の解決結果が空のリストになるとき、エントリが正しい
-`"<github-org>/<team-slug>"` の組でないとき、そして GitHub OAuth が部分的にしか構成されていない
-ときです。4 つ目は、`BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` / `_REDIRECT_URI` のどれか
-1 つでも未設定の状態を指します。このとき GitHub のサインインはすべて 404 になり、代わりに共有トークンの
-ログインが静かに有効へ戻ります。`BAJUTSU_SERVE_TOKEN` も未設定なら、共有トークンへも戻れず、すべての
-エンドポイントが認証なしで応答します。これらの警告はいずれも構造化
-ログの `event=server.startup_warning`（どの警告かを示す `check` フィールド付き。[運用ログ](#運用ログ)
-を参照）としても再送されるので、起動出力を誰かが読むことに頼らずアラートを設定できます。org ゲートが
-拒否したサインインは `event=oauth.denied` として記録され、org モデルが一致しなかった理由を名指しします。
-名指しの対象は `orgs:` ブロックか、メンバーシップをデータベースが持つ構成であれば org のテーブルです。
-`WARNING` になるのは admin Team が1つも*使える*状態にない場合だけです。リストが空である、あるいは
-全エントリが不正な形式である場合を指し、どちらも `orgs:` を直しにサインインできる admin が誰も残って
-いない状態です。構成済みの admin Team に単に一致しなかっただけの
-通常の拒否、および GitHub account をまったく必要としない4つの手前の失敗（OAuth が構成されていない、
-CSRF の state 不一致、例外を発生させた exchange、identity を返さなかった exchange）は `INFO` になります。
-通常の拒否は GitHub account を持つ誰でも到達できるため、アラートは event 名そのものではなく `WARNING`
-をキーにしてください。そうしなければ、興味本位のサインイン試行がページングすべき状態を埋もれさせます。
-アップグレード後はログの最初の数行を確認してください。
+**ログインリストからの移行にあたって。** ロールの由来が変わること以外にも、3 点変わります。
 
-3 つ目は、セッションそのものです。`POST /api/login` を無効にするのは、OAuth を構成した後に**新たな**トークン
-Cookie セッションが発行されなくなるだけで、それ以前にすでに発行されたセッションは無効になりません。OAuth を
-有効にする前に共有トークンでサインインしていたブラウザは、そのセッションが持つ完全な権限（トークンで発行された
-セッションには identity が無く、role のゲートがそもそも適用されないため）を、既定 7 日間の有効期限
-（`BAJUTSU_SESSION_TTL`）が切れるまで保ち続けます。トークンのみの運用から OAuth に切り替えるデプロイは、この
-7 日間の失効を待つのではなく、切り替え時にセッションストアをローテーションする（既存の Cookie を強制的に無効化
-する）ことをお勧めします。
+1. **サインインが通す人数が増えます。** サインインは今後、構成済みの `members`／`githubOrgs`／`githubTeams`／
+   `editorTeams` の**全員**を通します。旧来の `BAJUTSU_OAUTH_ALLOWED_USERS` がその org の全メンバーより狭い
+   範囲を許可していたなら、切り替え前に `orgs:` を絞ってください。org のゲートだけになると、その分アクセスが
+   広がります。
+2. **旧来のログインリストは無視されます。** `BAJUTSU_OAUTH_ALLOWED_USERS`／`_ADMINS`／`_VIEWERS` は単純に
+   無視されるようになります。切り替える前に、admin と editor のそれぞれを Team メンバーシップとして宣言し
+   直してください。`editorTeams` や `BAJUTSU_OAUTH_ADMIN_TEAMS` でまだカバーされていない login は、次の
+   ログインで viewer に落ちます。すでに旧来の単数形 `BAJUTSU_OAUTH_ADMIN_TEAM` を設定していたデプロイは、
+   同じタイミングで `BAJUTSU_OAUTH_ADMIN_TEAMS` に改名してください。旧名はもう読まれません。
+3. **発行済みのトークンセッションは残ります。** `POST /api/login` を無効にするのは、OAuth を構成した後に
+   **新たな**トークン Cookie セッションが発行されなくなるだけで、それ以前にすでに発行されたセッションは
+   無効になりません。OAuth を有効にする前に共有トークンでサインインしていたブラウザは、そのセッションが持つ
+   完全な権限を、7 日間（`BAJUTSU_SESSION_TTL` の標準値）の有効期限が切れるまで保ち続けます。トークンで発行
+   されたセッションには identity が無く、role のゲートがそもそも適用されないためです。トークンのみの運用から
+   OAuth に切り替えるデプロイは、この 7 日間の失効を待つのではなく、切り替え時にセッションストアを
+   ローテーションする（既存の Cookie を強制的に無効化する）ことをお勧めします。
 
-OAuth を構成すると、共有トークンは**ワーカーの通信だけ**に狭まります。ワーカーのコントロールプレーンの route
-（`/api/worker/*` の endpoint と、run のエビデンスアップロード URL の要求）を認可し、それ以外には効きません。ブラウザのトークンログイン（`POST /api/login`）は無効になり（人間の
-サインインは GitHub OAuth だけになります）、生の `Authorization: Bearer <token>` はワーカー以外のどの endpoint にも
-届きません。トークンでワーカー以外の endpoint をスクリプト運用していたデプロイは、OAuth を有効にするとその経路を
-失います。OAuth を使わない構成（単一 Mac の閉じたネットワーク）では、トークンは従来どおりすべてに届きます。
+`serve` は、次の 4 つのいずれかに当てはまるとき、起動時に stderr へ警告を出します。
 
-### CI ジョブを認証する（任意、BE-0414）
+- 廃止名がまだ設定されているとき。
+- `BAJUTSU_OAUTH_ADMIN_TEAMS` の解決結果が空のリストになるとき。
+- エントリが正しい `"<github-org>/<team-slug>"` の組でないとき。
+- GitHub OAuth が部分的にしか構成されていないとき。`BAJUTSU_OAUTH_GITHUB_CLIENT_ID` / `_CLIENT_SECRET` /
+  `_REDIRECT_URI` のどれか 1 つでも未設定の状態を指します。このとき GitHub のサインインはすべて 404 になり、
+  代わりに共有トークンのログインが静かに有効へ戻ります。`BAJUTSU_SERVE_TOKEN` も未設定なら、共有トークン
+  へも戻れず、すべてのエンドポイントが認証なしで応答します。
 
-継続的インテグレーション（CI）のジョブは、上の 2 種類のどちらの呼び出し元でもありません。ブラウザでの
-サインインはできません。そして直前の段落が述べた事情は、そのまま問題になります。OAuth を有効にすると、
-共有トークンはワーカー以外の endpoint に届かなくなるからです。すべてのパイプラインに長命のシークレットを
-配る代わりに、
+アップグレード後はログの最初の数行を確認してください。これらの警告はいずれも構造化ログの
+`event=server.startup_warning`（どの警告かを示す `check` フィールド付き。[運用ログ](#運用ログ)を参照）
+としても再送されるので、起動出力を誰かが読むことに頼らずアラートを設定できます。
+
+org ゲートが拒否したサインインは `event=oauth.denied` として記録され、org モデルが一致しなかった理由を
+名指しします。名指しの対象は `orgs:` ブロックか、メンバーシップをデータベースが持つ構成であれば org の
+テーブルです。レベルは拒否の内容で決まります。
+
+- `WARNING` になるのは、admin Team が1つも*使える*状態にない場合だけです。リストが空である、あるいは全エントリが
+  不正な形式である場合を指し、どちらも `orgs:` を直しにサインインできる admin が誰も残っていない状態です。
+- `INFO` になるのは、構成済みの admin Team に単に一致しなかっただけの通常の拒否と、GitHub account をまったく
+  必要としない4つの手前の失敗です。4つの失敗は、OAuth が構成されていない、CSRF の state 不一致、例外を
+  発生させた exchange、identity を返さなかった exchange です。
+
+通常の拒否は GitHub account を持つ誰でも到達できるため、アラートは event 名そのものではなく `WARNING` を
+キーにしてください。そうしなければ、興味本位のサインイン試行がページングすべき状態を埋もれさせます。
+
+OAuth を構成すると、共有トークンは**ワーカーの通信だけ**に狭まります。共有トークンが認可するのは、ワーカーの
+コントロールプレーンの route（`/api/worker/*` の endpoint と、run のエビデンスアップロード URL の要求）だけで、
+それ以外には効きません。ブラウザのトークンログイン（`POST /api/login`）は無効になるので、人間のサインインは
+GitHub OAuth だけになります。生の `Authorization: Bearer <token>` は、ワーカー以外のどの endpoint にも届きません。
+トークンでワーカー以外の endpoint をスクリプト運用していたデプロイは、OAuth を有効にするとその経路を失います。OAuth を使わない構成（単一 Mac の閉じたネットワーク）では、トークンは従来どおりすべてに届きます。
+
+### CI ジョブを認証する（BE-0414）
+
+この節は任意です。継続的インテグレーション（CI）のジョブは、上の 2 種類のどちらの呼び出し元でもありません。
+ブラウザでのサインインはできず、OAuth を有効にすると、共有トークンはワーカー以外の endpoint に届かなく
+なります。すべてのパイプラインに長命のシークレットを配る代わりに、
 [BE-0414](../../roadmaps/BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md) は、
 **CI プラットフォームがすでに発行している OpenID Connect（OIDC）トークン**でジョブを認証します。そのトークンを
 一度だけ交換して、短命の**マシンセッション**を発行します。パイプラインはシークレットを一切保持しません。
@@ -910,12 +978,13 @@ jobs:
 
 **交換にはデータベースと `oauth` extra が必要です。** 各トークンの `jti` は共有の記録先で使用済みにします。
 単一プロセスの中だけでなく、コントロールプレーンのレプリカをまたいで一度きりにするためです。
-どのサーバもこのデータベースを持ちます。バケットを指定したデプロイはデータベースの指定が必須で、
-バケットを指定せずに1台のマシンで動かすサーバはデフォルトの SQLite を使います。後者では、交換はその1つの
-プロセスの中で機能します（前述の「1台のマシンで動かすサーバ backend」を参照してください）。トークンの
-署名の検証には `joserfc` を使い、これは GitHub OAuth と同じ `oauth` extra に入っています
-（`uv sync --extra oauth`）。この extra が欠けていると、`serve` は起動時に警告します。パイプラインが
-失敗を1回ずつ積み上げて気付く形にはなりません。
+どのサーバもこのデータベースを持ちます。バケットを指定したデプロイはデータベースの指定が必須です。
+バケットを指定せずに1台のマシンで動かすサーバは、デフォルトの SQLite を使います。後者では、交換はその
+1つのプロセスの中で機能します（前述の「1台のマシンで動かすサーバ backend」を参照してください）。
+
+トークンの署名の検証には `joserfc` を使います。`joserfc` は、GitHub OAuth と同じ `oauth` extra に入っています
+（`uv sync --extra oauth`）。この extra が欠けていると、`serve` は起動時に警告します。パイプラインが失敗を
+1回ずつ積み上げて気付く形にはなりません。
 
 続いて、各 org が受け入れるリポジトリを `allowedRepositories` に列挙します。
 
@@ -1009,7 +1078,8 @@ job の id と見分けがつきません。「権限がない」と返せば、
 `runId` と `checkRunId` の組で1つのジョブが決まり、`runAttempt` で再実行と元の実行を区別します。github.com
 では、ジョブのページは `https://github.com/<repository>/actions/runs/<runId>/job/<checkRunId>` です。
 GitHub Enterprise Server では、同じパスを自身のホストで提供します。トークンにはホストが含まれないので、`serve` は
-リンクを保存せず、リンクを組み立てる id を個別に保存します。トークンにない claim は、null として書かずに記録から省きます。
+リンクを保存せず、リンクを組み立てる id を個別に保存します。トークンにない claim は、null として書かずに
+記録から省きます。
 
 **マシンセッションを終わらせる。** GitHub が発行したトークンは、何をしても期限まで生き続けます。マシン
 セッションは `serve` 自身が発行したものなので、`serve` から失効させられます。
@@ -1020,10 +1090,10 @@ curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" -b cookies.txt
   -H 'Content-Type: application/json' -d '{"repository": "acme/app"}'
 ```
 
-`/api/orgs/…` の他と同じく、admin の操作です。パイプラインのセッションではなく、管理者のセッションが
-要ります。リポジトリ名は名簿と同じ綴りで構いません。大文字と小文字は両側で畳んで比べます。`repository` を省くと、その org のマシンセッションがすべて
-終わります。名簿そのものに問題があったときに欲しい範囲です。org を退役させたときも、その org のマシン
-セッションは終わります。
+失効は、`/api/orgs/…` の他と同じく admin の操作です。パイプラインのセッションではなく、管理者のセッションが
+要ります。リポジトリ名は名簿と同じ綴りで構いません。大文字と小文字は両側で畳んで比べます。`repository` を
+省くと、その org のマシンセッションがすべて終わります。名簿そのものに問題があったときに欲しい範囲です。
+org を退役させたときも、その org のマシンセッションは終わります。
 
 失効の及ぶ範囲には、2つの区切りがあります。
 
@@ -1034,7 +1104,7 @@ curl -X POST "$BAJUTSU_URL/api/orgs/acme/machine-sessions/revoke" -b cookies.txt
   パイプラインもまとめて終わります。
 
 `allowedRepositories` からエントリを消す操作は、*新しい*セッションの発行を止めるだけです。稼働中のものは
-走り続けます。構成が効くのは交換の時点だからです。失効は、その operator の責務のもう半分にあたります。
+走り続けます。構成が効くのは交換の時点だからです。失効は、このオペレータの責務のもう半分にあたります。
 列挙したリポジトリを改名、移管、削除したら、エントリを消したうえで、すでに発行されたセッションも失効させて
 ください。
 
@@ -1052,7 +1122,7 @@ check は、グループの進行に合わせて queued、in progress、結論�
   マシンセッションが検証したリポジトリにだけ書き込まれます。
 - **Checks: write** の権限を持つ GitHub App を、公開先の各リポジトリにインストールしてあること。
 - App の資格情報を `serve` の環境に設定してあること。Git の config ソースが読む変数と同じものです
-  （[GitHub App](#github-appサービスに推奨)）。`githubapp` extra も必要です。check は App のインストールを
+  （[GitHub App](#github-app)）。`githubapp` extra も必要です。check は App のインストールを
   リポジトリから解決し、`BAJUTSU_GITHUB_APP_INSTALLATION_ID` は使いません。
 
 **送信先（sink）を定義します。** sink は、リクエストが選ぶ名前付きの送信先です。`format` には、その sink
@@ -1133,7 +1203,7 @@ groupNotify:
 イベントだけです。そのレプリカのファイルが定義していない sink のイベントは、発生から約 46 分たつと破棄されます。
 すべてのレプリカの sink ファイルを、その時間内に更新してください。
 
-### オペレータのシークレット（Claude API キー）
+### オペレータのシークレットと Claude API キー
 
 管理者が設定パネルから登録する **API キー**は*オペレータのシークレット*であり、ホスト型のコントロール
 プレーンでは **write-once かつ保存時に暗号化**されます
@@ -1158,19 +1228,19 @@ export BAJUTSU_SECRETS_KEY=…
 キーはデータベースのパスワードと同様に扱ってください。失うと保存済みのシークレットは復元できず、更新した
 キーは古いキーで書いた値を復号できないので、更新後は各シークレットを入力し直します。
 
-設定パネルは二つ目の write-once なオペレータのシークレットも同じ形で保持します。**Claude Code の OAuth
-トークン**（`CLAUDE_CODE_OAUTH_TOKEN`）で、ブラウザの無いホストで `claude-code` プロバイダを動かすため
+設定パネルは 2 つ目の write-once なオペレータのシークレットも、同じ形で保持します。**Claude Code の OAuth
+トークン**（`CLAUDE_CODE_OAUTH_TOKEN`）です。ブラウザのないホストで `claude-code` プロバイダを動かすため、
 `claude setup-token` の対話的なサインインを完了できないデプロイのためのものです
 （[BE-0215](../../roadmaps/BE-0215-claude-code-oauth-token-credential/BE-0215-claude-code-oauth-token-credential-ja.md)）。
-保存もマスク表示も更新も、上の API キーとまったく同じように扱います。
+保存、マスク表示、更新は、上の API キーとまったく同じ扱いです。
 
 同じストアは、シナリオが**自身**で宣言するシークレットも保持します
 （[BE-0274](../../roadmaps/BE-0274-serve-scenario-secrets/BE-0274-serve-scenario-secrets-ja.md)）。config が
 `${secrets.X}` のために `evidence.secrets` に並べる名前のことです。これまでは値を供給する手段が、プロセスが
 引き継ぐ `.env` しかありませんでした。今は管理者が設定パネルの **Scenario secrets** セクションから各値を
-設定でき、ホスト型のコントロールプレーンでは、オペレータの認証情報と同じ org ごとの暗号化された `secrets`
-テーブルに（上ですでに必須の `BAJUTSU_SECRETS_KEY` を再利用し、新しい鍵は不要で）、write-once かつマスクして
-保存します。run は、保存したシークレットを、自分を lease したワーカーの上で読みます（BE-0449）。
+設定できます。ホスト型のコントロールプレーンでは、オペレータの認証情報と同じ org ごとの暗号化された
+`secrets` テーブルに、write-once かつマスクして保存します。上ですでに必須の `BAJUTSU_SECRETS_KEY` を
+再利用するので、新しい鍵は要りません。run は、保存したシークレットを、自分を lease したワーカーの上で読みます（BE-0449）。
 コントロールプレーンは lease の時点で org のシークレットを復号し、lease の応答で渡すので、平文が
 ジョブキューに載ることはありません。ワーカーは値を spawn する run の環境変数に重ねます。API キー、
 Claude Code のトークン、各 `${secrets.X}` は、そこで解決します。値を受け取るのは共有トークンで取った
@@ -1194,9 +1264,9 @@ bajutsu worker
 worker はオブジェクトストレージの認証情報を**一切持ちません**（BE-0160）。`BAJUTSU_SERVER_STORE` /
 `BAJUTSU_S3_ENDPOINT` / `AWS_*` も、クラウド SDK も不要です。run のベースラインのダウンロード、完了した
 `runs/<id>/` ツリーのアップロード、`record` ジョブが生成したシナリオの保存は、いずれもコントロールプレーンが
-署名した presigned URL 経由で行います。オブジェクトストレージの認証情報が置かれる場所はコントロールプレーン
-だけです。バイト列は worker からストレージへ直接流れます（署名済み URL は MinIO を指します）ので、worker には
-オブジェクトストレージへの到達性は必要ですが、その秘密は不要です。
+署名した presigned URL 経由で行います。オブジェクトストレージの認証情報が置かれる場所は、コントロールプレーン
+だけです。バイト列は worker からストレージへ直接流れます。署名済み URL が MinIO を指すためです。そのため
+worker には、オブジェクトストレージへの到達性は必要ですが、その秘密は不要です。
 
 アップロードされた**バンドル**による run も同じ経路を通ります。コントロールプレーンは、ドロップ
 された zip や、合成した `config`、`scenarios`、`binary` の 3 成果物をバインドします。そのツリーは
@@ -1235,13 +1305,13 @@ worker 能力ファイルを渡します（[BE-0450](../../roadmaps/BE-0450-work
 [worker が実行する config のコマンド](#worker-が実行する-config-のコマンドbe-0492)で説明しています。
 
 ファイルが `environment: devicefarm` のようにデバイスクラウドを指す worker は、ジョブの予算もこのファイルから
-読みます（BE-0448）。最上位の `maxJobConcurrency` が同時に持てるジョブの数で、枠がすべて埋まっている間、
+読みます（BE-0448）。最上位の `maxJobConcurrency` が、同時に持てるジョブの数です。枠がすべて埋まっている間、
 worker はリースの要求を送りません。値が 1 を超えると、worker は各ジョブを専用のスレッドで、`.slots/<n>/` の下の
-作業ディレクトリで処理します。このような worker に停止シグナルを送ると、ジョブを取り消さずにリースを期限切れに任せ、
-再起動した worker が実行を再開します。予算と投入前の検査は、
+作業ディレクトリで処理します。このような worker に停止シグナルを送ると、ジョブを取り消さずにリースを期限切れに
+任せます。再起動した worker が実行を再開します。予算と投入前の検査は、
 [AWS Device Farm で実行する](devicefarm.md#ジョブ予算) で説明しています。
 
-再起動を越えるよう、Tier A と同じく `LaunchAgent` で包みます。worker はコントロールプレーンの
+再起動を越えて動くよう、worker を Tier A と同じく `LaunchAgent` で包みます。worker はコントロールプレーンの
 `/api/worker/lease` エンドポイントを HTTP でポーリングし（Redis は不要です）、各ジョブをクリーンな
 Simulator で実行し、`runs/<id>/` ツリー（`console.log` 含む）をアップロードし、結果を
 `/api/worker/result` へ返します。コントロールプレーンが完了した run を Postgres に記録するので、
@@ -1253,9 +1323,9 @@ worker は新しいログ行をおよそ 1 秒ごとに `/api/worker/log` へ送
 リースを持つ worker の送信だけを受け付け、それ以外の worker には `409` を返します。`409` を受けた
 worker は、ハートビートの `409` と同じく、リースを失ったものとして扱います。1 回の送信は 500 行かつ 4 MiB までです。
 worker はそれを超える分を分けて送り、コントロールプレーンはそれより大きい本文を読む前に `413` で拒みます。
-8 KiB を超える行はコントロールプレーンが切り詰めます。1 つの job のライブの行が 50,000 行か 16 MiB を超えると、
-コントロールプレーンは打ち切りの通知を 1 行だけ流し、残りを捨てます。コントロールプレーンは各行を job の
-Server-Sent Events（SSE）のストリームへ流し、worker の結果がそのストリームを閉じます。
+8 KiB を超える行は、コントロールプレーンが切り詰めます。1 つの job のライブの行が 50,000 行か 16 MiB を超えると、
+コントロールプレーンは打ち切りの通知を 1 行だけ流し、残りを捨てます。各行は job の Server-Sent Events（SSE）の
+ストリームへ流れ、worker の結果がそのストリームを閉じます。
 送信に失敗した行は、ログに記録して捨てます。送信の失敗で job が失敗したり遅れたりすることはありません。
 
 ライブの行は、実行中の job を見ている閲覧者のためのものです。アップロードされた `console.log` は、
@@ -1295,17 +1365,17 @@ job のキャンセルは、job がキューで待っていても、すでに wo
 
 ### 4. 公開する
 
-Tier A と同様に前段を置きます。`tailscale serve --bg 8765`（tailnet 内のみ、推奨）、または実ホスト名なら Caddy
-（`docker compose --profile caddy up -d`、`BAJUTSU_PUBLIC_HOST` を設定）。ワーカーは tailnet 越しに
-コントロールプレーン（`:8765`）と MinIO（`:9000`）へ到達するので、ノードはプライベートな tailnet 上に置いて
-ください。
+コントロールプレーンの前段は、Tier A と同様に置きます。推奨は `tailscale serve --bg 8765`（tailnet 内のみ）です。
+実ホスト名が必要なら Caddy を使います（`docker compose --profile caddy up -d`、`BAJUTSU_PUBLIC_HOST` を設定）。
+ワーカーは tailnet 越しにコントロールプレーン（`:8765`）と MinIO（`:9000`）へ到達するので、ノードは
+プライベートな tailnet 上に置いてください。
 
-### 5. Linux web ワーカーを足す（コンテナ、任意）
+### 5. Linux web ワーカーのコンテナを足す
 
-web（Playwright）backend は Linux 上でヘッドレスに動くので、そのワーカーはベアメタルの Mac ではなく
-**コンテナ**になります（BE-0173）。compose 一式には任意の `worker-web` サービスが含まれ、**既定では無効**
-（profile の裏）なので、iOS だけの構成は変わりません。Linux ノード上でも、コントロールプレーンへ到達できる
-別の Docker ホスト上でも、次のように有効化します:
+この手順は任意です。web（Playwright）backend は Linux 上でヘッドレスに動くので、そのワーカーはベアメタルの
+Mac ではなく**コンテナ**になります（BE-0173）。compose 一式には任意の `worker-web` サービスが含まれ、
+**既定では無効**（profile の裏）なので、iOS だけの構成は変わりません。Linux ノード上でも、
+コントロールプレーンへ到達できる別の Docker ホスト上でも、次のように有効化します。
 
 ```bash
 cd deploy/self-host
@@ -1316,17 +1386,18 @@ docker compose --profile web-worker up -d --build
 このサービスは [`worker-web.Dockerfile`](../../deploy/self-host/worker-web.Dockerfile) をビルドします。これは
 マルチステージのイメージで、ワーカーのランタイムクロージャ（`bajutsu[worker-web]` = `web` backend +
 `visual` + `schema`）と、ブラウザに必要なヘッドレス Chromium だけを入れます。コントロールプレーンのスタック
-（`server` / `db` / `oauth`）、cloud SDK、AI SDK は入れません。ワーカーはコントロールプレーンとオブジェクト
-ストレージへ HTTP で話し、BE-0160 のとおりオブジェクトストレージの認証情報を**一切持たない**ためです
-（必要なのは `BAJUTSU_SERVER_URL` と `BAJUTSU_TOKEN` だけです）。イメージを小さく保つため、フルの headed
-ビルドではなく Chromium の**ヘッドレスシェル**を入れます（`playwright install --with-deps --only-shell
-chromium`）。シェルは Playwright がヘッドレス実行で既定として使うものなので実行の挙動は変わらず、ブラウザの
-容量を数十 MB 削り、システムライブラリの依存も軽くなります。Linux のワーカーは常にヘッドレスなので、シェルが
-落とす headed 専用の機能は関係しません。イメージが入れるのは **Chromium** のシェルだけなので、Chromium の
-web run（既定のエンジン）を担います。Firefox や WebKit に固定したシナリオ（BE-0076）には、それらのブラウザを
-持つワーカーが必要で、このスリムなイメージでは動きません。
+（`server` / `db` / `oauth`）、cloud SDK、AI SDK は、あえて入れません。ワーカーはコントロールプレーンと
+オブジェクトストレージへ HTTP で話し、BE-0160 のとおりオブジェクトストレージの認証情報を**一切持たない**
+ためです（必要なのは `BAJUTSU_SERVER_URL` と `BAJUTSU_TOKEN` だけです）。
 
-compose の外（たとえば別の Linux マシン）で web ワーカーを動かすときは、イメージを直接ビルドして実行します:
+イメージを小さく保つため、フルの headed ビルドではなく、Chromium の**ヘッドレスシェル**を入れます
+（`playwright install --with-deps --only-shell chromium`）。シェルは、Playwright がヘッドレス実行ですでに使って
+いるものなので、実行の挙動は変わりません。ブラウザの容量を数十 MB 削り、システムライブラリの依存も軽くなります。
+Linux のワーカーは常にヘッドレスなので、シェルが落とす headed 専用の機能は関係しません。イメージが入れるのは
+**Chromium** のシェルだけなので、Chromium の web run（既定のエンジン）を担います。Firefox や WebKit に固定した
+シナリオ（BE-0076）には、それらのブラウザを持つワーカーが必要で、このスリムなイメージでは動きません。
+
+compose の外（たとえば別の Linux マシン）で web ワーカーを動かすときは、イメージを直接ビルドして実行します。
 
 ```bash
 docker build -f deploy/self-host/worker-web.Dockerfile -t bajutsu-worker-web .
@@ -1345,13 +1416,13 @@ capability でルーティングするので、backend が混在するフリー�
 現実の Mac プールが均一であることはまれです。マシンごとにインストールされている iOS ランタイムは異なり、
 iPad 向けに整えたものもあれば iPhone 向けのものもあり、web ワーカーはそもそも別の backend を動かします。
 区別のない単一キューでは、どのワーカーもどのジョブもリースできてしまうため、iOS のジョブが
-Linux の web ワーカーに渡って失敗しかねません。それは本物の欠陥ではなく、誤ったマシンへ振り分けられたことによる
-失敗です。**能力に基づくルーティング**はこれを防ぎます。ジョブは、それを実際に実行できるワーカーからのみ
-リースされます。
+Linux の web ワーカーに渡って失敗しかねません。その失敗は本物の欠陥によるものではなく、誤ったマシンへ
+振り分けられたことによるものです。**能力に基づくルーティング**は、この失敗を防ぎます。ジョブは、それを
+実際に実行できるワーカーからのみリースされます。
 
-各ワーカーは仕事をポーリングするときに **capability トークン**の集合を広告し、ジョブは自分が**必要とする**
-集合を持ちます。コントロールプレーンは、ワーカーがジョブの必要とするトークンをすべて広告している場合に限り、
-そのジョブをリースします。ルーティングが決めるのは*どの*空きワーカーがジョブを取り上げるかだけで、決定的な
+各ワーカーは、仕事をポーリングするときに **capability トークン**の集合を広告します。各ジョブは、自分が
+**必要とする**集合を持ちます。コントロールプレーンは、ワーカーがジョブの必要とするトークンをすべて広告している
+場合に限り、そのジョブをリースします。ルーティングが決めるのは*どの*空きワーカーがジョブを取り上げるかだけで、決定的な
 `run` の判定は変わりません。
 
 - **ワーカーの広告集合**は、その `--platform`（backend 軸。Mac の iOS ワーカーは `platform:ios`、Playwright の
@@ -1423,12 +1494,12 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
 - **ワーカーは、ドライバが動かすルートごとにトークンの集合を広告します。** `xcuitest` は Simulator の
   ルートを、`adb` は `android` を、`playwright` は `web` を動かします。対象のドライバは、`--platform` に
   かかわらず、[worker 能力ファイル](drivers.md#worker-の能力検査be-0450)が提供し、ホストが起動できるもの
-  すべてです。シナリオのほかのターゲットも同じマシンで動くからです。`xcuitest` のワーカーは、ファイルで
+  すべてです。シナリオのほかのターゲットも、同じマシンで動くからです。`xcuitest` のワーカーは、ファイルで
   `realDevices: false` を設定しない限り、`ios-device` のルートも加えます。`appium` のワーカーは `ios-live`
   を広告します。ルートの集合はファイルの記述どおりなので、ファイルにはマシンにインストール済みのドライバ
-  だけを並べてください。こうしたワーカーはどれも `cap:routing` も広告します。ルートのトークンを計算する
-  ワーカーであることを示す印で、このトークンを必要とするジョブはありません。集合どうしの共通部分は取りません。そのため、Simulator と接続した
-  iPhone の両方を動かす Mac は、実機のルートで `erase` を使うジョブを受け取らず、Simulator のジョブは
+  だけを並べてください。こうしたワーカーはどれも `cap:routing` も広告します。`cap:routing` は、ルートのトークンを計算する
+  ワーカーであることを示す印で、このトークンを必要とするジョブはありません。集合どうしの共通部分は取りません。
+  そのため、Simulator と接続した iPhone の両方を動かす Mac は、実機のルートで `erase` を使うジョブを受け取らず、Simulator のジョブは
   すべて受け取ります。
 - **不一致は投入時に失敗し、動かすワーカーのいないルートは待ちます。** コントロールプレーンがジョブを
   拒否するのは、次の 3 つがすべて成り立つ場合です。
@@ -1463,8 +1534,8 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
   予約済みの接頭辞は `environment:`、`host:`、`machine:`、`device:`、`cap:`、`setting:`、`job:`、`platform:`、
   `kind:`、`command-execution:`、`named-execution:`、`named-command:` です。ワーカーがいずれも自分で埋めるからです。ワーカーは起動時に、そのトークンを
   拒否します。そのため上書きによって、ワーカーの `commandExecution` ブロックが拒む config の出所を名乗ることはできません。
-- **サーバーコマンドを持つジョブの振り分け。** config が `services.server.cmd`
-  を宣言するジョブは、`command-execution:<source>` を要求します。出所は `uploaded`、`remote`、`operator`
+- **config のコマンドを持つジョブの振り分け。** config が `hooks.*` のコマンドラインを
+  宣言するジョブは、`command-execution:<source>` を要求します。出所は `uploaded`、`remote`、`operator`
   のいずれかです。ワーカーは、モードが `allow` の出所と、Docker があるときの `sandbox` の出所について、
   このトークンを広告します。`deny` でない出所ごとの `named-execution:<source>` と、named command ごとの
   `named-command:<name>` も広告します。ビルドはトークンを足しません。ビルドするかどうかは、ワーカーが run の
@@ -1481,11 +1552,13 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
 > 少なくとも `platform:*` を必要とするようになり、能力ルーティング以前のビルドのワーカーは広告集合を
 > 送りません。そのため何も広告できず、実ジョブを一つもリースできません。BE-0450 でも同じです。
 > `xcuitest` で動く iOS のジョブは `host:darwin` を必要とするようになり、その変更より前のビルドの
-> ワーカーはこのトークンを広告しません。誤配送はしない安全側の挙動ですが、
-> 更新済みのコントロールプレーンに古いワーカーを残すと、そのワーカーは黙ってリースを止め、`bajutsu_unroutable_jobs`
+> ワーカーはこのトークンを広告しません。誤配送はしない安全側の挙動です。ただし、更新済みの
+> コントロールプレーンに古いワーカーを残すと、そのワーカーは黙ってリースを止め、`bajutsu_unroutable_jobs`
 > の増加としてのみ現れます。ワーカーのバイナリを先に（または同時に）更新し、あとにしないでください。
-> BE-0449 でも同じ順序が必要です。コントロールプレーンは `run` を `python -m bajutsu.run.internal` としてキューに積むようになり、
-> その変更より前のビルドのワーカーはこのコマンドを自分のインタプリタに置き換えられないため、リースした `run` がすべて失敗します。
+>
+> BE-0449 でも同じ順序が必要です。コントロールプレーンは `run` を `python -m bajutsu.run.internal` として
+> キューに積むようになりました。その変更より前のビルドのワーカーは、このコマンドを自分のインタプリタに
+> 置き換えられないため、リースした `run` がすべて失敗します。
 >
 > BE-0467 は逆の向きです。それより前のビルドのワーカーは `cap:` や `setting:` のトークンを広告しません。
 > コントロールプレーンはそのワーカーをほかのトークンだけで照合するので、更新によってキューが止まることは
@@ -1500,22 +1573,22 @@ Linux の web ワーカーに渡って失敗しかねません。それは本物
 > に数えられます。`--capabilities platform:…` や `kind:…` を付けたワーカーは、以前は起動できましたが、今は
 > 起動を拒否します。この 2 つの接頭辞はワーカー自身が埋めるので、トークンを取り除いてください。
 
-### オブジェクトストレージへの証跡アップロード（任意、BE-0110）
+### オブジェクトストレージへの証跡アップロード（BE-0110）
 
-上記のワーカーのアップロードは、コントロールプレーンがレポートを配信する**アーティファクトストア**に各 run
-ツリーを書き込むものです。これとは別に、各 run の**証跡**をライフサイクル管理されたバケットへアーカイブでき
-ます。main ブランチの証跡は監査のために保持し、feature ブランチの証跡は数日で失効させる、といった運用です。
-コントロールプレーンに URI を一つ設定するだけです。
+証跡のアップロードは任意です。上記のワーカーのアップロードは、コントロールプレーンがレポートを配信する
+**アーティファクトストア**に、各 run のツリーを書き込むものです。これとは別に、各 run の**証跡**を
+ライフサイクル管理されたバケットへアーカイブできます。たとえば、main ブランチの証跡は監査のために保持し、
+feature ブランチの証跡は数日で失効させます。必要な設定は、コントロールプレーンに URI を 1 つ設定することだけです。
 
 ```bash
 # コントロールプレーン側（docker compose の環境変数、または serve プロセス）
 export BAJUTSU_EVIDENCE_STORE=s3://audit-bucket/evidence/   # gs://… も可。--evidence-store でも指定できます
 ```
 
-証跡ストアは、アーティファクトストアとは独立した2つ目の保存先です。別のアカウントにも、より厳しい権限で
-ライフサイクル管理したバケットにもできます。どちらのバケットも worker にとっては認証情報が不要です。
-コントロールプレーンが各バケットの認証情報を保持してファイルごとに **presigned PUT URL** を発行し、worker は
-平文 HTTP でアップロードします（証跡は BE-0110、アーティファクトストアは BE-0160）。`s3` または `gcs` extra は
+証跡ストアは、アーティファクトストアとは独立した 2 つ目の保存先です。別のアカウントにも、より厳しい権限で
+ライフサイクル管理したバケットにもできます。どちらのバケットも、worker にとっては認証情報が不要です。
+コントロールプレーンが各バケットの認証情報を保持し、ファイルごとに **presigned PUT URL** を発行します。
+worker は平文 HTTP でアップロードします（証跡は BE-0110、アーティファクトストアは BE-0160）。`s3` または `gcs` extra は
 **コントロールプレーン側**に入れます（`uv sync --extra s3` または `--extra gcs`）。worker にはどちらも不要です。
 
 CI ジョブは run を開始するときに `evidence_prefix` を渡して、run ごとのパス、つまりライフサイクルポリシーを
@@ -1526,10 +1599,10 @@ curl -X POST "$SERVER/api/run" -H "Authorization: Bearer $TOKEN" \
   -d '{"scenario": "smoke.yaml", "target": "demo", "evidence_prefix": "main/abc1234/"}'
 ```
 
-コントロールプレーンは `evidence_prefix` を安全な相対セグメントとして検証し、自分のバケットとベースプレフィッ
-クスを前置します。最終的なキーは `evidence/main/abc1234/<runId>/…` となり、run ID が必ずパスに含まれるので run
-同士が衝突せず、呼び出し元がベースプレフィックスの外へ出ることもできません。アップロードは判定の**後**に走るの
-で、失敗してもログに記録するだけで pass/fail は変わりません。`BAJUTSU_EVIDENCE_STORE` が未設定なら、ワーカーは
+コントロールプレーンは `evidence_prefix` を安全な相対セグメントとして検証し、自分のバケットとベースプレフィックスを
+前置します。最終的なキーは `evidence/main/abc1234/<runId>/…` となります。run ID が必ずパスに含まれるので、
+run 同士が衝突せず、呼び出し元がベースプレフィックスの外へ出ることもできません。アップロードは判定の**後**に
+走るので、失敗してもログに記録するだけで、pass/fail は変わりません。`BAJUTSU_EVIDENCE_STORE` が未設定なら、ワーカーは
 問い合わせるだけで何もアップロードしません。
 
 ### 複数 org
@@ -1555,7 +1628,9 @@ orgs:
 GitHub 許可リストがアクセス境界です。フルマネージドの公開クラウド提供（ホスト型の Mac ワーカープール＋IaC）は
 BE-0015 で今後の作業です。
 
-**データベースを繋いだら、org を Web UI から管理する。** `BAJUTSU_DATABASE_URL` を設定した backend は、各 org のメンバーシップをそのデータベースに持ちます。config ファイルが持つのをやめる対象は `members`、`githubOrgs`、`githubTeams`、`editorTeams` の4つです。これにより、テナントを1つ増やす作業にも、チームの書き込み権限を別の GitHub Team へ移す作業にも、config の編集と再デプロイが要らなくなります（[BE-0375](../../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)）。admin には Web UI に **Orgs** ページが現れ、その裏では admin 専用の4つのエンドポイントが動きます。
+**データベースを繋いだら、org を Web UI から管理する。** `BAJUTSU_DATABASE_URL` を設定した backend は、各 org のメンバーシップをそのデータベースに持ちます。config ファイルが持つのをやめる対象は、`members`、`githubOrgs`、`githubTeams`、`editorTeams` の4つです。これにより、テナントを1つ増やす作業にも、チームの書き込み権限を別の GitHub Team へ移す作業にも、config の編集と再デプロイが要らなくなります（[BE-0375](../../roadmaps/BE-0375-serve-org-lifecycle-management/BE-0375-serve-org-lifecycle-management-ja.md)）。
+
+admin には Web UI に **Orgs** ページが現れます。その裏では、admin 専用の4つのエンドポイントが動きます。
 
 | リクエスト | 動作 |
 |---|---|
@@ -1564,19 +1639,31 @@ BE-0015 で今後の作業です。
 | `POST /api/orgs/<slug>/membership` | `{"members": [...], "githubOrgs": [...], "githubTeams": [...], "editorTeams": [...]}` を1つの単位として置き換えます。`allowedRepositories` だけは例外です。キーを省くと、リポジトリの一覧はそのまま残ります。キーを明示したときだけ（`[]` も含めて）置き換えます。旧来の単数形 `editorTeam` を載せた body は 400 で拒否します。その body は `editorTeams` を挙げておらず、従えばその org の書き込み権限を消してしまうからです。 |
 | `DELETE /api/orgs/<slug>` | org を廃止し、その org としてセッションを持っている全員をサインアウトさせます。`default` は常に拒否します。 |
 
-4つとも監査ログに記録します。`default` は3つの変更操作すべてで予約されています。作成も、メンバーシップの置き換えも、廃止も、この slug に対しては拒否します。未一致のサインインが落ちる先の org であり、admin Team の迂回で入った admin も全員ここに入るからです。ここに実在のテナントを置けば、admin が復旧に使う名前空間を奪います。名簿を与える操作も同じことです。login をある org に置くのはメンバーシップだからです。ただし一覧には、フォールバックである旨を添えて**表示します**。迂回で入った admin 自身がここにいるので、隠すとその admin の run や secret や証跡がどこに落ちるかも見えなくなります。org の削除は soft delete です。サインインを受け付けなくなり一覧からも消え、同時に、そのメンバーがすでに持っているセッションもすべて失効します。廃止前に発行された cookie で、そのテナントとして振る舞い続ける人が残らないようにするためです。その org の run と監査記録は引き続き参照できます。admin の操作が取り上げるのはテナントの行動能力であって、そのテナントがすでに行ったことの記録ではないからです。slug も予約されたままなので、同じ名前で作り直すことはできません。
+4つとも監査ログに記録します。`default` は3つの変更操作すべてで予約されています。作成も、メンバーシップの置き換えも、廃止も、この slug に対しては拒否します。
+
+`default` は、未一致のサインインが落ちる先の org です。admin Team の迂回で入った admin も、全員ここに入ります。ここに実在のテナントを置けば、admin が復旧に使う名前空間を奪います。名簿を与える操作も同じことです。login をある org に置くのはメンバーシップだからです。
+
+ただし一覧には、フォールバックである旨を添えて、`default` を**表示します**。迂回で入った admin 自身がここにいるので、隠すとその admin の run や secret や証跡がどこに落ちるかも見えなくなります。
+
+org の削除は soft delete です。サインインを受け付けなくなり一覧からも消え、同時に、そのメンバーがすでに持っているセッションもすべて失効します。廃止前に発行された cookie で、そのテナントとして振る舞い続ける人が残らないようにするためです。その org の run と監査記録は引き続き参照できます。admin の操作が取り上げるのはテナントの行動能力であって、そのテナントがすでに行ったことの記録ではないからです。slug も予約されたままなので、同じ名前で作り直すことはできません。
 
 どの target を org が持つかは、引き続き上の `orgs:` ブロックが決めます。したがって、この方法で作った org は、そこにエントリが書かれるまで1つも target を持ちません。同じ名前の target を2つの org がそれぞれ要求してもよく、どちらの org もその target に対して認可されます。
 
 ### 複数の org に所属するメンバー
 
-上記のメンバーシップが複数の org への所属を認める GitHub のログインは、その時点でひとつの org として振る舞い、どの org かを自分で選びます。サインインは、そのログインが振る舞える org をすべて記録します。それぞれで持つロールも併せて記録します。org の `editorTeams` が昇格させるのはその org の中だけなので、ロールはテナントに追随します。Web UI のヘッダーは、読み取り専用の org バッジの代わりに、それらをドロップダウンとして提示します。裏側にあるエンドポイントは1つで、上記の4つと違って admin 専用ではありません。すでに呼び出し元を受け入れている org のあいだを移動するだけであり、前回のサインインが確立した以上のものは何も与えないからです。
+上記のメンバーシップが複数の org への所属を認める GitHub のログインは、その時点でひとつの org として振る舞い、どの org かを自分で選びます。サインインは、そのログインが振る舞える org をすべて記録します。それぞれで持つロールも併せて記録します。org の `editorTeams` が昇格させるのはその org の中だけなので、ロールはテナントに追随します。
+
+Web UI のヘッダーは、読み取り専用の org バッジの代わりに、それらをドロップダウンとして提示します。裏側にあるエンドポイントは1つで、上記の4つと違って admin 専用ではありません。すでに呼び出し元を受け入れている org のあいだを移動するだけであり、前回のサインインが確立した以上のものは何も与えないからです。
 
 | リクエスト | 内容 |
 |---|---|
 | `POST /api/org` | `{"org": "<slug>"}` を呼び出し元のアクティブな org にします。ロールもその org で持つものになります。呼び出し元がメンバーでない org は 403 で拒否します。存在しない slug と同じ答えなので、この拒否は、呼び出し元が振る舞えないテナントの存在を漏らしません。 |
 
-監査ログは、この移動を切替先の org に対して記録します。移動元はエントリの detail に入ります。選択は以後のサインインでも保たれます。org を選んだログインは、もっともよく一致する org へ解決し直されるのではなく、選んだ org に再び着地します。これが選択と同点処理の違いです。保たれなくなるのは、その org がそのログインを受け入れなくなったときだけです。そのときの次回のサインインは、何も選んでいないログインを移すのとまったく同じように移します。`BAJUTSU_OAUTH_ADMIN_TEAMS` の Team によって受け入れられた admin は、生存しているすべての org として振る舞えます。サインイン後に作られた org も含みます。どの org のメンバーシップもその admin を挙げていないため、サインイン時に保存した集合は空になり、あとから保存した集合は次の `POST /api/orgs` で古くなるからです。
+監査ログは、この移動を切替先の org に対して記録します。移動元はエントリの detail に入ります。
+
+選択は以後のサインインでも保たれます。org を選んだログインは、もっともよく一致する org へ解決し直されるのではなく、選んだ org に再び着地します。これが選択と同点処理の違いです。保たれなくなるのは、その org がそのログインを受け入れなくなったときだけです。そのときの次回のサインインは、何も選んでいないログインを移すのとまったく同じように移します。
+
+`BAJUTSU_OAUTH_ADMIN_TEAMS` の Team によって受け入れられた admin は、生存しているすべての org として振る舞えます。サインイン後に作られた org も含みます。どの org のメンバーシップもその admin を挙げていないため、サインイン時に保存した集合は空になり、あとから保存した集合は次の `POST /api/orgs` で古くなるからです。
 
 `POST /api/orgs/<slug>/membership` で取り消したメンバーシップは、そのログインが次にサインインするまで、その org への切替を受け入れ続けます。メンバーシップ変更がもともと持つ次回サインインまでの待ち時間であり、すでにその org として振る舞っている状態を続けさせるのと同じ待ち時間です。ただちに効かせたいときは、そのユーザーのセッションを失効させてください。org の廃止（`DELETE /api/orgs/<slug>`）は、それを代わりに行います。
 
@@ -1586,13 +1673,16 @@ BE-0015 で今後の作業です。
 
 この書き写しが起きるのは、**`orgs` テーブルが空のときの一度だけ**です。org が1つでも入っている状態で起動すれば、廃止済みのものが1つあるだけでも、何も書き写しません。起動後に Web UI や `POST /api/config` で bind した config は、そもそも一切書き写しません。これらの bind が受け取る config は、その内容がこちらの管理下にないからです。同じ config のコマンドを `remote` という出所として worker の統制下に置く信頼境界（[worker が実行する config のコマンド](#worker-が実行する-config-のコマンドbe-0492)を参照）と同じ線で、誰がサインインできるかを決めさせません。加えて、書き写した行は bind より長く残るため、bind を切り替えても許可を取り消せなくなります。移行後に org を増やすときは、Orgs ページで宣言してください。
 
-以後、この4つのフィールドをファイルが決めることはなくなり、まだ宣言しているエントリがあれば `serve` が `event=org.membership.ignored`（`check=orgs_membership_ignored`）として org 名を挙げて警告します。該当のエントリは、都合のよいときに `targets:` だけへ削ぎ落としてください。このフィールドは引き続き読みますし、書き写しの起きる起動より前に削ぎ落としても後に削ぎ落としても同じです。`targets:` だけを宣言したエントリは書き写しの対象から外れるので、誰も受け入れない状態で org が固定されることはありません。
+以後、この4つのフィールドをファイルが決めることはなくなります。まだ宣言しているエントリがあれば、`serve` が `event=org.membership.ignored`（`check=orgs_membership_ignored`）として org 名を挙げて警告します。該当のエントリは、都合のよいときに `targets:` だけへ削ぎ落としてください。このフィールドは引き続き読みます。書き写しの起きる起動より前に削ぎ落としても、後に削ぎ落としても同じです。`targets:` だけを宣言したエントリは書き写しの対象から外れるので、誰も受け入れない状態で org が固定されることはありません。
 
-移行に伴って意図的に変わる点が2つあります。1つは、config が読めない状態でも、bind されていない状態でも、誰も拒否しなくなることです。サインインを決めるのがデータベースだけになるからです。もう1つは、`serve` がデータベースを読めないときの答え方です。ユーザの GitHub メンバーシップのせいにする 403 ではなく、ストアを名指しする HTTP 503 でサインインに答えます。この 503 は `oauth.denied` ではなく、専用の `event=oauth.store_unavailable` として `WARNING` で記録します。誰も拒否されていませんし、拒否を対象にしたアラートが指すべきなのは GitHub 側の構成であって、ストアの障害ではないからです。
+移行に伴って意図的に変わる点が2つあります。
 
-3つ目の変化は、2つの org が同じ相手を挙げている場合にだけ現れます。`githubOrgs` に同じ GitHub organization を挙げているか、`githubTeams` や `editorTeams` に同じ Team を挙げている場合です。明示の `members` に載っていない login は、その条件を満たす最初の org に解決されますが、この「最初」が `orgs:` ブロックでは宣言順、データベースでは slug 順です。どちらも安定しているので、同じ login は毎回同じ org に入りますが、この重なりを持つデプロイでは、移行のときに一度だけ解決先が動くことがあります。複数の org に属する login が、そのどれとして振る舞うかを選ぶ手段は、現時点ではありません。
+- config が読めない状態でも、bind されていない状態でも、誰も拒否しなくなります。サインインを決めるのがデータベースだけになるからです。
+- `serve` がデータベースを読めないときは、ユーザの GitHub メンバーシップのせいにする 403 ではなく、ストアを名指しする HTTP 503 でサインインに答えます。この 503 は `oauth.denied` ではなく、専用の `event=oauth.store_unavailable` として `WARNING` で記録します。誰も拒否されていませんし、拒否を対象にしたアラートが指すべきなのは GitHub 側の構成であって、ストアの障害ではないからです。
 
-**最初の org をどう作るか。** 新品のデータベースには org が1つもないので、サインインのゲートには誰も一致しません。構成済みの `BAJUTSU_OAUTH_ADMIN_TEAMS` の Team のメンバーは、org がいくつあるかにかかわらずこのゲートを通過します（上の [GitHub OAuth を足す](#2-github-oauth-を足す任意)を参照）。そのメンバーが admin としてサインインし、Orgs ページから最初の1つを作ります。
+3つ目の変化は、2つの org が同じ相手を挙げている場合にだけ現れます。`githubOrgs` に同じ GitHub organization を挙げているか、`githubTeams` や `editorTeams` に同じ Team を挙げている場合です。明示の `members` に載っていない login は、その条件を満たす最初の org に解決されます。この「最初」は、`orgs:` ブロックでは宣言順、データベースでは slug 順です。どちらも安定しているので、同じ login は毎回同じ org に入ります。ただし、この重なりを持つデプロイでは、移行のときに一度だけ解決先が動くことがあります。複数の org に属する login が、そのどれとして振る舞うかを選ぶ手段は、現時点ではありません。
+
+**最初の org をどう作るか。** 新品のデータベースには org が1つもないので、サインインのゲートには誰も一致しません。構成済みの `BAJUTSU_OAUTH_ADMIN_TEAMS` の Team のメンバーは、org がいくつあるかにかかわらずこのゲートを通過します（上の [GitHub OAuth を足す](#2-github-oauth-を足す)を参照）。そのメンバーが admin としてサインインし、Orgs ページから最初の1つを作ります。
 
 **Mac プールを org 間で公平に保つ。** `BAJUTSU_MAX_CONCURRENT_PER_ORG` を設定すると、1 つの org が同時に
 持てる run 数の上限を決められます。各ユーザがそれぞれの `BAJUTSU_MAX_CONCURRENT_PER_USER` 以内にとどまって
@@ -1603,18 +1693,22 @@ BE-0015 で今後の作業です。
 またぐ公平な*スケジューリング*、つまり拒否した分を org 別キューで保留してラウンドロビンで投入する仕組みは、まだ
 今後の作業です。今日は通常の run を上限で拒否します。）
 
-**run の削除と、ゴミ箱の保持期間。** run（とそのレポート）は API から削除できます（BE-0239）。`DELETE /api/runs/{id}`
-はソフトデリートで、run は履歴一覧から消えますがゴミ箱へ移るだけなので、`POST /api/runs/{id}/restore` で復元できます。
-`DELETE /api/runs/{id}?purge=true` はゴミ箱を経ずに実体を即座に削除します。ソフトデリートと復元は **editor**、即時の完全削除は
-**admin** の操作です。`POST /api/runs/bulk-delete`（本文 `{"ids": [...], "purge": <bool>}`）は複数をまとめて処理します。
-ソフトデリートした run は、ゴミ箱に入ってから保持期間を過ぎると完全に削除されます。判定は次に履歴を読むときに都度おこない、
+**run の削除と、ゴミ箱の保持期間。** run とそのレポートは、API から削除できます（BE-0239）。
+
+- `DELETE /api/runs/{id}` はソフトデリートです。run は履歴一覧から消え、ゴミ箱へ移ります。
+  `POST /api/runs/{id}/restore` で復元できます。
+- `DELETE /api/runs/{id}?purge=true` は、ゴミ箱を経ずに実体を即座に削除します。
+- `POST /api/runs/bulk-delete`（本文 `{"ids": [...], "purge": <bool>}`）は、複数をまとめて処理します。
+
+ソフトデリートと復元は **editor**、即時の完全削除は **admin** の操作です。ソフトデリートした run は、
+ゴミ箱に入ってから保持期間を過ぎると完全に削除されます。判定は次に履歴を読むときに都度おこない、
 バックグラウンドのジョブはありません。
 
 | 変数 | 既定 | 意味 |
 |---|---|---|
 | `BAJUTSU_RUN_RETENTION_DAYS` | `30` | ソフトデリートした run を完全削除するまでゴミ箱に置く日数。`0` 以下にすると自動削除を無効にし、`?purge=true` で明示的に消すまでゴミ箱を保持します。 |
 
-（行ごとの削除ボタンやゴミ箱ビューといった Web UI 側の導線はこれからですが、上記の API はすでに使えます。）
+行ごとの削除ボタンやゴミ箱ビューといった Web UI 側の導線はこれからですが、上記の API はすでに使えます。
 
 ## 運用ログ
 
@@ -1646,21 +1740,26 @@ BE-0015 で今後の作業です。
 `event` フィールドは安定したイベント名（`run.dispatched`、`quota.rejected`、`worker.job.started`、
 `worker.job.finished`、`artifact.upload.failed`、`group_event.retry`、`group_event.abandoned`、
 `server.startup_warning`、`oauth.login`、
-`oauth.denied` など）を示すので、
-これを対象に grep やアラートを設定できます。`server.startup_warning` は、自由文の `msg` とは別に、どの起動時
-条件が発火したかを示す `check` フィールド（例：`admin_teams_empty`）も携えます。アラートは言い回しが変わり
-うるメッセージ本文ではなく、この `check` をキーにしてください。`oauth.login` はすべての成功したサインイン
-を記録し、`bypass` フィールドを携えます。これは `orgs:` ではなく構成済みの admin Team がこの login を
-許可した場合にだけ true になります。迂回による許可が残す記録はこのフィールドしかありません。迂回の
-ほとんどは `INFO` です。運用専用の organization に置いた admin Team は、設計上すべてのサインインで
-迂回するためです。`oauth.login` が `WARNING` になるのは、org モデル自体が使えない状態で迂回による
-許可が起きたときだけです。どの状態がそれにあたるかは、org モデルの出所によって変わります。`orgs:`
-ブロックを出所とするデプロイでは、config が bind されていない状態、読み込みに失敗した状態、`orgs:`
-ブロックを宣言していない状態の3つです。データベースがメンバーシップを保持するデプロイでは、`orgs`
-テーブルのどの行もまだメンバーシップを宣言していない状態です。テーブルが空の場合だけでなく、どの行の
-名簿も空である場合を含みます。迂回によるサインイン自体が作った受動的な行や、管理者が Orgs ページで
-作成したまま名簿を埋めていない org が、これにあたります。そのためアラートは `WARNING` を
-キーにし、誰がいつサインインしたかを調べるときは `bypass` を grep してください。
+`oauth.denied` など）を示すので、これを対象に grep やアラートを設定できます。
+
+`server.startup_warning` は、自由文の `msg` とは別に、どの起動時条件が発火したかを示す `check` フィールド
+（例：`admin_teams_empty`）も携えます。アラートは、言い回しが変わりうるメッセージ本文ではなく、この `check` を
+キーにしてください。
+
+`oauth.login` はすべての成功したサインインを記録し、`bypass` フィールドを携えます。このフィールドは、
+`orgs:` ではなく構成済みの admin Team がこの login を許可した場合にだけ true になります。迂回による許可が
+残す記録は、このフィールドしかありません。迂回のほとんどは `INFO` です。運用専用の organization に置いた
+admin Team は、設計上すべてのサインインで迂回するためです。`oauth.login` が `WARNING` になるのは、org モデル
+自体が使えない状態で迂回による許可が起きたときだけです。どの状態がそれにあたるかは、org モデルの出所に
+よって変わります。
+
+- `orgs:` ブロックを出所とするデプロイ：config が bind されていない状態、読み込みに失敗した状態、`orgs:`
+  ブロックを宣言していない状態の3つです。
+- データベースがメンバーシップを保持するデプロイ：`orgs` テーブルのどの行もまだメンバーシップを宣言して
+  いない状態です。テーブルが空の場合だけでなく、どの行の名簿も空である場合を含みます。迂回によるサインイン
+  自体が作った受動的な行や、管理者が Orgs ページで作成したまま名簿を埋めていない org が、これにあたります。
+
+そのためアラートは `WARNING` をキーにし、誰がいつサインインしたかを調べるときは `bypass` を grep してください。
 
 **マスクは構造的です。** 1 つのフィルタがルートロガーに置かれるので、書き出される前に**すべての**行が
 スキャンされます。サードパーティのライブラリが出した行も対象です。正しさは、各呼び出し箇所がマスクを

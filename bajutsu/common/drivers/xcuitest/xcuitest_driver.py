@@ -7,6 +7,7 @@ from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base, tracing
@@ -29,7 +30,7 @@ from ._functions import (
 )
 from ._health_wait import _HealthWait
 from ._reply import _Reply
-from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn
+from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn, UrlSchemeSource
 from .paste_menu import COPY_MENU_LABELS, PASTE_MENU_LABELS, SELECT_ALL_MENU_LABELS
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
@@ -70,8 +71,10 @@ _GRID_CELL_POLL_SECONDS = 0.3
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
 _UNIT = "point"
-# How long `paste`, `select_all`, and `copy_selection` wait for an edit-menu item to appear; the
-# menu animates in within a second.
+# How long `paste`, `select_all`, and `copy_selection` wait for an edit-menu item to appear, and
+# then for it to become hittable; the menu animates in within a second. The same budget bounds each
+# condition in turn rather than the second getting a knob of its own, so an item that appears and
+# never becomes hittable costs up to twice this (issue #2521).
 _EDIT_MENU_TIMEOUT = 5.0
 # How long they look for a menu their focusing tap raised before long-pressing for one instead.
 _EDIT_MENU_AFTER_TAP = 1.0
@@ -143,6 +146,7 @@ class XcuitestDriver:
         device_os: DeviceOS | None = None,
         is_real_device: bool = False,
         zorder: ZOrderSource | None = None,
+        url_schemes: UrlSchemeSource | None = None,
     ) -> None:
         # Whether this drives a real iPhone rather than a Simulator (`runsOn.ios.kind: device`).
         # Read only by `app_crash_signal`, which scopes itself out on one: a real device jetsam-kills
@@ -268,12 +272,16 @@ class XcuitestDriver:
         # The in-app responder that measures `nativeZ` (BE-0355). None when the run allocated no
         # port, or when the app never links BajutsuKit — either way every element keeps `None`.
         self._zorder = zorder
-        # How many `app:` blocks are open (`enter_app` not yet matched by `leave_app`). The z-order
-        # responder lives in the test target, so while another app is in front its positions
+        # The apps of the open `app:` blocks, innermost last (`enter_app` not yet matched by
+        # `leave_app`): the app an `openUrl` goes to (BE-0487). While any is open, the z-order
+        # responder, which lives in the test target, goes unasked: its positions
         # describe the wrong tree — and asking them hits a suspended process: the queued requests,
         # answered on resume, killed a backgrounded showcase app with SIGPIPE
         # (docs/specs/ios-home-screen-widget-feasibility.md).
-        self._entered_apps = 0
+        self._entered_apps: list[str] = []
+        # What the receiving app's build declares as its URL schemes (BE-0487); None when the
+        # environment wired no source, which leaves `open_url` with the runner's verdict alone.
+        self._url_schemes = url_schemes
         # The app this driver addresses on a runner a device group shares (BE-0447), None while it
         # drives the runner alone. Set by `bind_to_member`, which also turns on the front check.
         self._member_bundle: str | None = None
@@ -1127,16 +1135,20 @@ class XcuitestDriver:
         The runner calls `XCUIApplication.open(_:)` on the top of its app stack — the innermost
         `enter_app`'s, else the app under test — so the URL never goes to whichever app iOS would
         pick. A system dialog the URL raises is left up, for an `interrupts` entry or a
-        `handleSystemAlert` step to answer. The refusal signal is whatever `open(_:)` raises or
-        records; should it report nothing for a URL no app handles, the step passes, and the
-        assertion that follows catches the wrong screen.
+        `handleSystemAlert` step to answer.
+
+        `open(_:)` delivers the URL straight to that app, whether or not the app declares the
+        scheme, so a URL no tap on a link could bring there would pass. The declared schemes of the
+        app's own build refuse such a URL before it is sent, where the environment can read them.
 
         Raises:
-            SelectorError: The system refused the URL; the reason is the runner's own message.
+            SelectorError: The receiving app's build does not declare the URL's scheme, or the
+                system refused the URL; the reason is then the runner's own message.
             ElementNotFound: The app never reached the foreground.
             UnsupportedAction: The device runs an iOS before 16.4, which has no `open(_:)`.
             XcuitestChannelError: Any other reply, a runner fault rather than a test outcome.
         """
+        self._require_declared_scheme(url)
         self._actuations.record(Actuation(gesture="openUrl", via="url", unit=_UNIT))
         reply = self._transport("POST", "/app/openUrl", {"url": url})
         if reply.status == _OK:
@@ -1149,6 +1161,29 @@ class XcuitestDriver:
         if reply.status == _UNSUPPORTED:
             raise base.UnsupportedAction("openUrl needs iOS 16.4 or later on the device")
         raise XcuitestChannelError(f"runner error opening a URL (status={reply.status})")
+
+    def _require_declared_scheme(self, url: str) -> None:
+        # `http` and `https` reach an app through its associated domains, which no `Info.plist`
+        # lists, so their absence from the declared schemes proves nothing.
+        scheme = urlsplit(url).scheme.lower()
+        if self._url_schemes is None or scheme in ("http", "https"):
+            return
+        bundle_id = self._entered_apps[-1] if self._entered_apps else self._member_bundle
+        declared = self._url_schemes(bundle_id)
+        if declared is None or scheme in declared:
+            return
+        # On a real device the build is the configured one, which nothing compared with the device's,
+        # so the reason names it: a stale `.app` must not read as a fault of the app.
+        source = (
+            "; read from the build at subject.path, which may differ from the one on the device"
+            if self.is_real_device
+            else ""
+        )
+        raise base.SelectorError(
+            f"openUrl: {bundle_id or 'the app under test'} does not declare the URL scheme "
+            f"{scheme!r}, so the system would not route the URL to it "
+            f"(declared: {', '.join(sorted(declared)) or 'none'}{source})"
+        )
 
     def type_text(self, text: str) -> None:
         # `text` is deliberately absent from the record — not even its length (see `actuation.py`).
@@ -1186,7 +1221,7 @@ class XcuitestDriver:
                 f"{_EDIT_MENU_TIMEOUT:g}s (a toolkit that draws its own selection toolbar may offer "
                 f"none); edit-menu labels on screen: {self._edit_menu_labels_on_screen()}"
             )
-        self.tap({"label": label})
+        self._tap_edit_menu_item(label, item="Copy", step="copy")
 
     def paste(self, sel: base.Selector) -> None:
         # Through the edit menu, not Cmd+V, which pastes nothing from another process's clipboard
@@ -1207,7 +1242,7 @@ class XcuitestDriver:
                 f"{_EDIT_MENU_TIMEOUT:g}s ({cause}); edit-menu labels on screen: "
                 f"{self._edit_menu_labels_on_screen()}"
             )
-        self.tap({"label": label})
+        self._tap_edit_menu_item(label, item="Paste", step="paste")
 
     def _select_all(self, sel: base.Selector, baseline: Counter[str], step: str) -> None:
         label = self._raise_edit_menu_item(sel, SELECT_ALL_MENU_LABELS, "Select All", baseline)
@@ -1217,7 +1252,7 @@ class XcuitestDriver:
                 f"{_EDIT_MENU_TIMEOUT:g}s (an empty field offers none); edit-menu labels on "
                 f"screen: {self._edit_menu_labels_on_screen()}"
             )
-        self.tap({"label": label})
+        self._tap_edit_menu_item(label, item="Select All", step=step)
 
     def _raise_edit_menu_item(
         self,
@@ -1246,6 +1281,39 @@ class XcuitestDriver:
                 labels, baseline, _EDIT_MENU_TIMEOUT, item, lower=False
             )
         return label
+
+    def _tap_edit_menu_item(self, label: str, *, item: str, step: str) -> None:
+        """Tap the edit-menu item `label` names, once XCTest's own `isHittable` accepts it.
+
+        The menu animates in, so its item is in the accessibility tree a frame or two before it is
+        hittable. `tap` treats a not-hittable element as terminal, which is right for a tap the
+        orchestrator issued but leaves nothing above a menu the driver itself raised one call
+        earlier (issue #2521), so hittability is the condition waited for here rather than the
+        existence `_new_edit_menu_label` answers for. A condition wait, never a pause (prime
+        directive 2): `is_tappable` resolves fresh each tick and still raises on an ambiguous label.
+
+        Raises:
+            ElementNotTappable: The item never became hittable. Said distinctly from the menu
+                showing no new item at all, since the two point at different causes.
+        """
+        refusal: base.ElementNotTappable | None = None
+        for _ in base.deadline_ticks(_EDIT_MENU_TIMEOUT, 0.1, 0.5):
+            if not self.is_tappable({"label": label}):
+                continue
+            try:
+                self.tap({"label": label})
+            except base.ElementNotTappable as exc:
+                # The probe and the tap are two round trips, with a whole `/elements` dump between
+                # them, so the menu can refuse in that window. That is the same race the probe
+                # absorbs, so it is retried to the same deadline rather than surfaced.
+                refusal = exc
+            else:
+                return
+        raise base.ElementNotTappable(
+            f"{step}: the edit menu's {item} item ({label!r}) never became hittable within "
+            f"{_EDIT_MENU_TIMEOUT:g}s (something covering the menu, or a menu that left while the "
+            f"wait ran); edit-menu labels on screen: {self._edit_menu_labels_on_screen()}"
+        ) from refusal
 
     def _edit_menu_label_counts(self) -> Counter[str]:
         """How many on-screen elements carry each edit-menu label the driver taps, right now."""
@@ -1313,7 +1381,7 @@ class XcuitestDriver:
         """
         reply = self._transport("POST", "/app/enter", {"bundleId": bundle_id})
         if reply.status == _OK:
-            self._entered_apps += 1
+            self._entered_apps.append(bundle_id)
             return
         if reply.status == _NOT_FOREGROUND:
             raise base.ElementNotFound(f"app did not reach the foreground: {bundle_id!r}")
@@ -1328,9 +1396,10 @@ class XcuitestDriver:
         finally:
             # The runner pops its stack before re-activating what is beneath, so the block is closed
             # whether or not that app then reaches the foreground. A channel fault closes it too: the
-            # run loop only logs a failed leave and carries on, and a stuck count would silence
+            # run loop only logs a failed leave and carries on, and a stuck entry would silence
             # `nativeZ` for the rest of the lease.
-            self._entered_apps = max(0, self._entered_apps - 1)
+            if self._entered_apps:
+                self._entered_apps.pop()
         if reply.status == _OK:
             return
         if reply.status == _NOT_FOREGROUND:

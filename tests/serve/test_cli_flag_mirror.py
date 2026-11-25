@@ -49,6 +49,8 @@ def test_run_flag_surface_is_fully_classified() -> None:
         # serve forces the build itself (`Job.rebuild`) before it spawns the run, so the spawned run
         # never takes --rebuild and one job builds the app once.
         "rebuild",
+        # The worker stamps it from the job spec's own field (BE-0501), so serve's argv never does.
+        "scenario_source",
     }
     pass_through = {
         "backend",

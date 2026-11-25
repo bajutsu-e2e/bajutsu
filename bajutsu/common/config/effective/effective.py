@@ -8,9 +8,7 @@ from typing import Literal
 
 from bajutsu.common.config.schema import (
     DeviceProvider,
-    LaunchServer,
     Mailbox,
-    MockServer,
     NotifyEndpoint,
 )
 from bajutsu.common.drivers import base
@@ -20,6 +18,7 @@ from .ai_config import AiConfig
 from .android_config import AndroidConfig
 from .doctor_thresholds import DoctorThresholds
 from .evidence_dirs import EvidenceDirs
+from .hook_phases import HookPhases
 from .ios_config import IosConfig
 from .run_defaults import RunDefaults
 from .web_config import WebConfig
@@ -44,7 +43,6 @@ class Effective:
     launch_args: list[str]
     id_namespaces: list[str]
     reserved_namespaces: list[str]
-    mock_server: MockServer | None
     capture: list[str]
     redact: Redact
     secrets: list[str] = field(default_factory=list)
@@ -71,8 +69,9 @@ class Effective:
     device_provider: DeviceProvider | None = None
     # Evidence directory overrides — scenarios / baselines / schemas / goldens (BE-0252).
     evidence_dirs: EvidenceDirs = field(default_factory=EvidenceDirs)
-    # How to bring up baseUrl's host for the run (start/probe/teardown). None = assume it's running.
-    launch_server: LaunchServer | None = None
+    # The target's external-command hooks (BE-0491): the commands run around the run and around each
+    # scenario, which replaced the `services.server` bring-up. Empty when the target declares none.
+    hooks: HookPhases = field(default_factory=HookPhases)
     # The selector under `subject.startWhen.exists` (BE-0452): the run waits for it before the first
     # step and after a relaunch, by polling. None keeps the default readiness chain.
     start_when: base.Selector | None = None

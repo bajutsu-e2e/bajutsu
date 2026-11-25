@@ -15,80 +15,52 @@
 
 ## Introduction
 
-Establish a single, written **docstring standard** for the Python core and **generate an API
-reference** from it, so the people and AI agents who read and change this repository can grasp its
-public surface without opening every file. The public API is documented in **Google-style**
-docstrings and published as a generated reference; internal helpers keep the concise prose
-docstrings the codebase already favors. Types are never repeated in prose — they live in the
-annotations the generator reads from each signature. The standard is enforced on the public
-surface by `ruff` and rendered by a static documentation generator (recommended: MkDocs +
-`mkdocstrings`). Neither touches the deterministic `run` / CI gate.
+This item establishes a single, written **docstring standard** for the Python core and **generates an API reference** from it. The people and AI agents who read and change this repository can then grasp its public surface without opening every file.
+
+The public API is documented in **Google-style** docstrings and published as a generated reference. Internal helpers keep the concise prose docstrings that the codebase already favors. Prose never repeats types, because the annotations of each signature carry them and the generator reads them from there.
+
+`ruff` enforces the standard on the public surface, and a static documentation generator renders the reference (recommended: MkDocs with `mkdocstrings`). Neither touches the deterministic `run` / CI gate.
 
 ## Motivation
 
-The Python core is already well-commented: module docstrings explain *why*, type annotations are
-complete (`mypy` is strict and `ruff`'s `ANN` rules are on), and behavior is cross-referenced to BE
-items. Two things are missing.
+The Python core is already well commented. Module docstrings explain *why*, and type annotations are complete (`mypy` is strict and the `ANN` rules of `ruff` are on). Behavior cross-references BE items. Two things are missing.
 
-First, **the convention is implicit.** `ruff` does not select the `D` (pydocstyle) rules, and the
-codebase uses prose docstrings with no structured sections — there is no `Args:` / `Returns:` /
-`:param:` anywhere today. That is a deliberate, good style, but it is written down nowhere, so it
-drifts as the public surface grows: the `Driver` protocol, the CLI, the MCP tools, the scenario
-schema.
+First, **the convention is implicit.** `ruff` does not select the `D` (pydocstyle) rules. The codebase uses prose docstrings with no structured sections, and no `Args:`, `Returns:`, or `:param:` appears anywhere today. That style is deliberate and good, but nothing writes it down. It drifts as the public surface grows across the `Driver` protocol, the CLI, the MCP tools, and the scenario schema.
 
-Second, **there is no generated reference.** The hand-written docs under `docs/` explain concepts
-and workflows, but nothing renders the public API itself. A reader who wants the shape of `Driver`,
-the selector types, or the MCP tools has to open the source.
+Second, **no generated reference exists.** The hand-written docs under `docs/` explain concepts and workflows, but nothing renders the public API itself. A reader who wants the shape of `Driver`, the selector types, or the MCP tools has to open the source.
 
-Both gaps matter more now because **agentic coding is a primary way this code is read and
-changed.** A consistent docstring standard and a navigable API surface help the contributors who
-lean on AI assistants and the assistants themselves: a single place for the meaning of each public
-parameter, and one rendered map of the surface instead of 100+ files. (Agents with repository
-access still read source; the standard's larger payoff is the *consistency and the rendered
-surface*, not the format alone — see *Alternatives considered*.)
+Both gaps matter more now, because **agentic coding is a primary way that people read and change this code.** A consistent docstring standard and a navigable API surface help contributors who lean on AI assistants, and they help the assistants themselves. Each public parameter gets one place for its meaning. One rendered map of the surface replaces a search through 100+ files.
 
-This is documentation and tooling only. It adds no LLM anywhere, never runs inside `run`, and the
-reference build lives outside the gate, so Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md))
-hold by construction.
+Agents with repository access still read source. The larger payoff of the standard is therefore the *consistency and the rendered surface*, not the format alone (see *Alternatives considered*).
+
+The change covers documentation and tooling only. It adds no LLM anywhere and never runs inside `run`, and the reference build lives outside the gate. Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
 
 ## Detailed design
 
 ### Scope: the public API surface
 
-Structured (Google-style) docstrings apply to the **public API surface** — what outside callers
-and agents reach for:
+Structured (Google-style) docstrings apply to the **public API surface**, which outside callers and agents reach for:
 
-- the `Driver` protocol and the shared types (`Selector`, `Element`, …) in
-  [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py);
-- the CLI commands ([`bajutsu/cli/`](../../bajutsu/cli/));
-- the MCP tools and resources ([`bajutsu/mcp/`](../../bajutsu/mcp/));
-- the scenario schema (the hub artifact);
-- the public functions of the runner, `assertions`, and `network`.
+- the `Driver` protocol and the shared types (`Selector`, `Element`, …) in [`bajutsu/drivers/base.py`](../../bajutsu/drivers/base.py)
+- the CLI commands ([`bajutsu/cli/`](../../bajutsu/cli/))
+- the MCP tools and resources ([`bajutsu/mcp/`](../../bajutsu/mcp/))
+- the scenario schema (the hub artifact)
+- the public functions of the runner, `assertions`, and `network`
 
-Internal, module-private helpers (the `_`-prefixed functions) keep a **concise prose docstring** —
-one purposeful line saying why they exist. Forcing `Args:` blocks onto a small helper is the
-*what*-narration the repo avoids. The generated reference excludes private members.
+Internal, module-private helpers (the `_`-prefixed functions) keep a **concise prose docstring**: one purposeful line that says why the helper exists. Forcing `Args:` blocks onto a small helper would add the *what*-narration that the repo avoids. The generated reference excludes private members.
 
 ### The standard
 
-- **Language: English**, like every code comment (the prose docs are bilingual; code is not —
-  [`docs/README.md`](../../docs/README.md)).
-- **Google style on the public surface.** A one-line summary, then `Args:` / `Returns:` / `Raises:`
-  (and `Yields:` / `Examples:`) **only where they add information**.
-- **Do not restate types.** Types live in annotations and the generator reads them from the
-  signature; `Args:` / `Returns:` describe *meaning* — units, constraints, what `None` means — not
-  the type.
-- **Why, not what.** Rationale, invariants (especially anything protecting determinism),
-  trade-offs, edge cases. Tie a behavior's rationale to its `BE-NNNN` item.
-- **Match the surrounding density.** Short and purposeful; no narration.
-- **Keep the per-field idiom.** For `TypedDict` and constant-holder classes, the per-field inline
-  comment carries each field's *why* better than a prose block; keep it.
+- **Language: English**, like every code comment. The prose docs are bilingual, but code is not ([`docs/README.md`](../../docs/README.md)).
+- **Google style on the public surface.** Write a one-line summary. Add `Args:`, `Returns:`, and `Raises:` (and `Yields:` or `Examples:`) **only where they add information**.
+- **Do not restate types.** Types live in annotations, and the generator reads them from the signature. `Args:` and `Returns:` describe *meaning*, such as units, constraints, and what `None` means, and never the type.
+- **Why, not what.** Cover rationale, invariants (especially anything that protects determinism), trade-offs, and edge cases. Tie the rationale of a behavior to its `BE-NNNN` item.
+- **Match the surrounding density.** Stay short and purposeful, without narration.
+- **Keep the per-field idiom.** For `TypedDict` and constant-holder classes, the inline comment on each field carries the *why* of that field better than a prose block does. Keep it.
 
 ### Examples
 
-A public function, before (today's prose) and after (the standard). The types are *not* repeated —
-`Args:` / `Returns:` carry meaning, the determinism invariant leads, and the rationale is tied to a
-BE item:
+The next example shows a public function before (today's prose) and after (the standard). The types are *not* repeated. `Args:` and `Returns:` carry meaning, the determinism invariant leads, and the rationale ties to a BE item:
 
 ```python
 # before (today's prose) — bajutsu/drivers/base.py
@@ -121,15 +93,14 @@ def resolve_unique(elements: list[Element], sel: Selector) -> Element:
     """
 ```
 
-Internal helpers stay prose — one line of *why*, no `Args:` block:
+Internal helpers stay prose, with one line of *why* and no `Args:` block:
 
 ```python
 def _contains(outer: Frame, inner: Frame) -> bool:
     """Whether `inner`'s frame sits inside `outer`'s (edges inclusive)."""
 ```
 
-`TypedDict` and constant-holder classes keep the per-field inline comment, which carries each
-field's *why* better than a prose `Args:`-style block:
+`TypedDict` and constant-holder classes keep the inline comment on each field. That comment carries the *why* of the field better than a prose `Args:`-style block:
 
 ```python
 class Selector(TypedDict, total=False):
@@ -141,73 +112,41 @@ class Selector(TypedDict, total=False):
 
 ### Generation
 
-Recommended stack: **MkDocs + Material + `mkdocstrings[python]`**.
+The recommended stack is **MkDocs + Material + `mkdocstrings[python]`**:
 
-- It is **Markdown-native**, so the API pages live in the same site as the existing bilingual
-  `docs/`.
-- `mkdocstrings` reads signatures through **`griffe`, which analyzes statically** — it does not
-  import the modules. That sidesteps the lazy / optional imports the core is built on (`playwright`,
-  `fb-idb`, `fastapi`, `redis`, `boto3`), which a `Sphinx autodoc` setup would have to mock.
+- The stack is **Markdown-native**, so the API pages live in the same site as the existing bilingual `docs/`.
+- `mkdocstrings` reads signatures through **`griffe`, which analyzes statically** and does not import the modules. That sidesteps the lazy and optional imports on which the core is built (`playwright`, `fb-idb`, `fastapi`, `redis`, `boto3`). A `Sphinx autodoc` setup would have to mock them.
 - Typed signatures come from the annotations automatically, so docstrings never restate types.
 
-`Sphinx + autodoc + napoleon` (with `myst-parser` for Markdown) is the alternative: it parses the
-same Google-style docstrings, but is heavier here and must mock the optional imports.
+The alternative is `Sphinx + autodoc + napoleon`, with `myst-parser` for Markdown. It parses the same Google-style docstrings, but it is heavier here and must mock the optional imports.
 
 ### Packaging, enforcement, hosting
 
-- A new `docs` **optional-dependency group** in `pyproject.toml` (the generator + plugins),
-  isolated like the other extras.
-- A `make docs` / `make docs-serve` target, **kept out of the core gate** — like on-device E2E, the
-  reference build is a separate, heavier path and must not slow `make check`.
-- **Enforcement:** enable `ruff`'s `D` rules with `convention = "google"`, **scoped to the public
-  modules** via `per-file-ignores` (tests / demos / scripts already ignore `ANN` / `T20`). Internal
-  helpers and the rest of the tree are not forced into structured sections.
-- A **GitHub Pages** workflow publishes the reference on merge to `main`. The API reference is
-  English (it renders English docstrings); the site's hand-written chrome follows the repo's
-  bilingual documentation rule.
+- A new `docs` **optional-dependency group** in `pyproject.toml` holds the generator and its plugins. It is isolated like the other extras.
+- A `make docs` target and a `make docs-serve` target stay **out of the core gate**. Like on-device E2E, the reference build is a separate, heavier path and must not slow `make check`.
+- **Enforcement:** enable the `D` rules of `ruff` with `convention = "google"`, **scoped to the public modules** via `per-file-ignores`. Tests, demos, and scripts already ignore `ANN` and `T20`. Internal helpers and the rest of the tree are not forced into structured sections.
+- A **GitHub Pages** workflow publishes the reference on merge to `main`. The API reference is English, because it renders English docstrings. The hand-written chrome of the site follows the bilingual documentation rule of the repo.
 
 ### Where the standard lives
 
-The standard itself is documented in [`docs/ai-development.md`](../../docs/ai-development.md) (and
-its `docs/ja/` mirror) as a *Code documentation comments (docstrings)* section, and summarized in the
-**Conventions** list of [`CLAUDE.md`](../../CLAUDE.md) — the same split the existing *Documentation
-style* rule already uses.
+The standard itself is documented in [`docs/ai-development.md`](../../docs/ai-development.md) (and its `docs/ja/` mirror) as a *Code documentation comments (docstrings)* section. A summary goes in the **Conventions** list of [`CLAUDE.md`](../../CLAUDE.md). The existing *Documentation style* rule already splits its text the same way.
 
 ### Migration, in phases
 
 1. This proposal.
-2. Stand up the site from the **existing prose docstrings**, with no docstring change — typed
-   signatures already render, proving the pipeline and giving immediate value.
+2. Stand up the site from the **existing prose docstrings**, with no docstring change. Typed signatures already render, which proves the pipeline and gives immediate value.
 3. Write the standard into `docs/ai-development.md` (+ `docs/ja/`) and `CLAUDE.md`.
-4. Migrate public-API docstrings to Google style **module by module, in small PRs** (small diffs
-   merge fast and rarely conflict — the parallel-work model,
-   [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md)).
+4. Migrate public-API docstrings to Google style **module by module, in small PRs**. Small diffs merge fast and rarely conflict, as the parallel-work model of [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) expects.
 5. Enable the scoped `ruff D` enforcement.
 6. Turn on Pages hosting.
 
 ## Alternatives considered
 
-- **Keep prose docstrings; generate with a signature-introspecting tool, no format change.** `pdoc`
-  or `mkdocstrings` already render prose docstrings *and* typed signatures (the types come from
-  annotations, not the docstring), so a browsable, typed reference is achievable today without
-  touching a single docstring. This is the lowest-cost path, and was the recommended one; it is
-  recorded here as the baseline. This proposal goes further — adopting Google-style structured
-  sections on the public surface — to get a predictable, parameter-level description in the
-  reference, accepting the migration cost for that consistency.
-- **`Sphinx + autodoc + napoleon`.** Parses the same Google docstrings, but is reStructuredText-
-  native (needs `myst-parser` for Markdown) and `autodoc` imports modules, forcing
-  `autodoc_mock_imports` for every optional / lazy dependency. `mkdocstrings` + `griffe` is
-  Markdown-native and static. Kept as a fallback.
-- **Migrate the whole tree, internal helpers included.** Rejected: ~1,000 docstrings is high churn
-  and conflict surface, and `Args:` on tiny private helpers is the *what*-narration the repo avoids.
-  Scope to the public surface.
-- **Do nothing.** The status quo: an implicit, undocumented prose convention and no rendered API
-  surface. Rejected — the convention drifts, and the growing public API has no map for human or
-  agent readers.
-- **A dedicated new roadmap topic.** Filed instead under *Contributor workflow* — the
-  [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) topic —
-  since it is about how contributors and agents understand the code, following the precedent of not
-  splitting a topic for a single item.
+- **Keep prose docstrings and generate with a signature-introspecting tool, with no format change.** `pdoc` and `mkdocstrings` already render prose docstrings *and* typed signatures, because the types come from annotations and not from the docstring. A browsable, typed reference is thus achievable today without touching a single docstring. That path costs least and was the recommended one, so this item records it as the baseline. This proposal goes further and adopts Google-style structured sections on the public surface. The reference then gives a predictable, parameter-level description, and the item accepts the migration cost for that consistency.
+- **`Sphinx + autodoc + napoleon`.** It parses the same Google docstrings, but it is reStructuredText-native and needs `myst-parser` for Markdown. `autodoc` also imports modules, which forces `autodoc_mock_imports` for every optional or lazy dependency. `mkdocstrings` with `griffe` is Markdown-native and static. Sphinx stays as a fallback.
+- **Migrate the whole tree, internal helpers included.** Rejected. About 1,000 docstrings mean high churn and a large conflict surface. `Args:` on tiny private helpers is the *what*-narration that the repo avoids. Scope the work to the public surface.
+- **Do nothing.** This is the status quo: an implicit, undocumented prose convention and no rendered API surface. Rejected. The convention drifts, and the growing public API has no map for human or agent readers.
+- **A dedicated new roadmap topic.** The item is filed under *Contributor workflow*, the topic of [BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md), instead. The item concerns how contributors and agents understand the code. It also follows the precedent of not splitting a topic for a single item.
 
 ## Progress
 

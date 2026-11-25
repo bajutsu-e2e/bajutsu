@@ -490,7 +490,7 @@ def test_record_writes_the_authored_scenario(
     )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
-    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
+    monkeypatch.setattr("bajutsu.cli._shared._start_hooks_or_exit", lambda *a, **k: None)
     monkeypatch.setattr(rec, "record_loop", lambda *a, **k: authored)
 
     cfg = tmp_path / "bajutsu.config.yaml"
@@ -549,7 +549,7 @@ def test_record_needs_human_handoff_exits_3(
     )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
     monkeypatch.setattr(rec, "launch_driver", lambda *a, **k: (object(), None))
-    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
+    monkeypatch.setattr("bajutsu.cli._shared._start_hooks_or_exit", lambda *a, **k: None)
 
     def _needs_human(*_a: object, **_k: object) -> object:
         raise HumanHandoffUnavailable("solve the CAPTCHA")
@@ -608,7 +608,7 @@ def test_record_device_error_exits_2(tmp_path: Path, monkeypatch: pytest.MonkeyP
         "bajutsu.common.backend_cli.simctl.resolve_udid", lambda u, run=None: "FAKE-UDID"
     )
     monkeypatch.setattr(rec, "make_agent", lambda *a, **k: object())
-    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
+    monkeypatch.setattr("bajutsu.cli._shared._start_hooks_or_exit", lambda *a, **k: None)
     monkeypatch.setattr(rec, "launch_driver", no_device)
     r = invoke(
         runner,
@@ -1594,7 +1594,6 @@ def test_doctor_web_target_requires_base_url() -> None:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
@@ -1620,7 +1619,6 @@ def test_doctor_non_web_target_on_playwright_exits_cleanly() -> None:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
@@ -1645,7 +1643,6 @@ def test_doctor_xcuitest_uses_a_short_lived_runner_for_screen_query(
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
@@ -1712,7 +1709,6 @@ def test_xcuitest_runner_summary_reports_the_resolved_source(tmp_path: Path) -> 
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
@@ -1800,7 +1796,6 @@ def test_xcuitest_runner_summary_warns_on_a_bundled_toolchain_mismatch(
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
@@ -1825,7 +1820,6 @@ def _bundled_tier_eff() -> Effective:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
@@ -2513,7 +2507,7 @@ def test_crawl_web_builds_one_browser_lane_per_worker(
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")  # clear the credential gate (guide is lazy)
     monkeypatch.setattr("bajutsu.cli._shared.ensure_web_runtime", lambda *a, **k: None)
     monkeypatch.setattr("bajutsu.cli._shared.select_actuator", lambda *a, **k: "playwright")
-    monkeypatch.setattr("bajutsu.cli._shared.start_launch_server", lambda *a, **k: lambda: None)
+    monkeypatch.setattr("bajutsu.cli._shared._start_hooks_or_exit", lambda *a, **k: None)
 
     launched = {"n": 0}
 

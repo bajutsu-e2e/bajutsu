@@ -12,7 +12,7 @@ comes from machine assertions alone, never an LLM.
 
 | Path | Purpose |
 |---|---|
-| `dogfood.config.yaml` | `targets.webui` with `platform: web` + `subject.url` (the running serve) + `services.server` (no `subject.id`) |
+| `dogfood.config.yaml` | `targets.webui` with `platform: web` + `subject.url` (the running serve) + `hooks.beforeRun` / `hooks.afterRun` (no `subject.id`) |
 | `inner.config.yaml` | the config the inner serve loads: the web demo's `web` target, plus `zz-fanout-android`, an Android target that exists only to be fanned out (BE-0465) |
 | `fanout/scenarios/` | the two placeholder scenarios `zz-fanout-android` dispatches; they are never run |
 | `web-scenarios/` | a gitignored copy of `demos/web/scenarios` that `make web-scenarios` refreshes before each run; a fan-out zips this directory, and a `../web/scenarios` path cannot travel in it |

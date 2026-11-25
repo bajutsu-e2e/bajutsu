@@ -1,0 +1,42 @@
+name: Install the Android emulator SDK packages
+description: >-
+  Install the Android Emulator and the AVD's system image ahead of
+  `reactivecircus/android-emulator-runner`, through `scripts/install_android_sdk_packages.sh`,
+  which retries a damaged download once and otherwise fails this step naming the package. The
+  action's own `sdkmanager --install` discards its output and keeps going when `sdkmanager` only
+  warns that it could not unpack an archive, so a damaged download used to surface only as a later
+  `adb` `Connection refused` against an emulator that never booted (issue #2519). With both packages
+  already in place, the action's own install finds them up to date and downloads nothing. Pass the
+  same `api-level`, `target`, and `arch` the job's emulator-runner steps use.
+
+inputs:
+  api-level:
+    description: The system image's API level, as passed to android-emulator-runner.
+    required: true
+  target:
+    description: The system image's target (e.g. `google_apis`), as passed to android-emulator-runner.
+    required: true
+  arch:
+    description: The system image's CPU architecture (e.g. `x86_64`), as passed to android-emulator-runner.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Install the emulator and system image
+      shell: bash
+      env:
+        PACKAGE: system-images;android-${{ inputs.api-level }};${{ inputs.target }};${{ inputs.arch }}
+      run: |
+        # The runner image ships the command-line tools here; android-emulator-runner adds them to
+        # PATH only inside its own step, which has not run yet.
+        export SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+        if [ ! -x "$SDKMANAGER" ]; then
+          echo "::error::sdkmanager not found at $SDKMANAGER"
+          exit 1
+        fi
+        # `yes` exits on SIGPIPE once sdkmanager stops reading, which pipefail would report as a
+        # failure; a license left unaccepted still fails the install below, by package name.
+        yes | "$SDKMANAGER" --licenses >/dev/null || true
+        script="${GITHUB_ACTION_PATH:-.github/actions/install-android-emulator-sdk}/../../../scripts/install_android_sdk_packages.sh"
+        bash "$script" emulator "$PACKAGE"

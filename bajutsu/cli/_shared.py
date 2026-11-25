@@ -6,6 +6,7 @@ genuinely cross-command pieces belong here, so adding a command rarely edits thi
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 from dataclasses import dataclass, replace
@@ -62,17 +63,17 @@ from bajutsu.common.devices.runs import condition_path
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.github import GitHubAccessError
 from bajutsu.common.run_meta.files import is_soft_deleted
-from bajutsu.common.runner.launch_server import start_launch_server
 from bajutsu.common.scenario import tip_kit_entry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Collection, Sequence
 
     from bajutsu.common.agents.alerts import ClaudeAlertLocator
     from bajutsu.common.capability.command_gate import CommandGate
     from bajutsu.common.devices.facts import DeviceFacts
     from bajutsu.common.drivers import base
     from bajutsu.common.orchestrator import AlertEvent
+    from bajutsu.common.runner.hook_session import HookSession
     from bajutsu.common.scenario import Scenario
 
 
@@ -349,6 +350,69 @@ def _effective_for(loaded: LoadedConfig, target_name: str) -> Effective:
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+
+
+def _reject_unmet_hook_conditions(
+    loaded: LoadedConfig,
+    scenarios: list[Scenario],
+    primary: str,
+    *,
+    selected: Collection[Scenario],
+) -> None:
+    """Exit 2 on a scenario that reads the output of a hook its own tags skip (BE-0497).
+
+    Given every expanded scenario, not the selected ones alone: the mismatch is a defect in the
+    files, so a run that selects a different subset reports it too. A scenario that names no target
+    drives whatever `--target` says, so while deselected it is a defect only if no target of the
+    config lets it run.
+    """
+    from bajutsu.common.runner.hook_commands import unmet_hook_condition
+    from bajutsu.common.runner.scenario_hooks import own_phases
+    from bajutsu.common.scenario.interp import find_tokens
+
+    effs = {name: resolve(loaded.config, name) for name in loaded.config.targets}
+    phases = {name: eff.hooks for name, eff in effs.items()}
+
+    def body(s: Scenario) -> dict[str, object]:
+        # Not its own `hooks`: a token in a command is refused outright (BE-0501), so the reader is
+        # told to use the variable instead, whatever the tags.
+        return s.model_dump(by_alias=True, exclude={"hooks"})
+
+    def unmet(s: Scenario, driven: list[str]) -> str | None:
+        # A target's setup and cleanup steps fold into the scenario, so it reads their tokens too.
+        folded = [
+            step.model_dump(by_alias=True)
+            for name in driven
+            if name in effs
+            for step in (
+                *(effs[name].run_defaults.setup if s.preconditions.inherit_setup else ()),
+                *effs[name].run_defaults.cleanup,
+            )
+        ]
+        referenced = find_tokens([body(s), *folded])
+        return unmet_hook_condition(referenced, phases, driven, s.tags, own_phases(s))
+
+    def runs_under(s: Scenario, target: str) -> bool:
+        """Whether *target* declares every hook *s* reads and *s* meets each one's condition."""
+        own = own_phases(s)
+        readable = {*phases[target].named(), *(own.named() if own is not None else ())}
+        names = {
+            t.removeprefix("hooks.").partition(".")[0]
+            for t in find_tokens(body(s))
+            if t.startswith("hooks.")
+        }
+        return names <= readable and unmet(s, [target]) is None
+
+    chosen = {id(s) for s in selected}
+    for s in scenarios:
+        why = unmet(s, list(s.target_names) or [primary])
+        if why is None:
+            continue
+        floating = not s.target_names and id(s) not in chosen
+        if floating and any(runs_under(s, target) for target in phases):
+            continue
+        typer.echo(f"scenario {s.name!r}: {why}")
+        raise typer.Exit(2)
 
 
 def _refuse_out_in_checkout(out_path: Path, checkout_root: Path | None) -> None:
@@ -870,6 +934,7 @@ def _install_command_gate_or_exit(
     *,
     config_dir: Path | None,
     secret_values: Sequence[str] = (),
+    scenario_source: str = "",
 ) -> CommandGate:
     """Install this process's command gate from `--config-source` and the worker's file, or exit 2.
 
@@ -883,37 +948,115 @@ def _install_command_gate_or_exit(
     if source not in CONFIG_SOURCES:
         typer.echo(f"--config-source {source!r}: expected one of {', '.join(CONFIG_SOURCES)}")
         raise typer.Exit(2)
+    if scenario_source and scenario_source not in CONFIG_SOURCES:
+        typer.echo(
+            f"--scenario-source {scenario_source!r}: expected one of {', '.join(CONFIG_SOURCES)}"
+        )
+        raise typer.Exit(2)
     policy = CommandPolicy(source=source, execution=worker.command_execution)
     return command_gate.install(
         command_gate.CommandGate(
-            policy=policy, config_dir=config_dir, secret_values=list(secret_values)
+            policy=policy,
+            config_dir=config_dir,
+            secret_values=list(secret_values),
+            scenario_source=scenario_source or None,
         )
     )
 
 
-def _start_launch_server_or_exit(
+def _report_teardown(session: HookSession) -> None:
+    """Run the `afterRun` teardown at exit and say so when it failed (BE-0491).
+
+    A command that keeps no verdict of its own still has to report a teardown that did not hold:
+    dropping the phase's result would leave a test tenant undeleted with nobody told.
+    """
+    outcome = session.after_run("success")
+    if not outcome.ok:
+        typer.echo(f"afterRun failed: {outcome.reason}", err=True)
+
+
+def _start_hooks_or_exit(
     eff: Effective,
     *,
+    run_id: str,
+    runs_dir: Path | None = None,
+    run_dir: Path | None = None,
+    worker: WorkerCapability | None = None,
     on_error: Callable[[], None] | None = None,
-) -> Callable[[], None]:
-    """Bring up the target's launch server (the web baseUrl host) if declared, or exit 2 (BE-0260).
+    teardown_at_exit: bool = False,
+    scenario_targets: Collection[str] = (),
+    scenarios: Sequence[Scenario] = (),
+) -> HookSession | None:
+    """Run the target's `beforeRun` hooks if it declares any, or exit 2 (BE-0491).
 
-    The launch-server bring-up the commands share: start the server (reused if already serving,
-    waiting on its readiness probe) under the run's installed command gate (BE-0492), and surface a
-    startup failure or a refused command as a clean exit 2. The call-site teardown difference stays
-    at the call site (`run`'s `finally`, `crawl` / `record`'s `atexit`); `on_error` runs before the
-    exit for the one caller (`audit`) that must first tear down an already-created device-pool lease.
+    The run-level bring-up the scenario-less commands share (`record`, `crawl`, `repl`) and that
+    `audit` reuses: start every `beforeRun` entry under the run's installed command gate (BE-0492),
+    and surface a failed or refused command as a clean exit 2.
+
+    Args:
+        eff: The resolved target config, whose `hooks` decide what runs.
+        run_id: Stamped into every command's `BAJUTSU_RUN_ID`, and names the raw area.
+        runs_dir: Where the raw area sits; None keeps it in a private temporary directory.
+        run_dir: This run's own directory, for `BAJUTSU_RUN_DIR`.
+        worker: The worker whose `namedCommands` a `use:` entry resolves against.
+        on_error: Runs before the exit, for the one caller that must first tear down an
+            already-created device-pool lease.
+        teardown_at_exit: Register the `afterRun` teardown with `atexit`, which the three commands
+            that run no scenario file want (`record` / `crawl` / `repl`). `audit` leaves it off and
+            calls `after_run` itself, since it knows the verdict.
+        scenario_targets: The targets a scenario's own commands may need a container of (BE-0501);
+            non-empty exactly when some scenario declares a command.
+        scenarios: The set a run-level `when` reads (BE-0497): what `audit` replays, and empty for
+            the commands that run no scenario file, where no condition matches.
 
     Returns:
-        The server teardown callable.
+        The session, or None when neither the target nor a scenario declares a hook command.
     """
+    from bajutsu.common.evidence.sink import RunArtifactWriter
+    from bajutsu.common.runner.hook_session import phases_of, run_tags, start_session
+
+    # Nothing at all for a target that declares no hook command — not even a writer. Constructing
+    # one creates its run directory, so building it before this check left every `record`, `crawl`
+    # and `repl` invocation with an empty `runs/<id>/` it never wrote to.
+    if not phases_of({eff.target: eff}, scenario_targets):
+        return None
+    # A writer even for a command that keeps no report: without one each command's log would be
+    # written to the raw area and deleted unread by the teardown, so a failed hook's own error
+    # message would never reach anyone. It also makes `mask: true` mean something here.
+    writer = (
+        RunArtifactWriter(run_dir or (runs_dir or Path()) / run_id, Redactor(eff.redact))
+        if runs_dir is not None or run_dir is not None
+        else None
+    )
     try:
-        return start_launch_server(eff)
-    except RuntimeError as e:
+        session = start_session(
+            {eff.target: eff},
+            run_id=run_id,
+            runs_dir=runs_dir,
+            run_dir=run_dir,
+            writer=writer,
+            named_commands=worker.named_commands if worker is not None else None,
+            base_dir=eff.base_dir,
+            scenario_targets=scenario_targets,
+            tags=run_tags(scenarios, eff.target),
+        )
+    except ValueError as e:  # two targets sharing a hook name
         typer.echo(str(e))
         if on_error is not None:
             on_error()
         raise typer.Exit(2) from None
+    if session is None:
+        return None
+    result = session.before_run()
+    if result.ok:
+        if teardown_at_exit:
+            atexit.register(lambda: _report_teardown(session))
+        return session
+    session.after_run("failure")
+    typer.echo(result.reason)
+    if on_error is not None:
+        on_error()
+    raise typer.Exit(2) from None
 
 
 def _build_alert_locator(eff: Effective, redactor: Redactor) -> ClaudeAlertLocator | None:

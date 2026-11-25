@@ -82,6 +82,10 @@ class Job:
     # dispatch from the binding and carried in the job spec, so the worker that runs the job applies
     # its own `commandExecution` policy to the config's commands.
     config_source: str = "operator"
+    # Where the job's scenario files came from when that is not the config's own source (BE-0501):
+    # a `scenariosArtifact` and a stored scenario are written by a client, not by whoever bound the
+    # config. Empty means the config's source.
+    scenario_source: str = ""
     # Worker-side only: the `commandExecution` modes of the worker that runs the job, read from its
     # `worker.yaml`. The shipped defaults apply until the worker sets them, so a job built any other
     # way still refuses an untrusted source's build rather than running it.
