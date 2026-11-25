@@ -52,7 +52,10 @@ up under `--runs` (default `runs`). The script reads `manifest.json`, or each `<
 no manifest exists. `--url` is required, and it is the run's URL that the import returned. The script
 refuses a URL whose path does not contain `/runs/<runId>/`, so the comment never pairs one run's verdict
 with another run's link. It also requires an `http` or `https` scheme and refuses whitespace, `<`, `>`,
-and `)`, so the link cannot break the comment's Markdown. `--archive-url` is optional, and it adds a line that links the run's zip.
+and `)`, so the link cannot break the comment's Markdown. It refuses a URL that carries userinfo
+(`user:password@`) or a query string, so a credential pasted into `--url` is never published to a
+public thread, for the same reason that `--marker` refuses a `bajutsu_` prefix below. `--archive-url`
+is optional, and it adds a line that links the run's zip.
 
 `--to` takes `owner/repo#NUMBER`, a pull request or issue URL, or `release:owner/repo@TAG`. A bare
 `#NUMBER` is refused, because in a fork workflow `origin` is the fork, and a guessed repository would
@@ -109,7 +112,7 @@ any write. The exit status says whether the post succeeded, and it never reflect
 
 The tests run against a fake GitHub HTTP server, so the gate needs no network. They cover the sticky
 comment (create, then edit, and a match across a carriage return), the `--marker` rules, a bare
-`#NUMBER`, a `--to` URL on another host, a `--url` for another run or with a broken character, escaping with the backtick padding, the length cuts, the release
+`#NUMBER`, a `--to` URL on another host, a `--url` for another run, with a broken character, or with userinfo or a query string, escaping with the backtick padding, the length cuts, the release
 block (replace and append), a missing release, the token order and the redirect rule, and the exit
 status. `docs/reporting.md` and its `docs/ja/` mirror gain a section that follows the upload script's
 section.
@@ -124,6 +127,11 @@ section.
 - **Upload the zip to GitHub.** [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md)
   proposed a release asset and a sticky comment. A release asset leaves an entry for each thread, and
   `gh --attach` refuses a zip. A separate change records that rejection.
+- **Reuse `scripts/gh_cli.py`.** That wrapper keeps the roadmap scripts' `gh` calls in one place, and
+  a second GitHub client in `scripts/` repeats what it was written to prevent: a fix to the token
+  order or to retries must now land twice. This script stays a single file that a team can copy out
+  of the repository, so it cannot import a sibling module, and it talks to the REST API with the
+  standard library. The tests pin the token order, and the cost of the copy is accepted.
 - **A GitHub Action.** [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md)
   covers a CI run. A script covers a run on a laptop, where no workflow exists. The two renderers stay
   separate on purpose: the Action links CI artifacts, and this script links a `serve` run, so their

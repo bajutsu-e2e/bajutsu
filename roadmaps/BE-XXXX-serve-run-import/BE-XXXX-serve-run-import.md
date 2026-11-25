@@ -41,9 +41,11 @@ and the run appears in that organization's history. A malformed zip gets `400`, 
 
 The route takes a raw `application/zip` body, as `/api/upload` does. It reuses `BoundedZipReceiver` and
 the two `_stream_bounded_body` helpers, the stdlib handler's and the FastAPI app's. The route adds its
-own cap, `MAX_RUN_IMPORT_BYTES`, of 2 GiB. That is twice the bundle cap, because screenshots and videos
-barely compress, and it stays under the 4 GiB uncompressed ceiling that `extract_bundle` enforces. Both
-backends declare the route, so a test of the route registry covers both.
+own cap, `MAX_RUN_IMPORT_BYTES`, of 2 GiB, twice the bundle cap, because screenshots and videos
+barely compress. The 4 GiB uncompressed ceiling that `extract_bundle` enforces is a separate bound,
+and the cap does not imply it: a 2 GiB body of logs and JSON can cross it. The route reports that
+rejection as an oversized run, and it does not reuse the function's zip-bomb wording. Both backends
+declare the route, so a test of the route registry covers both.
 
 ### Validating the run
 
@@ -60,7 +62,10 @@ always imports. `serve` serves a run's files from its own origin, so a page, an 
 SVG image that the client uploaded would run with the cookie of whoever opens it, an administrator
 included. The opt-in `rawTree` capture on Android writes two XML files, `hierarchy.raw.xml` and
 `hierarchy.parsed-input.xml` (`docs/evidence.md`). The route drops them, and their links in the report
-answer `404`. Both backends add `X-Content-Type-Options: nosniff` to every run-file response.
+answer `404`. `serve` already sends `X-Content-Type-Options: nosniff` on every response
+(`gate.HARDENING_HEADERS`). On a hosted object store, though, a run file is a `302` to the store's
+signed URL, so no header that `serve` sets reaches the bytes. The allowlist is therefore the whole
+defence there, and not a second layer behind a header.
 
 The route also drops the uploaded `report.html`, `junit.xml`, and `ctrf.json`, which every run writes,
 and it regenerates all three with `rebake(<staging>/<runId>)` from `bajutsu/common/report/load.py`, the re-render of
@@ -68,8 +73,9 @@ and it regenerates all three with `rebake(<staging>/<runId>)` from `bajutsu/comm
 
 The manifest and each `<sid>/result.json` name artifacts, and the report template puts those names
 into `href` and `src` attributes. Every such path must therefore be a relative POSIX path with no
-scheme, no leading `/`, and no `..` segment, and it must name a file that the zip holds. Any other
-value answers `400`.
+scheme, no leading `/`, and no `..` segment, and it must name an entry that the zip holds. The check
+reads the zip's full entry list, before the extension filter above, so an artifact that the filter
+drops is not a `400`. Its link answers `404` instead. Any other value answers `400`.
 
 The route then extracts the zip with `extract_bundle` into a fresh staging directory. That call already
 rejects zip-slip paths, symlinks, too many entries, and a compression ratio that suggests a zip bomb.
@@ -78,24 +84,33 @@ Any failure answers `400` and removes the staging directory.
 ### Reserving the id
 
 A run id has only second granularity, and the history keys it globally, so two machines, or two
-organizations, can mint the same one. The route therefore reserves the id before it places any file, after it has
-checked the other places that can hold the id. It answers `409` when the target prefix already holds
-objects or a `.deleted` tombstone. Without a repository, the tree is the history, and the route
-answers `409` when `runs_dir/<runId>` or `runs_dir/.trash/<runId>` exists.
+organizations, can mint the same one. The route therefore reserves the id before it places any file. It first purges a stale reservation
+of its own organization, then checks the other places that can hold the id, and then reserves. The
+stale purge comes first, because an orphan that a crash left would otherwise fail every retry. It
+answers `409` when the target prefix already holds objects or a `.deleted` tombstone. Without a
+repository, the tree is the history, and the route answers `409` when `runs_dir/<runId>` or
+`runs_dir/.trash/<runId>` exists.
 
-The reservation calls `_record_run(..., if_absent=True)` directly, made public for this use, and not
-`persist_run`, which swallows every exception. `_record_run` gains a `status` argument, because it
-writes `done` today. The route reserves with the status `importing`, and it flips the row to `done`
-after the manifest lands.
+The reservation is the `if_absent` insert of `_record_run(..., if_absent=True)`, called directly and
+made public for this use, and not `persist_run`, which swallows every exception. `_record_run` gains a
+`status` argument, because it writes `done` today. The route reserves with the status `importing`.
+After the manifest lands, it flips the row to `done` with a compare-and-set that lands only while
+the row is still the `importing` reservation that this request wrote. If the insert reports that a
+live row exists, the route answers `409`, with the same body whichever organization holds the id, so
+the answer discloses nothing. Only the insert closes the race between two concurrent imports. A
+failure while it writes the row answers `5xx`. The route never overwrites a run, and a rename would
+need a rewrite of the manifest, so this item does not offer one.
 
-Two changes make that status safe. `list_runs`, on the `Repository` protocol and in
+Three changes make that status safe. `list_runs`, on the `Repository` protocol and in
 `sql_repository.py`, gains a filter that leaves out `importing` rows, so every history and
-flakiness caller inherits it. A crash between the two steps leaves an `importing` row, so before it
-reserves, the route calls `get_run(run_id)`. If the row's status is `importing` and its `created_at`
-is more than an hour old, the route calls `purge_run(run_id, org_id=row.org_id)`. If the call reports that a live row exists, the route answers `409`, with the same body
-whichever organization holds the id, so the answer discloses nothing. A failure while it writes the
-row answers `5xx`. The route never overwrites a run, and a rename would need a rewrite of the
-manifest, so this item does not offer one.
+flakiness caller inherits it. A crash between the two steps leaves an `importing` row, and
+possibly objects under its prefix. The stale purge in the route handles the caller's own
+organization. It calls `get_run(run_id)`, and when the row belongs to the caller's organization, has
+the status `importing`, and has a `created_at` more than an hour old, it removes the orphaned
+objects with `delete_keys(list_keys(<prefix><runId>/))` and calls `purge_run(run_id, org_id=...)`,
+so the id is reusable. `get_run` is not scoped to an organization, so the route never purges another
+organization's row. A sweep at server start, which may cross tenants, purges the stale
+`importing` rows of every organization the same way and removes leftover staging directories.
 
 ### Placing the run
 
@@ -157,8 +172,10 @@ The tests cover a valid import on a local store and on a fake object store, and 
 run tree. They cover each rejection: a bad zip, a traversal path, a symlink, a missing manifest, a missing or malformed `scenario.yaml`, a bad run id, a manifest `runId` that differs from the directory name, a `.deleted` entry, and an artifact path with a scheme or a `..` segment. They also cover
 the dropped entries: an HTML, SVG, or XML entry in any letter case is dropped and listed in the reply.
 The real run tree includes a `rawTree` capture, and its two XML files are dropped. On the hosted
-store, `GET /runs/<runId>/report.html` returns `200` after the import. A stale `importing` row is
-purged. They also cover the `409` collision across organizations and under two concurrent imports,
+store, `GET /runs/<runId>/report.html` returns `200` after the import. A stale `importing` row of the caller's
+organization is purged with its orphaned objects, and another organization's row is left alone. The
+flip to `done` is a compare-and-set, and a zip that is too large once uncompressed gets the
+oversized-run message. They also cover the `409` collision across organizations and under two concurrent imports,
 the rollback after a failed placement, the role check, the key path, the refusal of a plain `http://`
 server, and the redirect rule. The route registry test and the stdlib import guard cover the new route.
 `docs/self-hosting.md`, `docs/cli.md`, and their `docs/ja/` mirrors describe the route. `docs/reporting.md`
@@ -175,10 +192,9 @@ and its mirror gain a section on the upload script.
 - **Reuse `/api/upload`.** That route binds a configuration bundle to a session. Its machinery fits the
   receiving, and its placement does not fit a run.
 - **Serve the imported files under a sandbox policy.** A `Content-Security-Policy: sandbox` header
-  would let uploaded pages stay. An allowlist of passive types at the door is simpler, and a mistake in
-  the serving code then has no active file to expose. The `nosniff` header backs the allowlist up.
-- **A share link.** It would let a reviewer outside the organization open a run. It needs a design of
-  its own for expiry and revocation, and a later item can add it.
+  would let uploaded pages stay. The `file://` store already adds it on its object route, but a hosted
+  store answers a run file with a `302` to a signed URL, and `serve` cannot set a header on those
+  bytes. An allowlist of passive types at the door works on both stores.
 
 ## Progress
 
@@ -187,8 +203,7 @@ and its mirror gain a section on the upload script.
 > (oldest first), linking the PRs.
 
 - [ ] The route, receiving: the raw body, the cap, both backends, and the entry-list checks, including the extension allowlist with its dropped-entry list, the tombstone refusal, the artifact-path checks, and the `scenario.yaml` and `runId` checks.
-- [ ] Serving: the `nosniff` header on run-file responses in both backends.
-- [ ] The route, storing: the collision checks, the `importing` status with the `list_runs` filter and the stale purge, the regeneration of the report files, the placement on a local and a hosted store, the rollback, and the recording.
+- [ ] The route, storing: the collision checks, the `importing` status with the `list_runs` filter, the compare-and-set flip, the stale purge of the caller's organization and the start-up sweep, the regeneration of the report files, the placement on a local and a hosted store, the rollback, and the recording.
 - [ ] Authorization: the explicit editor case before the early branch, and the key allowlist.
 - [ ] The upload script: the zip, the key from the environment or a file, the transport rules, and the URL output.
 - [ ] Tests: the cases above, the route registry, and the stdlib import guard.

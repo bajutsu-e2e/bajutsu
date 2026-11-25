@@ -83,12 +83,14 @@ keeps working. A key that fails the lookup, has expired, or has been revoked get
 about which part failed.
 
 A valid key yields a new kind of principal. This item adds the value `api-key` to `PrincipalKind`
-and a `role` field to `Principal`, and the bearer check builds it, not the session store:
-`Principal(kind="api-key", identity="api-key:<id>", org, role)`. Both backends branch on that kind
-before the machine branch and before `forbidden_for_role`, which reads a user row that a key does not
-have. Both backends put the organization into the per-request slot that `_machine_org` uses, so
-`state.org_for` returns the key's organization and never `default`. Both backends clear that slot on
-every request, as the code already does for machine sessions.
+and a `role` field to `Principal`. Only the bearer check ever builds one. `kind_from_stored` keeps
+narrowing a *stored* kind to `human` or `machine` alone, and `Principal.from_stored` never reads
+`role`, so a session row cannot claim the key kind and skip the role gate below. The form is
+`Principal(kind="api-key", identity="api-key:<id>", org, role)`. Both backends branch on that
+kind before the machine branch and before `forbidden_for_role`, which reads a user row that a key
+does not have. Both backends put the organization into the per-request slot that `_machine_org`
+uses, so `state.org_for` returns the key's organization and never `default`. Both backends clear
+that slot on every request, as the code already does for machine sessions.
 
 The role check runs when `required_role(method, path)` returns a role. The request passes only when
 `role_allows(key.role, that role)` is true. The audit and operations log actor is `api-key:<id>`.
@@ -106,8 +108,10 @@ there.
 ### Audit and logs
 
 Issuing, revoking, and each use write an audit event that names the key identifier and never the
-secret. The last-used time updates at most once a minute for each key. The key never appears in a URL,
-a log line, or an error message.
+secret. `audit_log.actor_id` is a foreign key to `users.id`, and a key has no user row, so
+`_record_audit` gains an `api-key` branch beside its machine one. The row carries a null
+`actor_id`, and the key identifier goes into `detail`. The last-used time updates at most once a
+minute for each key. The key never appears in a URL, a log line, or an error message.
 
 ### Tests and documentation
 
