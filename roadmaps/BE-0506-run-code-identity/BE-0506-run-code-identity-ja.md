@@ -53,23 +53,23 @@ runner は `provenance` に、target 名をキーにした `targets` の対応�
 | `appSource.commit` | アプリのソースリポジトリの完全な commit ハッシュ |
 | `appSource.uncommitted` | ソースツリーに未コミット変更があれば `true` |
 
-`toolSource` の 2 つのキー `commit` と `uncommitted` は、Bajutsu 自身のチェックアウトを表します。`provenance` スタンプの最上位に置きます。
+`toolSource` オブジェクトは、Bajutsu 自身のチェックアウトを表します。`provenance` スタンプの最上位に置きます。このオブジェクトがあるときは、キー `source` と `commit` を必ず持ちます。`source` は、識別情報の出どころを示し、値は `checkout` か `build-arg` です。`uncommitted` を持つのは、`source` が `checkout` のときだけです。ビルド時の commit には、比べる作業ツリーがありません。チェックアウトと `BAJUTSU_BUILD_COMMIT` のどちらもないときは、`toolSource` 自体を省きます。
 
-`gitRevision` の意味と値は、変えません。これを読む既存の処理は、そのまま動きます。serve のジョブ一覧も、読み手の 1 つです（`bajutsu/serve/jobs.py:653`）。新しいキーのない run は、古い run として読みます。manifest の `schemaVersion` は、18 から 19 に上がります。
+`gitRevision` の意味と値は、変えません。これを読む既存の処理は、そのまま動きます。serve のジョブ一覧も、読み手の 1 つです。その関数 `_run_provenance`（`bajutsu/serve/jobs.py:836`）が、スタンプをデータベースのレコードに写します。新しいキーのない run は、古い run として読みます。manifest の `schemaVersion` は、18 から 19 に上がります。
 
 ### 各値の取得方法
 
 **バイナリのハッシュ。** runner は target ごとに、解決済みの `app.path` にあるバイナリを読みます。読むのは、`build_app`（`bajutsu/common/runner/build.py:41`）を実行した後です。ハッシュは、run が起動するバイナリそのものを対象にします。
 
-ファイルは、バイト列をストリームで読んでハッシュします。ディレクトリはツリーとして扱います。runner は通常ファイルをすべて、相対パスの昇順に並べます。ファイルごとに 1 行、`<相対パス>\0<ファイルのハッシュ>\n` をハッシュします。シンボリックリンクは、リンク先の文字列を使います。コード署名のファイルも含めます。再署名したビルドは、別の成果物だからです。
+ファイルは、バイト列をストリームで読んでハッシュします。ディレクトリはツリーとして扱います。runner は、通常ファイルとシンボリックリンクをすべて、相対パスの昇順に並べます。リンクはたどりません。エントリごとに 1 行、`<相対パス>\0<種別>\0<エントリのハッシュ>\n` をハッシュします。種別は `file` か `link` です。通常ファイルは、バイト列のハッシュを使います。シンボリックリンクは、リンク先の文字列のハッシュを使います。コード署名のファイルも含めます。再署名したビルドは、別の成果物だからです。
 
-**バージョン。** iOS の `.app` は、バンドルの `Info.plist` を `plistlib` で読みます。Android は、既存の `adb` 環境を通して、インストール済みパッケージに問い合わせます。該当するコードは `bajutsu/common/backend_cli/adb/` にあります。問い合わせの結果は、`versionName` と `versionCode` です。値は、デバイスが実際に動かしたものを表します。どちらの読み取りにも、Large Language Model (LLM) は関与しません。
+**バージョン。** iOS の `.app` は、バンドルの `Info.plist` を `plistlib` で読みます。Android は、`app.path` の `.apk` を zip アーカイブとして開きます。中のバイナリ形式の `AndroidManifest.xml` は、`bajutsu/common/` に置く小さなデコーダで解釈します。デコーダは、`versionName` と `versionCode` を読みます。依存を足さず、Android の Software Development Kit (SDK) も呼びません。バージョンは、ハッシュと同じファイルから取れます。パッケージを共有する target も、それぞれ自分の `.apk` の値を報告します。インストール後にデバイスが返すバージョンは、別の事実です。この項目は、スタンプに含めません。どちらの読み取りにも、Large Language Model (LLM) は関与しません。
 
 **ソースの commit。** 新しい任意の target キー `sourceRoot` で、アプリのソースリポジトリを指します。runner は、`app.path` と同じく、設定のルートに対してこのキーを解決します。そこで `git rev-parse HEAD` と `git status --porcelain` を実行します。commit が表すのは作業ツリーであって、バイナリではありません。スタンプは両者を別々に記録するので、食い違いが読み手に見えます。
 
 **ツール自身の commit。** runner は、Bajutsu 自身のチェックアウトを、`server_checkout()` が使うヘルパーで読みます。このヘルパーは [BE-0272](../BE-0272-serve-version-badge/BE-0272-serve-version-badge-ja.md) が導入しました。ヘルパーは、カレントディレクトリではなく、パッケージのディレクトリを起点に Git を実行します。ヘルパーを `bajutsu/serve/operations/version.py` から `bajutsu/common/` に移します。runner は、`serve` への依存なしで import できます。
 
-pip でインストールした版には、チェックアウトがありません。このときは、ビルド時の `BAJUTSU_BUILD_COMMIT` に切り替えます。この値は [BE-0277](../BE-0277-docker-build-commit-badge/BE-0277-docker-build-commit-badge-ja.md) が加えました。`toolSource` は `source: build-arg` を記録し、`uncommitted` は付けません。
+pip でインストールした版には、チェックアウトがありません。このときは、ビルド時の `BAJUTSU_BUILD_COMMIT` に切り替えます。この値は [BE-0277](../BE-0277-docker-build-commit-badge/BE-0277-docker-build-commit-badge-ja.md) が加えました。`toolSource` は `source: build-arg` を記録し、`uncommitted` は付けません。実際のチェックアウトなら、`source: checkout` を記録します。
 
 runner がチェックアウトとして受け入れるのは、そのチェックアウトが Bajutsu のパッケージディレクトリを追跡しているときです。確認には、パッケージの `__init__.py` に対する `git ls-files --error-unmatch` を使います。別のリポジトリの内側にあるインストールは、チェックアウトなしとして扱います。アプリのツリー配下の virtualenv が一例です。この確認がないと、`git` が site-packages から親を遡ります。アプリの commit が、Bajutsu のものとして記録されます。
 
@@ -86,7 +86,8 @@ runner がチェックアウトとして受け入れるのは、そのチェッ�
 | `path-missing` | `app.path` にバイナリがない |
 | `read-error` | runner がバイナリを読めなかった |
 | `plist-unreadable` | `Info.plist` を解釈できなかった |
-| `adb-query-failed` | パッケージへの `adb` の問い合わせがエラーになった |
+| `apk-unreadable` | `.apk` を zip として開けない、またはマニフェストがない |
+| `manifest-unparsable` | `.apk` 内のマニフェストをデコードできなかった |
 | `not-a-git-repo` | `sourceRoot` が Git チェックアウトの内側にない |
 | `git-unavailable` | `git` コマンドがない、またはタイムアウトした |
 | `status-read-failed` | `git status` がエラーになった |
@@ -116,7 +117,7 @@ runner は、各 target のスタンプを run ごとに 1 回計算します。
 | # | やること |
 |---|---|
 | 1 | Git の識別情報を読むヘルパーを `bajutsu/common/` に移し、ディレクトリ引数を足す |
-| 2 | バイナリのハッシュ計算と、iOS と Android のバージョン読み取りを加える |
+| 2 | バイナリのハッシュ計算、iOS のバージョン読み取り、Android のマニフェストデコーダを加える |
 | 3 | 任意の target キー `sourceRoot` を設定スキーマに加える |
 | 4 | 各 target のスタンプを run ごとに 1 回計算し、`schemaVersion` を 19 に上げる |
 | 5 | 欠落も含めて、スタンプを `ctrf.json` と `report.html` に出す |
@@ -124,7 +125,7 @@ runner は、各 target のスタンプを run ごとに 1 回計算します。
 
 2 では、値か、固定集合の理由コードのどちらかを返します。3 では、スキーマのテストを書きます。4 では、`targets` の対応表を pipeline と pool の `provenance` に渡します。6 では、`provenance` に触れる記述を更新します。
 
-各単位は、自分のユニットテストを持ちます。ハッシュ計算のテストは、小さなディレクトリのフィクスチャを作ります。ファイル名の変更、1 バイトの編集、シンボリックリンクの追加が、それぞれハッシュを変えることを確かめます。Git 読み取りのテストは、パッケージディレクトリを無関係なリポジトリの内側に置きます。`toolSource` が生まれないことを確かめます。
+各単位は、自分のユニットテストを持ちます。ハッシュ計算のテストは、小さなディレクトリのフィクスチャを作ります。ファイル名の変更、1 バイトの編集、シンボリックリンクの追加が、それぞれハッシュを変えることを確かめます。内容が同じファイルとリンクが、別のハッシュになることも確かめます。デコーダのテストは、小さな `.apk` のフィクスチャと、途中で切れたものを与えます。Git 読み取りのテストは、パッケージディレクトリを無関係なリポジトリの内側に置きます。`toolSource` が生まれないことを確かめます。
 
 欠落のテストは、存在しないバイナリと、リポジトリの外にある `sourceRoot` を target に指定します。run が成功のまま終わることを確かめます。各キーが `null` で、`unavailable` が理由を示すことも確かめます。マルチ target のテストは、宣言したすべての target が自分のエントリを持つことを確かめます。
 
