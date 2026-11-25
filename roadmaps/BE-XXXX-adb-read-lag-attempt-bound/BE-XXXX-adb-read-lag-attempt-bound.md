@@ -26,12 +26,13 @@ eight-second bound covers more attempts on a quiet machine than on a loaded one.
 gets three. The count of chances to observe a caught-up tree tracks machine speed. Load then converts into a
 changed verdict in place of a longer run.
 
-We propose three changes. The device reports on the wire which exit its own settle took. The three
-exits it names: a closed settle, a spent dump cap, and a spent budget. The driver counts **completed
-device waits** alongside seconds. Each bound ends on the later of the two. A slower machine then spends more wall-clock and still
-reaches the same answer. A resolve raises a stall when its barrier ran out unclosed and the device
-reported the dump cap. Such a resolve today reaches the scroll recovery instead. That recovery pans the target away, then names the
-selector as the cause.
+We propose three changes. The device reports on the wire which exit its own settle took. It names
+three exits: a closed settle, a spent dump cap, and a spent budget. The driver counts **completed
+device waits** alongside seconds. Each bound ends on the later of the two. A
+slower machine then spends more wall-clock and still reaches the same answer. A resolve raises a
+stall when its barrier ran out unclosed and the device reported the dump cap. Such a resolve today
+reaches the scroll recovery instead. That recovery pans the target away, then names the selector as
+the cause.
 
 ## Motivation
 
@@ -117,14 +118,15 @@ second exit can arrive after a single dump, and it proves nothing about the scre
 reports both the same way today, as a line in the Android log.
 
 Unit 1 turns the distinction into a response header. The header names the exit: settled, dump cap
-reached, or budget spent. The settle behind that header first drops SystemUI's decor nodes. Today's
-`settledDump` compares the whole dumped hierarchy. That hierarchy carries the status bar's clock and
-icons. A minute tick could thus exhaust the dump cap on a quiet app screen. The device already
-narrows
-that way for `/act`. The driver strips the same decor nodes out of every read it parses. The `/act`
-reply carries the header too. The tree a confirmed gesture brings back goes through the same helper
-under a tighter budget. `HierarchyRead` holds the answer once for both
-paths. The header is additive. An older server sends none, and the driver reads a missing header
+reached, or budget spent. The settle behind that header drops SystemUI's decor nodes from its
+comparison. The body it returns still carries each window. Today's `settledDump` compares the whole
+dumped hierarchy. That hierarchy carries the status bar's clock and icons. A minute tick could thus
+exhaust the dump cap on a quiet app screen. The narrowing stays in the comparison for a reason. The
+driver reads the heads-up banner off that decor before it strips the decor out. A device dropping it
+from the wire would leave the notification-banner guard with nothing to read. The device narrows its
+own comparison that way for `/act`. The `/act` reply carries the header too. The tree a confirmed
+gesture brings back goes through the same helper under a tighter budget. `HierarchyRead` holds the
+answer once for both paths. The header is additive. An older server sends none, and the driver reads a missing header
 the way it reads today's answer. The surfaces are the resident server, its `adb_resident` client
 package, and the `/act` reply.
 
@@ -245,9 +247,9 @@ Each job gets its own virtual machine. Narrowing the matrix thus changes no sing
 emulator settings leave nothing meaningful on the table either. Every lane runs headless, with the
 software renderer and no audio. Every lane turns off the boot animation and both cameras. Every lane
 disables animations at the action. The `pool (adb)` lane also zeroes the three animation scales on
-each of its two devices. The action reaches the emulator it booted alone, which is why that lane
-needs the extra step. Every lane caches an Android Virtual Device (AVD) and saves no new snapshot. Optional `dumpsys cpuinfo` polling stays off by
-default for the observer effect it would add. The `pool (adb)` lane is the heaviest one. Its one load
+each of its two devices. The action reaches no emulator but its own, which is why that lane needs
+the extra step. Every lane caches an Android Virtual Device (AVD) and saves no new snapshot. Optional
+`dumpsys cpuinfo` polling stays off by default for the observer effect it would add. The `pool (adb)` lane is the heaviest one. Its one load
 lever is the `--workers 2` parallelism the lane exists to exercise. That lane already raises its wait
 floor to 30 seconds for the slower first render. A wait floor is a condition wait, and thus the right
 instrument. Raising the core count on a single-emulator lane would add contention with the driver's
@@ -257,8 +259,8 @@ own Python. It would also invalidate an AVD cache key pinned to the hardware pro
 
 The evidence holds no case this would repair. In both red lanes the step reporting the miss had not
 injected its gesture yet. The three warnings come from the recovery's own pans. The verdict belongs
-to a resolve that found nothing. A retry would also re-fire a landed gesture, which corrupts state on
-a toggle. [`roadmaps/README.md`](../README.md) already places automatic retry in tension with
+to a resolve that found nothing. A retry would also inject an already-applied gesture a second time.
+That corrupts state on a toggle. [`roadmaps/README.md`](../README.md) already places automatic retry in tension with
 determinism-first. It confines retry to quarantine use if the project adopts it at all, because
 retry hides flakiness.
 
