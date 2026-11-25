@@ -601,8 +601,12 @@ def release_tag(number: int) -> str:
 
 
 def asset_name(run_id: str, path: str) -> str:
-    """A release asset name unique per run and file, so a rerun never needs to delete one."""
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", f"{run_id}-{path}").strip("-")
+    """A release asset name unique per run and file, so a rerun never needs to delete one.
+
+    The zip of the run is named for the run already, so it takes no second prefix.
+    """
+    joined = path if path == f"{run_id}.zip" else f"{run_id}-{path}"
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", joined).strip("-")
 
 
 def _is_device_log(path: str) -> bool:

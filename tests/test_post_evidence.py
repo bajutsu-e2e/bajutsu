@@ -498,11 +498,11 @@ def test_release_sink_creates_a_draft_prerelease(github: FakeGitHub, run_dir: Pa
     assert names == [
         "20261125-101530-02-login-tap-after.png",
         "20261125-101530-02-login-video.mp4",
-        "20261125-101530-20261125-101530.zip",
+        "20261125-101530.zip",
     ]
     body = github.comments[0]["body"]
     assert "![failing step](https://github.test/dl/20261125-101530-02-login-tap-after.png)" in body
-    assert "[Whole run](https://github.test/dl/20261125-101530-20261125-101530.zip)" in body
+    assert "[Whole run](https://github.test/dl/20261125-101530.zip)" in body
     assert _tree_digest(run_dir) == before
 
 
@@ -1001,13 +1001,11 @@ def test_attach_also_uploads_the_run_zip_and_links_it(attach: Attach) -> None:
         True,
         "false",
     )
-    assert [a["name"] for a in release["assets"]] == ["20261125-101530-20261125-101530.zip"]
-    with zipfile.ZipFile(
-        io.BytesIO(attach.github.blobs["20261125-101530-20261125-101530.zip"])
-    ) as z:
+    assert [a["name"] for a in release["assets"]] == ["20261125-101530.zip"]
+    with zipfile.ZipFile(io.BytesIO(attach.github.blobs["20261125-101530.zip"])) as z:
         assert "manifest.json" in z.namelist()
     body = attach.calls()[0]["body"]
-    assert "[Whole run](https://github.test/dl/20261125-101530-20261125-101530.zip)" in body
+    assert "[Whole run](https://github.test/dl/20261125-101530.zip)" in body
     assert _tree_digest(attach.run_dir) == before
 
 
@@ -1050,3 +1048,9 @@ def test_attach_dry_run_shows_the_zip_and_the_release_plan(attach: Attach) -> No
     assert "Run zip, as a release asset: 20261125-101530.zip" in out
     assert "Release: create 'bajutsu-evidence-7' as a draft prerelease" in out
     assert "[Whole run](<the run zip's release asset URL>)" in out
+
+
+def test_the_run_zip_asset_is_named_for_the_run_once() -> None:
+    assert pe.asset_name("20261125-101530", "20261125-101530.zip") == "20261125-101530.zip"
+    assert pe.asset_name("r1", "02-login/tap/after.png") == "r1-02-login-tap-after.png"
+    assert pe.asset_name("", "after.png") == "after.png"
