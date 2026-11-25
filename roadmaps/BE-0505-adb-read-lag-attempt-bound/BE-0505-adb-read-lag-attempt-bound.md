@@ -26,9 +26,8 @@ eight-second bound covers more attempts on a quiet machine than on a loaded one.
 gets three. The count of chances to observe a caught-up tree tracks machine speed. Load then converts into a
 changed verdict in place of a longer run.
 
-We propose two changes. The device reports on the wire which exit its own settle took. It names
-three exits: a closed settle, a spent dump cap, and a spent budget. The driver counts **completed
-device waits** alongside seconds. Each bound ends on the later of the two. A slower machine then
+We propose two changes. The device reports on the wire whether its own settle closed. The
+driver counts **completed device waits** alongside seconds. Each bound ends on the later of the two. A slower machine then
 spends more wall-clock and still reaches the same answer.
 
 ## Motivation
@@ -75,8 +74,9 @@ show a different cause.
 - Neither log holds the line for a spent dump cap.
 
 This item thus claims no repair for those lanes. Pull request
-[#2525](https://github.com/bajutsu-e2e/bajutsu/pull/2525) waits out an
-install's broadcasts before the launch.
+[#2525](https://github.com/bajutsu-e2e/bajutsu/pull/2525) waits an install's
+broadcasts out before the launch. The log order points to those broadcasts as the trigger of the
+relaunch. That link is an inference from one occurrence per lane, not a reproduction.
 
 ## Detailed design
 
@@ -90,7 +90,7 @@ attempts rather than losing them.
 
 ### Work breakdown (`MECE`)
 
-- **Unit 1** — the resident server reports which exit its settle took.
+- **Unit 1** — the resident server reports whether its settle closed.
 - **Unit 2** — a tree the device could not settle stays away from the selector resolve.
 - **Unit 3** — the read-lag barrier gains a floor of four completed device waits.
 - **Unit 4** — the settle poll gains a floor of four polling reads.
@@ -101,15 +101,14 @@ attempts rather than losing them.
 
 #### Unit 1 names the answer the driver lacks
 
-The server's `settled` helper has two expiry exits, and the pair means opposite answers. One exit
-comes after the full dump cap with no two consecutive reads agreeing. That exit is positive evidence
-that the tree kept changing. The other comes when the request's own wall-clock budget runs out. That
-second exit can arrive after a single dump, and it proves nothing about the screen. The helper
-reports both the same way today, as a line in the Android log.
+The server's `settled` helper has two expiry exits. One comes after the full dump cap with no two
+consecutive reads agreeing. The other comes when the request's own wall-clock budget runs out. Either
+exit returns a dump the settle never confirmed. The helper says so in a line in the Android log
+alone.
 
-Unit 1 turns the distinction into a response header. The header names the exit: settled, dump cap
-reached, or budget spent. The settle behind that header drops SystemUI's decor nodes from its
-comparison. The body it returns still carries each window. Today's `settledDump` compares the whole
+Unit 1 turns that fact into a response header with two values: settled or unsettled. The driver acts
+on that one distinction, so the header carries no more. The settle behind that header drops
+SystemUI's decor nodes from its comparison. The body it returns still carries each window. Today's `settledDump` compares the whole
 dumped hierarchy. That hierarchy carries the status bar's clock and icons. A minute tick could thus
 exhaust the dump cap on a quiet app screen. The narrowing stays in the comparison for a reason. The
 driver reads the heads-up banner off that decor before it strips the decor out. A device dropping it
@@ -176,8 +175,8 @@ supports the new verdict, so this item drops it. The scroll recovery keeps today
 
 ### Verification
 
-- A fake channel reporting the dump-cap exit gets a re-read before any selector resolve.
-- A fake channel reporting the budget-spent exit gets the same re-read.
+- A fake channel reporting an unsettled tree gets a re-read before any selector resolve.
+- A fake channel reporting a settled tree takes no more reads than today.
 - A server sending no header keeps today's behavior.
 - The same fake channel under a driver clock scaled by ten yields the unscaled run's verdict.
 - A backend reporting no read lag keeps its single-read behavior, as BE-0339 Unit 1 requires.
@@ -256,7 +255,7 @@ addresses it. The relaunch behind the other occurrences also stays outside this 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — the resident server reports which exit its settle took
+- [ ] Unit 1 — the resident server reports whether its settle closed
 - [ ] Unit 2 — a tree the device could not settle stays away from the selector resolve
 - [ ] Unit 3 — the read-lag barrier gains a floor of four completed device waits
 - [ ] Unit 4 — the settle poll gains a floor of four polling reads
@@ -271,6 +270,7 @@ Log:
 - 2026-11-26 — Read the device logs of both red lanes to size the withdrawn unit.
   Both show an activity relaunch and no dump-cap exit.
   Withdrew unit 5 and removed the claim of repairing those lanes.
+  Unit 1 now reports whether the settle closed, since nothing else reads which exit ran.
 
 ## References
 
