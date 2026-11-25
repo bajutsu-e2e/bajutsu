@@ -380,7 +380,9 @@ Log:
   the run loop holds no path for a scenario; a `Scenario.source_path` would supply one. A
   `${hooks.*}` key the command never wrote fails the *scenario* rather than the individual step,
   since the substitution primitive leaves an unknown token intact by design and failing per step
-  would change how `${vars.*}` behaves too.
+  would change how `${vars.*}` behaves too. The difference shows only for a token in a branch that
+  never runs, where the stricter form fails a scenario the item's wording would have passed. The
+  author reviewed that trade-off and kept it, so it is a settled choice rather than an open gap.
 
 ## References
 
