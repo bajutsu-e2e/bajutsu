@@ -71,8 +71,10 @@ _GRID_CELL_POLL_SECONDS = 0.3
 # iOS reports every frame and coordinate in points, so that is the space stamped on this backend's
 # actuation records.
 _UNIT = "point"
-# How long `paste`, `select_all`, and `copy_selection` wait for an edit-menu item to appear; the
-# menu animates in within a second.
+# How long `paste`, `select_all`, and `copy_selection` wait for an edit-menu item to appear, and
+# then for it to become hittable; the menu animates in within a second. The same budget bounds each
+# condition in turn rather than the second getting a knob of its own, so an item that appears and
+# never becomes hittable costs up to twice this (issue #2521).
 _EDIT_MENU_TIMEOUT = 5.0
 # How long they look for a menu their focusing tap raised before long-pressing for one instead.
 _EDIT_MENU_AFTER_TAP = 1.0
@@ -1219,7 +1221,7 @@ class XcuitestDriver:
                 f"{_EDIT_MENU_TIMEOUT:g}s (a toolkit that draws its own selection toolbar may offer "
                 f"none); edit-menu labels on screen: {self._edit_menu_labels_on_screen()}"
             )
-        self.tap({"label": label})
+        self._tap_edit_menu_item(label, item="Copy", step="copy")
 
     def paste(self, sel: base.Selector) -> None:
         # Through the edit menu, not Cmd+V, which pastes nothing from another process's clipboard
@@ -1240,7 +1242,7 @@ class XcuitestDriver:
                 f"{_EDIT_MENU_TIMEOUT:g}s ({cause}); edit-menu labels on screen: "
                 f"{self._edit_menu_labels_on_screen()}"
             )
-        self.tap({"label": label})
+        self._tap_edit_menu_item(label, item="Paste", step="paste")
 
     def _select_all(self, sel: base.Selector, baseline: Counter[str], step: str) -> None:
         label = self._raise_edit_menu_item(sel, SELECT_ALL_MENU_LABELS, "Select All", baseline)
@@ -1250,7 +1252,7 @@ class XcuitestDriver:
                 f"{_EDIT_MENU_TIMEOUT:g}s (an empty field offers none); edit-menu labels on "
                 f"screen: {self._edit_menu_labels_on_screen()}"
             )
-        self.tap({"label": label})
+        self._tap_edit_menu_item(label, item="Select All", step=step)
 
     def _raise_edit_menu_item(
         self,
@@ -1279,6 +1281,39 @@ class XcuitestDriver:
                 labels, baseline, _EDIT_MENU_TIMEOUT, item, lower=False
             )
         return label
+
+    def _tap_edit_menu_item(self, label: str, *, item: str, step: str) -> None:
+        """Tap the edit-menu item `label` names, once XCTest's own `isHittable` accepts it.
+
+        The menu animates in, so its item is in the accessibility tree a frame or two before it is
+        hittable. `tap` treats a not-hittable element as terminal, which is right for a tap the
+        orchestrator issued but leaves nothing above a menu the driver itself raised one call
+        earlier (issue #2521), so hittability is the condition waited for here rather than the
+        existence `_new_edit_menu_label` answers for. A condition wait, never a pause (prime
+        directive 2): `is_tappable` resolves fresh each tick and still raises on an ambiguous label.
+
+        Raises:
+            ElementNotTappable: The item never became hittable. Said distinctly from the menu
+                showing no new item at all, since the two point at different causes.
+        """
+        refusal: base.ElementNotTappable | None = None
+        for _ in base.deadline_ticks(_EDIT_MENU_TIMEOUT, 0.1, 0.5):
+            if not self.is_tappable({"label": label}):
+                continue
+            try:
+                self.tap({"label": label})
+            except base.ElementNotTappable as exc:
+                # The probe and the tap are two round trips, with a whole `/elements` dump between
+                # them, so the menu can refuse in that window. That is the same race the probe
+                # absorbs, so it is retried to the same deadline rather than surfaced.
+                refusal = exc
+            else:
+                return
+        raise base.ElementNotTappable(
+            f"{step}: the edit menu's {item} item ({label!r}) never became hittable within "
+            f"{_EDIT_MENU_TIMEOUT:g}s (something covering the menu, or a menu that left while the "
+            f"wait ran); edit-menu labels on screen: {self._edit_menu_labels_on_screen()}"
+        ) from refusal
 
     def _edit_menu_label_counts(self) -> Counter[str]:
         """How many on-screen elements carry each edit-menu label the driver taps, right now."""
