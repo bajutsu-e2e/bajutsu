@@ -1005,7 +1005,7 @@ endpoint allowlist, never by viewer / editor / admin. An entry is the bare `"<ow
 or an object carrying that name plus an `environment`, `ref`, or `workflowRef` bound that narrows it
 further. Setting it up — the audience an operator must configure, the exchange endpoint, and the
 name-recycling and fork hazards — is covered in
-[Self-hosting](self-hosting.md#authenticating-a-ci-job-optional-be-0414).
+[Self-hosting](self-hosting.md#authenticating-a-ci-job-be-0414).
 
 At OAuth login users are assigned their org — an explicit `members` entry first, then a `githubOrgs`
 match from their GitHub org memberships, then a `githubTeams` or `editorTeams` match from their direct
@@ -1023,7 +1023,7 @@ in regardless (below). The roles above viewer come from Team membership:
 
 - A direct member of any of the org's `editorTeams` is promoted to **editor**.
 - A member of one of the server-wide admin Teams (`BAJUTSU_OAUTH_ADMIN_TEAMS`) is **admin**.
-  [Self-hosting](self-hosting.md#2-add-github-oauth-optional) describes the setting.
+  [Self-hosting](self-hosting.md#2-add-github-oauth) describes the setting.
 
 `editorTeams` admits as well as promotes, so a Team that may write never has to be repeated under
 `githubTeams` to be able to sign in. `editorTeams` is a list because one org may span more than one
