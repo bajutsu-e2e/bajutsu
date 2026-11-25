@@ -879,6 +879,9 @@ A Compose value published `TYPE_WINDOW_CONTENT_CHANGED` for its own change, whic
      This is a
      condition wait, with no fixed sleep and no unbounded `adb wait-for-device` block.
   2. Optionally install the APK.
+     Then wait for the device to deliver the broadcasts the install queued.
+     A late one relaunches an app that is already running.
+     The wait is bounded, and a wait that runs out is logged.
   3. `pm clear` for a clean state (the `erase` equivalent).
   4. `am force-stop`.
   5. Pre-grant runtime permissions (`pm grant`, see below).

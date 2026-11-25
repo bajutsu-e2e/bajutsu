@@ -120,6 +120,10 @@ PUSH_RESULT_FAILED = 5
 # broadcast alone runs under a bound (the clipboard and location receivers answer at once).
 PUSH_BROADCAST_TIMEOUT_S = 10
 
+# How long `install` waits for the device to deliver the broadcasts the install queued. On a loaded CI
+# emulator one took 23 seconds (issue #2520).
+BROADCAST_WAIT_TIMEOUT_S = 60
+
 # A property that reads "1" on an emulator image and is unset on a physical device: recent images set
 # the first, older ones the second. Shared by the device-facts reader and the location route.
 EMULATOR_PROPS = ("ro.boot.qemu", "ro.kernel.qemu")
@@ -943,6 +947,18 @@ def pm_revoke_cmd(serial: str, package: str, permission: str) -> list[str]:
 def install_cmd(serial: str, apk_path: str) -> list[str]:
     # -r reinstall keeping data, -t allow test/debug APKs (the showcase builds are debug).
     return _adb(serial, "install", "-r", "-t", apk_path)
+
+
+def await_broadcasts_cmd(serial: str) -> list[str]:
+    """Wait for the broadcasts already queued on the device, within a device-side bound.
+
+    The barrier (API 34) ignores broadcasts queued after it, so a busy device cannot hold it open. An
+    older device has no such command, and waits for every queue to go idle instead.
+    """
+    bound = f"timeout {BROADCAST_WAIT_TIMEOUT_S} am"
+    return _adb(
+        serial, "shell", f"{bound} wait-for-broadcast-barrier || {bound} wait-for-broadcast-idle"
+    )
 
 
 def uninstall_cmd(serial: str, package: str) -> list[str]:

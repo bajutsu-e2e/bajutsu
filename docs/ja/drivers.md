@@ -691,7 +691,7 @@ Compose の値は自身の変化に対して `TYPE_WINDOW_CONTENT_CHANGED` を�
 - `screenshot` は `adb exec-out screencap -p` の PNG バイト列（バイナリを崩さない stdout）を書き出します。
 - ライフサイクル（`AndroidEnvironment`、iOS の `simctl` シーケンスの双子）:
   1. 起動完了を待ちます。`getprop sys.boot_completed` を有界の期限まで polling する条件待機で、固定 sleep も、無期限にブロックする `adb wait-for-device` もありません。
-  2. 必要に応じて APK をインストールします。
+  2. 必要に応じて APK をインストールします。続けて、インストールが発行したブロードキャストの配信を待ちます。配信が遅れると、起動済みのアプリが再起動されるためです。待機には上限があり、上限に達した場合はログに残して先へ進みます。
   3. `pm clear` でクリーン状態にします（`erase` 相当）。
   4. `am force-stop`。
   5. ランタイム権限を事前付与します（`pm grant`、後述）。

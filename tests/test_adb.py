@@ -3103,3 +3103,42 @@ def test_uninstalling_something_absent_is_not_a_failure() -> None:
         raise subprocess.CalledProcessError(1, "adb", stderr="Failure [DELETE_FAILED]")
 
     adb.Env("U", run=run).uninstall("com.example.absent")  # does not raise
+
+
+def test_install_waits_for_its_own_broadcasts() -> None:
+    # A late one relaunches the app the caller is about to launch (issue #2520).
+    calls: list[list[str]] = []
+    adb.Env("U", run=_recorder(calls)).install("a.apk")
+    assert calls == [adb.install_cmd("U", "a.apk"), adb.await_broadcasts_cmd("U")]
+
+
+def test_the_broadcast_wait_is_bounded_and_covers_devices_without_the_barrier() -> None:
+    script = adb.await_broadcasts_cmd("U")[-1]
+    barrier, idle = script.split(" || ")
+    assert barrier == "timeout 60 am wait-for-broadcast-barrier"
+    assert idle == "timeout 60 am wait-for-broadcast-idle"
+
+
+def test_a_broadcast_wait_that_runs_out_is_logged_not_raised(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def run(argv: list[str]) -> str:
+        if argv == adb.await_broadcasts_cmd("U"):
+            raise subprocess.CalledProcessError(124, argv)
+        return ""
+
+    with caplog.at_level(logging.WARNING):
+        adb.Env("U", run=run).install("a.apk")
+    assert "not confirmed delivered (exit 124)" in caplog.text
+
+
+def test_a_failed_install_never_waits() -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        raise subprocess.CalledProcessError(1, argv)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        adb.Env("U", run=run).install("a.apk")
+    assert calls == [adb.install_cmd("U", "a.apk")]

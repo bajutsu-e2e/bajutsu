@@ -551,13 +551,10 @@ e2e-app-crash: compose-build
 # so the target raises both timeouts to a minute for its runs and deletes them afterwards, failed run
 # or not, leaving the device's own defaults behind.
 #
-# On CI a relaunch of the Views activity mid-run sent the app back to its first tab (issue #2520), on a
-# freshly booted emulator with package changes in flight. Each run therefore waits for the broadcast
-# queues to drain first, bounded so a device that never quiets still runs. That covers what is queued
-# before the run, not the broadcasts its own APK installs send. The run's slice of the device event log
-# goes to the evidence check, which reports any relaunch and its mask beside the failure.
+# On CI a relaunch of the Views activity mid-run sent the app back to its first tab (issue #2520). The
+# run's slice of the device event log goes to the evidence check, which reports any relaunch and its
+# mask beside the failure.
 NOTIFICATION_BANNER_RUNS := $(ROOT)/tmp/showcase-android-notification-banner-runs
-BROADCAST_IDLE_TIMEOUT_S := 120
 HEADS_UP_TIMEOUTS := accessibility_interactive_ui_timeout_ms accessibility_non_interactive_ui_timeout_ms
 e2e-notification-banner: compose-build views-build
 	$(MAKE) -C $(ROOT)/BajutsuAndroidUIAutomatorServer build
@@ -571,8 +568,6 @@ e2e-notification-banner: compose-build views-build
 		t="$${tp%%:*}"; pkg="$${tp#*:}"; \
 		runs="$(NOTIFICATION_BANNER_RUNS)/$$t"; \
 		echo "=== $$t / notification_banner_android ==="; \
-		$(ADB) shell timeout $(BROADCAST_IDLE_TIMEOUT_S) am wait-for-broadcast-idle >/dev/null \
-			|| echo "broadcast-idle wait did not finish (timed out or unsupported); running anyway"; \
 		since="$$($(ADB) shell date +%s | tr -d '\r').000"; \
 		(cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 			--scenario demos/showcase/scenarios/notification_banner_android.yaml \

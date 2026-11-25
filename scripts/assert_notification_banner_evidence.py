@@ -24,9 +24,9 @@ heads-up notification, so this is the check the Android emulator lane gates on:
 Given the device's event log for the run (`--events`) and the app's package, a failure also names
 every relaunch of the app's activity, with its config-change mask (issue #2520). On CI one such
 relaunch put the app back on its first tab mid-run, and the scenario failed on a selector miss that
-said nothing of it. The report states the relaunch and not its cause: the one seen followed the
-run's own APK installs on a freshly booted emulator, which the log cannot tell apart from the
-emulator's other package changes, and passing runs have carried one too.
+said nothing of it. The report states the relaunch and not its cause, since passing runs have
+carried one too. The one seen came with the late handling of the app's own install, which `adb.Env`'s
+`install` waits out.
 """
 
 from __future__ import annotations
