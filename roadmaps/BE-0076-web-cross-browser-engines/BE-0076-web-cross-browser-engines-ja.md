@@ -24,7 +24,7 @@
 
 ## 動機
 
-### 現状の backend は Chromium 固定です
+### 現状の backend は Chromium 固定
 
 [BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md) で着地した Web backend は、単一エンジンに固定されています。
 
@@ -33,7 +33,7 @@
 
 BE-0041 の seam 表は、「headless で**クロスブラウザ**」なアクチュエータを掲げていました。出荷した v1 スライスが届くのは、Chromium（Blink）までです。利用者がエンジンを選べる口は、どこにも開いていません。
 
-### エンジン固有の不具合こそ E2E が扱うべき対象です
+### エンジン固有の不具合こそ E2E が扱うべき対象
 
 Playwright は、独立した 3 つのレンダリングエンジンを同梱します。Chromium（Blink）、Firefox（Gecko）、WebKit（Safari の中核エンジン）です。**3 つとも Linux 上で headless 実行できます**。既存の `make check` / CI ゲートの内側で動き、Mac も追加のインフラも要りません。
 
@@ -46,7 +46,7 @@ Playwright は、独立した 3 つのレンダリングエンジンを同梱し
 
 「Chrome では動くが Safari で壊れる」は、本番障害の典型です。Chromium しか駆動しない E2E ツールは、この種の失敗に対して構造的に盲目です。この種の失敗を検出することは、まさに E2E ツールの役目です。代替エンジンはデバイスファームではなくダウンロードで済むので、Playwright を使えば、検出はここでほぼ無償で手に入ります。
 
-### prime directive に素直に収まります
+### prime directive への適合
 
 この検出は、**AI の判断ではなく、機械的に検証できる**事実です。「シナリオが Chromium で通り、WebKit で落ちる」は、2 つの決定論的 `run` 判定です。それぞれの判定は、従来どおり機械的アサーションだけから計算されます。マトリクスはその判定の表であり、ゲートはモデルを一切参照しません。そのため、prime directive #1（AI は判定しない）は構成上保たれます。
 

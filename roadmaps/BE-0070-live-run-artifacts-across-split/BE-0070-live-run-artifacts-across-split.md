@@ -63,7 +63,7 @@ The worker already has the right boundary: the `on_event` callback that rewrites
 
 ### The contract: machine-checkable invariants
 
-The Linux gate verifies these invariants with an in-memory (fake) object store. No Mac and no Simulator is involved.
+The Linux gate verifies these invariants with an in-memory (fake) object store. It involves no Mac and no Simulator.
 
 1. **Mid-run visibility (the regression).** A fake worker emits N screen-map snapshots before it finishes. The control plane's artifact `get` returns the k-th snapshot **before** the job is marked done. Today that case returns 404.
 2. **Terminal authority.** After the job completes, the stored `screenmap.json` equals the last on-disk snapshot. The bulk terminal upload agrees with the incremental writes.

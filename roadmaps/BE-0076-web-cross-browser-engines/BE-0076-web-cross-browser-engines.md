@@ -99,7 +99,7 @@ The design works as follows. After the package is ensured, run `playwright insta
 - the engine threaded through `PlaywrightDriver` / `make_driver` / the web environment / `doctor`
 - the on-demand `playwright install <engine>` in `ensure_web_runtime`
 
-The fast `make check` gate covers all of it with a fake starter and no real browser. The web-e2e path covers on-device firefox / webkit launch.
+The fast `make check` gate covers all of it with a fake starter and no real browser. On-device firefox / webkit launch falls to the web-e2e path.
 
 **Phase 2 (the `--browsers` matrix) has shipped.** It covers:
 
@@ -159,7 +159,7 @@ A path filter gates this job, as it gates today's web-e2e, and the job is not a 
 
 * **No LLM, no verdict touched by a model.** Each per-engine result is the existing deterministic `run`, and the matrix aggregates the verdicts. Prime directives #1 and #2 hold by construction.
 * **App-agnostic.** The engine is an execution axis (flag or config) and never scenario content. The same YAML runs on every engine, so prime directive #3 holds.
-* **Linux-testable, inside the existing gate.** All three engines run headless on Linux. The same `make check` / web-e2e CI job that covers the current Chromium path therefore exercises the cross-engine path. No Mac and no emulator is needed. The one real cost is the CI download and cache of the Firefox and WebKit browser builds for the cross-engine job. Chromium-only runs are unaffected.
+* **Linux-testable, inside the existing gate.** All three engines run headless on Linux. The same `make check` / web-e2e CI job that covers the current Chromium path therefore exercises the cross-engine path. The path needs no Mac and no emulator. The one real cost is the CI download and cache of the Firefox and WebKit browser builds for the cross-engine job. Chromium-only runs are unaffected.
 
 ### Relationship to existing items
 
