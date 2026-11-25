@@ -20,7 +20,7 @@ serve の Web UI は 1 つの**アクティブな config** を bind し、すべ
 その config に対して動きます。いまヘッダに出るのは「Open config」の隣の config の**パス**だけです。この提案は、
 bind した config を確認するための **View** ボタンを追加します。config の中身を折りたたみ可能な key-value の
 ツリーで（生 YAML への切り替え付きで）表示し、Git ソースから取得したものであれば、materialize されたコミットも
-示します。読み取り専用の機能で、config を編集したり bind し直したりはしません。
+示します。View ボタンは読み取り専用で、config を編集したり bind し直したりはしません。
 
 ## 動機
 
@@ -37,8 +37,8 @@ config を bind したあと、いま実際に何に対して動いているの�
   ブランチ ref の場合は何に解決されたのかの手がかりが何も得られません。
 
 必要な情報はすでにサーバ側にあります。bind したパス、ファイルのバイト列、そして Git bind であれば BE-0063 が
-計算し、bind の応答としてすでに返している `source_provenance` の刻印です。ただ、その後それが **UI に**
-出ていないだけです。これを UI に出せば、「正しいものが bind されていると信じる」状態が「正しいものが bind
+計算し、bind の応答としてすでに返している `source_provenance` の刻印です。ただし、bind の後にその情報が **UI に**
+出ることはありません。これを UI に出せば、「正しいものが bind されていると信じる」状態が「正しいものが bind
 されていると見て確かめられる」状態に変わります。これはこの提案が土台とする Git のパスでとくに効きます。
 
 ## 詳細設計
@@ -97,12 +97,12 @@ config を bind したあと、いま実際に何に対して動いているの�
 
 ログ:
 
-- [#734](https://github.com/bajutsu-e2e/bajutsu/pull/734) — 項目全体を実装しました。`ServeState`
+- [#734](https://github.com/bajutsu-e2e/bajutsu/pull/734)：項目全体を実装しました。`ServeState`
   への由来の保持、`config_content` オペレーションと `GET /api/config/content`（両トランスポート、`admin`
   role に限定）、View ボタンと Structured / Raw のビューアモーダル、そして英日のドキュメントです。
 
 ## 参考
 
-- [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md) — 解決されたコミットの由来をこの提案が
+- [BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source-ja.md)：解決されたコミットの由来をこの提案が
   表に出す、Git config source です。
 - [`docs/ja/web-ui.md`](../../docs/ja/web-ui.md) — Web UI ガイド（「アクティブな config を選ぶ」）。

@@ -15,64 +15,64 @@
 
 ## Introduction
 
-Give the serve Web UI a first-class, **pluggable theme system**. A theme is a named bundle
-of two things — a set of visual design tokens (colors, and the surface/line/accent palette)
+This item gives the serve Web UI a first-class, **pluggable theme system**. A theme is a named bundle
+of two things: a set of visual design tokens (colors, and the surface/line/accent palette)
 **and** a set of screen-transition definitions (how views, modals, panes, and run-step
-progress animate). Themes are selected by `[data-theme="<name>"]` on `<html>`, and — this is
-the point — an operator can **drop in their own theme** without touching the source, exactly
+progress animate). Themes are selected by `[data-theme="<name>"]` on `<html>`. An operator can
+**drop in their own theme** without touching the source, exactly
 the way scenarios and config are dropped in today. The built-in dark/light pair
-(`midnight` / `daylight`) becomes just the first two entries in an open registry. A theme can
-also be **authored from inside the UI** — a guided editor with live preview, saved locally or
-uploaded to the serve instance — so a drop-in file is one authoring path, not the only one.
+(`midnight` / `daylight`) becomes the first two entries in an open registry. A theme can
+also be **authored from inside the UI**, through a guided editor with live preview, and saved locally or
+uploaded to the serve instance. A drop-in file is one authoring path, not the only one.
 
-This item is scoped to the live single-page application (SPA) served by
+The item covers the live single-page application (SPA) served by
 [`bajutsu serve`](../../README.md) (`bajutsu/templates/serve.html.j2`). The standalone
-report / coverage / stats / crawl pages, which use a separate and older `prefers-color-scheme`
-mechanism, are explicitly out of scope here (see *Alternatives considered*).
+report / coverage / stats / crawl pages use a separate and older `prefers-color-scheme`
+mechanism and are explicitly out of scope (see *Alternatives considered*).
 
 ## Motivation
 
-The serve UI already ships a working dark/light mechanism, but it grew ad hoc — without its
-own roadmap item — and it hard-codes the assumption that there are exactly two looks:
+The serve UI already ships a working dark/light mechanism. It grew ad hoc, without its
+own roadmap item, and it hard-codes the assumption that there are exactly two looks:
 
 - **The look is not swappable.** Themes live in `bajutsu/templates/serve.themes.css` as two
   fixed blocks of CSS custom properties keyed by `[data-theme]`, and the header control is a
   **binary** dark/light toggle. The file's own opening comment states the constraint plainly:
-  *"Adding a third theme means replacing that switch with a wider picker."* There is no way
-  for a user to add a look of their own — no discovery mechanism, no picker, no config hook.
-- **The token contract is incomplete, so themes can't be trusted to be total.** `serve.css`
-  references custom properties that the registry never defines — `--accent`, `--muted`,
-  `--bad` — while the registry defines `--acc`, `--mut`, `--ng` instead. Those rules back live
+  *"Adding a third theme means replacing that switch with a wider picker."* A user cannot
+  add a look of their own: there is no discovery mechanism, no picker, and no config hook.
+- **The token contract is incomplete, so a theme cannot be trusted to cover every color.** `serve.css`
+  references custom properties that the registry never defines (`--accent`, `--muted`,
+  `--bad`), while the registry defines `--acc`, `--mut`, `--ng` instead. Those rules back live
   UI (the Author tab's step list, enrich accept/dismiss, the coverage sub-hint) and currently
-  render with an unset/inherited color rather than the intended themed one. Until every color
-  is a defined token, a drop-in theme can't be complete, and fallback can't be relied on.
+  render with an unset or inherited color rather than the intended themed one. Until every color
+  is a defined token, a drop-in theme cannot be complete, and fallback cannot be relied on.
 - **Transitions are not part of the look at all.** View switches happen via an instant
-  `replaceChildren`; there is no notion of a themable enter/leave animation for views, modals,
-  responsive pane reconstruction (BE-0072), or run-step progress. Motion is a large part of a
+  `replaceChildren`. Views, modals, responsive pane reconstruction (BE-0072), and run-step progress
+  have no themable enter/leave animation. Motion is a large part of a
   UI's identity, and today it is fixed and invisible to any theme.
-- **There is no way to create a theme without filesystem access.** Even once themes are
+- **A theme cannot be created without filesystem access.** Even once themes are
   drop-in files, authoring one means editing raw CSS on disk and knowing the exact token names
-  by heart. A user who just wants to nudge the accent color or slow the view transition has no
-  in-product path — the token contract is documented in a comment, not exposed as something you
-  can edit and see change.
+  by heart. A user who merely wants to nudge the accent color or slow the view transition has no
+  in-product path. The token contract is documented in a comment, not exposed as something a user
+  can edit and watch change.
 
-A pluggable theme system turns the look-and-feel into a **backend-agnostic interface** — the
-same design principle the driver layer is built on. The tool defines the token/transition
-*contract*; a theme is an *implementation* of it that can be swapped freely, and per-app
-differences (an org's brand look) live in a dropped-in theme + config, not in the core
+A pluggable theme system turns the look-and-feel into a **backend-agnostic interface**, the
+design principle the driver layer is built on. The tool defines the token/transition
+*contract*, and a theme is an *implementation* of the contract that can be swapped freely. Per-app
+differences (an org's brand look) live in a dropped-in theme plus config, not in the core
 (prime directive 3).
 
-None of this touches the deterministic path. Theming is a pure presentation layer: it never
+None of this touches the deterministic path. Theming is a purely presentational layer: it never
 enters the Tier-2 `run` / CI verdict (prime directive 1), and it introduces no fixed `sleep`
-(prime directive 2) — animations are driven by CSS and are disabled under
+(prime directive 2). CSS drives the animations, and they are disabled under
 `prefers-reduced-motion`, so the dogfooded serve-UI regression net stays condition-wait-based
 and deterministic.
 
 ## Detailed design
 
-The work is decomposed MECE into six units. Units 1–3 deliver a pluggable *visual* theme;
-unit 4 adds the swappable *transition* layer; unit 5 keeps the change deterministic and
-dogfood-safe; unit 6 adds the in-UI editor + upload so a theme can be authored without
+The work is decomposed MECE into six units. Units 1–3 deliver a pluggable *visual* theme.
+Unit 4 adds the swappable *transition* layer, and unit 5 keeps the change deterministic and
+dogfood-safe. Unit 6 adds the in-UI editor and upload, so a theme can be authored without
 filesystem access.
 
 ### 1. Complete the design-token contract (prerequisite)
@@ -83,11 +83,11 @@ so a theme is a complete, self-contained contract and partial themes fall back p
 - Reconcile the naming drift: settle on one canonical set and update all consumers so no
   rule references an undefined variable (`--accent` / `--muted` / `--bad` today resolve to
   nothing). Either alias the missing names in the registry or rewrite the `serve.css`
-  consumers — one direction, applied consistently.
+  consumers, in one direction applied consistently.
 - Audit the raw hex literals in `serve.css` (≈15, mostly `#fff` on colored backgrounds) and
   route each through a token (e.g. `--on-acc`, `--on-run`) so no color bypasses the system.
 - Document the token contract inline in `serve.themes.css` (the required token names and what
-  each means) — this comment *is* the theme-authoring API surface.
+  each means). This comment *is* the theme-authoring API surface.
 - Fallback rule: any token a theme omits inherits from the `:root` default block
   (`midnight`), so an incomplete drop-in theme degrades gracefully rather than breaking.
 
@@ -99,20 +99,20 @@ Turn the fixed two-block registry into an open set discovered at serve startup.
   `bajutsu serve` (mirroring the existing `--scenarios` / `--runs` / `--baselines` dir flags),
   with an optional `ui.default_theme` field in config for the initial selection. Built-in
   themes ship in-repo as today; discovered themes extend, never replace, them.
-- **Theme shape (the plug):** a theme is **declarative only** — a CSS block of token values
+- **Theme shape (the plug):** a theme is **declarative only**: a CSS block of token values
   (and, per unit 4, transition definitions) plus a small manifest (display name, `dark` |
-  `light` kind). **No arbitrary JavaScript** in a theme. This keeps the trust boundary at the
-  same level as scenarios/config (the operator drops the file in themselves) while limiting
-  the attack surface to CSS (see *Alternatives considered* on the security trade-off).
+  `light` kind). A theme carries **no arbitrary JavaScript**. The trust boundary stays at the
+  same level as scenarios and config (the operator drops the file in), and the
+  attack surface stays limited to CSS (see *Alternatives considered* on the security trade-off).
 - **Registration:** serve scans the directory once at startup, concatenates the discovered
   CSS into the inlined theme stylesheet, and exposes the theme manifest to the client so the
   picker can render the options. Themes are static for the process lifetime, so the existing
-  `functools.lru_cache` on `_asset` / `_index_html` in `bajutsu/serve/handler.py` stays valid;
-  the discovered set is folded into the cached render. (Live theme reload is out of scope.)
+  `functools.lru_cache` on `_asset` / `_index_html` in `bajutsu/serve/handler.py` stays valid,
+  and the discovered set is folded into the cached render. Live theme reload is out of scope.
 
 ### 3. Theme picker UI
 
-Replace the binary header toggle with a picker, as the registry comment foretold.
+Replace the binary header toggle with a picker, as the registry comment anticipated.
 
 - A header dropdown/menu listing built-in + discovered themes, grouped or labeled by dark/light
   kind, replacing the moon/sun checkbox.
@@ -121,102 +121,101 @@ Replace the binary header toggle with a picker, as the registry comment foretold
   scheme change still live-updates only while the user has made no manual choice.
 - Follow the BE-0058 `data-testid` convention (e.g. `nav.theme-picker`) with disambiguated
   selectors for the header control cluster.
-- **Placement:** the picker lives in the `<header>` (like today's toggle) or in a modal — it
+- **Placement:** the picker lives in the `<header>` (like today's toggle) or in a modal. It
   must **not** be a direct child of a `main#view-*` element, because the desktop tiler's
-  `rebuild()` calls `replaceChildren` on those and would wipe it on every tile rebuild.
+  `rebuild()` calls `replaceChildren` on those elements and would wipe the picker on every tile rebuild.
 
 ### 4. Swappable, theme-defined transitions
 
-Make screen transitions a themable part of the look, across the four surfaces the discussion
-identified: **view switches, modal enter/leave, responsive pane reconstruction (BE-0072), and
-run-step progress**.
+Make screen transitions a themable part of the look, across four surfaces: **view switches,
+modal enter/leave, responsive pane reconstruction (BE-0072), and run-step progress**.
 
 - **Separation of concerns:** JavaScript applies only *semantic state classes* (e.g.
   `.is-entering` / `.is-leaving` / `.view-switching`) at each transition point; the **theme's
   CSS decides what those states look like**, via `--transition-*` tokens (duration / easing)
-  and keyframes. This keeps the JS theme-agnostic and makes the animation itself fully
-  pluggable — a theme with no transition rules renders instantly (today's behavior).
+  and keyframes. The JS stays theme-agnostic and the animation itself fully
+  pluggable. A theme with no transition rules renders instantly (today's behavior).
 - **Tiler refactor (the main cost):** view switches currently destroy the old subtree
-  immediately via `replaceChildren`, leaving no element to animate out. Enabling a leave
-  animation requires retaining the outgoing node for the duration of its transition — a
-  double-buffer step in `rebuild()` — or, as a lighter first cut, animating only the incoming
-  view. This is the riskiest part of the change and should be landed behind the reduced-motion
-  guard below so it can degrade to the current instant behavior.
+  immediately via `replaceChildren`, leaving no element to animate out. A leave
+  animation requires retaining the outgoing node for the duration of its transition, which is a
+  double-buffer step in `rebuild()`. A lighter first cut animates only the incoming
+  view. The tiler refactor is the riskiest part of the change and should land behind the reduced-motion
+  guard below, so it can degrade to the current instant behavior.
 - **Reduced motion:** under `prefers-reduced-motion: reduce`, all transitions collapse to
-  instant regardless of the active theme. This is both an accessibility requirement and the
+  instant regardless of the active theme. The collapse is both an accessibility requirement and the
   determinism lever for unit 5.
 
 ### 5. Determinism and dogfood alignment
 
 - The serve UI is itself dogfooded (BE-0058, `demos/serve-ui/`). The reduced-motion collapse
-  (unit 4) is the guarantee that added motion never introduces a race or a need for a fixed
+  (unit 4) guarantees that added motion never introduces a race or a need for a fixed
   `sleep`: with motion off, transitions are instant and the existing condition-wait assertions
   hold unchanged.
 - `demos/serve-ui/scenarios/theme.yaml` currently taps `nav.theme-toggle` and asserts the
   `checked` state flips. The binary→picker change (unit 3) breaks that assumption, so the
   scenario must be updated in lockstep to drive the picker and assert `[data-theme]`.
-- No LLM is anywhere on this path (prime directive 1): theme selection and rendering are
+- No LLM is on this path (prime directive 1): theme selection and rendering are
   entirely deterministic client/server code.
 
 ### 6. In-UI theme editor, live preview, and upload / export
 
-Add an in-product authoring path so a theme can be created and shared without touching the
-filesystem, building directly on the token contract of unit 1.
+Add an in-product authoring path, built directly on the token contract of unit 1, so a theme can
+be created and shared without touching the filesystem.
 
-- **Editor derived from the contract:** a form generated from the documented required tokens
-  — a color input per color token, and duration / easing / effect controls per `--transition-*`
-  token. Because the contract *is* the API (unit 1), the editor's fields fall out of it rather
-  than being hand-maintained.
+- **Editor derived from the contract:** a form generated from the documented required tokens,
+  with a color input per color token and duration / easing / effect controls per `--transition-*`
+  token. Because the contract *is* the API (unit 1), the editor's fields follow from the contract, and nobody
+  maintains them by hand.
 - **Live preview, client-side:** applying an edit injects a `<style>` block that overrides the
   active `[data-theme]`'s custom properties in the running SPA, so the change is visible
-  immediately with no server round trip. Placement follows unit 3 — a modal (like
+  immediately with no server round trip. Placement follows unit 3: a modal (like
   `#settingsmodal`), never a direct child of a `main#view-*` element the tiler would wipe.
 - **Two persistence tiers:**
-  - *Local draft* — the edited theme is stored in `localStorage` as a `custom` theme and
-    appears in the picker (unit 3) at once. Browser-only; it adds no server surface or new
+  - *Local draft*: the edited theme is stored in `localStorage` as a `custom` theme and
+    appears in the picker (unit 3) at once. The draft stays in the browser, adds no server surface or new
     trust boundary, and is the zero-friction path for iterating on a look.
-  - *Upload to the serve instance* — writes the theme into the `--themes` directory (unit 2)
-    so it becomes a discoverable drop-in, shared across sessions on that instance. This reuses
+  - *Upload to the serve instance*: the upload writes the theme into the `--themes` directory (unit 2)
+    so it becomes a discoverable drop-in, shared across sessions on that instance. The upload reuses
     the existing upload seam (BE-0073). It is the **one** place that must invalidate the theme
-    `lru_cache`: a bounded, explicit re-scan on that write, distinct from the general live
-    reload unit 2 excludes.
-- **Export / import round-trip:** because a theme is declarative CSS + manifest, "download this
+    `lru_cache`, through a bounded, explicit re-scan on that write, distinct from the general live
+    reload that unit 2 excludes.
+- **Export / import round-trip:** because a theme is declarative CSS plus a manifest, "download this
   theme" emits a file that round-trips with the drop-in mechanism (edit in the UI → export →
-  commit to a repo or share), and "import" ingests such a file. This closes the loop between the
+  commit to a repo or share), and "import" ingests such a file. Export and import connect the
   two authoring paths.
-- **Trust and determinism unchanged:** an uploaded theme is still declarative CSS + manifest
+- **Trust and determinism unchanged:** an uploaded theme is still declarative CSS plus a manifest
   with no JavaScript (unit 2). The uploader is the authenticated operator acting on their own
-  localhost serve, so an uploaded theme carries the same trust as a dropped-in file; the residual
+  localhost serve, so an uploaded theme carries the same trust as a dropped-in file. The residual
   CSS surface (e.g. a theme referencing an external URL) is accepted at that trust level and
-  called out rather than sandboxed. No LLM and no `run`-path impact.
+  called out rather than sandboxed. No LLM runs on this path, and the `run` path stays as it was.
 
 ## Alternatives considered
 
 - **Introduce a build step / CSS framework (Sass, Tailwind, a bundler).** Rejected. The serve
-  UI is deliberately build-free vanilla JS/CSS read straight off disk; a bundler would violate
+  UI is deliberately build-free vanilla JS/CSS read straight off disk, and a bundler would violate
   that constraint for a feature that CSS custom properties already express natively.
-- **Arbitrary CSS injection via an API or `localStorage` (no files).** Rejected. It complicates
-  the asset cache and, more importantly, moves the trust boundary — a dropped-in file sits at
-  the same trust level as the operator's scenarios and config, whereas a remote/paste-in CSS
+- **Arbitrary CSS injection via an API or `localStorage` (no files).** Rejected. Injection complicates
+  the asset cache and, more importantly, moves the trust boundary. A dropped-in file sits at
+  the same trust level as the operator's scenarios and config, whereas a remote or paste-in CSS
   channel invites injection from a wider surface. Drop-in theme files are the trust boundary.
 - **Let themes carry arbitrary JavaScript** (fully programmable themes). Rejected for the same
-  reason: a declarative CSS + manifest theme is expressive enough for look and motion while
-  keeping the attack surface to CSS only.
+  reason: a declarative CSS-plus-manifest theme is expressive enough for look and motion, and it
+  keeps the attack surface to CSS alone.
 - **In-UI editor as client-only (`localStorage`), no server upload.** Rejected as the whole
-  story: a browser-local custom theme is great for iterating but is trapped in one browser.
-  Both tiers are kept — the local draft for zero-friction editing and an optional upload for
+  story: a browser-local custom theme suits iterating but stays trapped in one browser.
+  The design keeps both tiers: the local draft for zero-friction editing and an optional upload for
   persistence and sharing across a serve instance.
 - **A hosted theme marketplace / remote theme registry.** Not adopted. A serve instance
-  discovers local drop-in and uploaded themes; it does not fetch themes over the network. Theme
+  discovers local drop-in and uploaded themes and does not fetch themes over the network. Theme
   sharing rides the export/import file round-trip (and version control), not a central service.
 - **Config-only or picker-only (not both).** Rejected in favor of two thin layers: config
-  (`ui.default_theme` + `--themes`) sets the deployment/per-target default, and the client
-  picker lets a user override locally — matching how the OS-default-then-manual-override
+  (`ui.default_theme` + `--themes`) sets the deployment or per-target default, and the client
+  picker lets a user override locally. The two layers match how the OS-default-then-manual-override
   toggle already behaves.
 - **Unify the standalone report / coverage / stats / crawl pages into the same theme system.**
-  Deferred, not adopted now — this item is scoped to the SPA. Those pages use a separate,
+  Deferred, not adopted now, because this item covers the SPA alone. Those pages use a separate,
   older `prefers-color-scheme` mechanism with a different variable set (`--ink` etc.) and no
-  toggle; unifying them is worthwhile but is a distinct, larger change. Left as a related
+  toggle. Unifying them is worthwhile but is a distinct, larger change, left as a related
   follow-up.
 
 ## Progress

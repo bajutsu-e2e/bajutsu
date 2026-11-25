@@ -16,47 +16,48 @@
 
 ## Introduction
 
-Rides on the record human-in-the-loop handoff substrate
-([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). This item covers
-the case where the blocker is **not a value but an operation** the AI cannot perform or resolve — a
-CAPTCHA, a biometric prompt, or a gesture/target the agent repeatedly fails to resolve. `record`
-pauses, the human operates the device directly, and bajutsu observes the resulting state and
-resumes. Because some of these operations have **no deterministic run-time equivalent**, this item
-also defines — honestly — how the generated artifact is treated on re-run, rather than pretending
-every takeover replays.
+This item rides on the record human-in-the-loop handoff substrate
+([BE-0179](../BE-0179-record-human-handoff/BE-0179-record-human-handoff.md)). It covers
+the case where the blocker is **not a value but an operation** the AI cannot perform or resolve:
+a CAPTCHA, a biometric prompt, or a gesture or target the agent repeatedly fails to resolve.
+`record` pauses, the human operates the device directly, and bajutsu observes the resulting state
+and resumes. Some of these operations have **no deterministic run-time equivalent**. The item
+therefore also defines, honestly, how the generated artifact is treated on re-run, instead of
+pretending that every takeover replays.
 
 ## Motivation
 
 Not every record blocker is a missing value. Some are operations the AI cannot carry out: solving a
 CAPTCHA, clearing a biometric prompt, or performing a gesture whose target the agent's proposals
 keep failing to resolve (`could not resolve that target on the live screen; stopping` in
-[`bajutsu/record.py`](../../bajutsu/record.py)). Today `record` just stops there, and the author
+[`bajutsu/record.py`](../../bajutsu/record.py)). Today `record` stops there, and the author
 abandons the run.
 
-The remedy mirrors the value case in spirit — pause, let the human act, resume — but the hard part
-is different and specific to operations: an action like solving a real CAPTCHA has **no deterministic
-run-time equivalent** at all. There is no `${vars}` value to bridge to. So the design cannot pretend
-the recorded flow replays; it must define the artifact's run behavior truthfully, distinguishing the
-operations that *can* be made deterministic (via a test-build bypass) from those that genuinely
-cannot, and marking the latter without ever faking a CI pass.
+The remedy mirrors the value case in spirit: pause, let the human act, resume. The hard part
+differs, though, and is specific to operations. An action like solving a real CAPTCHA has **no
+deterministic run-time equivalent** at all, and there is no `${vars}` value to bridge to. The
+design therefore cannot pretend that the recorded flow replays. It must define the artifact's run
+behavior truthfully. It distinguishes the operations that *can* be made deterministic (via a
+test-build bypass) from those that genuinely cannot, and it marks the latter without ever faking
+a CI pass.
 
 ## Detailed design
 
-Built on the substrate; this item defines the takeover behavior and — the delicate part — the
+This item builds on the substrate and defines the takeover behavior and, the delicate part, the
 recorded artifact's run-time treatment.
 
 **Takeover trigger.** The substrate's "needs human" outcome is raised when a target cannot be
 resolved even after the existing recovery (the alert guard), or when the author explicitly requests
-to take over. The tool does not guess which element to act on.
+to take over. The tool never guesses which element to act on.
 
 **Human operates the live device.** During takeover the human taps, types, or gestures directly on
 the Simulator or device; bajutsu does not drive. This is the same "human performs the action" stance
-as [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md)'s capture mode,
+as the capture mode of [BE-0012](../BE-0012-action-capture-record/BE-0012-action-capture-record.md),
 scoped here to a single blocking operation inside an AI recording.
 
 **Resume by re-observation.** On "done", the loop re-queries and continues from the observed screen
 (the substrate's resume semantics). bajutsu records the **state transition** it observes, not the
-opaque manual gesture — so what lands in the scenario is the app reaching the next screen, not a
+opaque manual gesture — so the scenario receives the app reaching the next screen, and no
 pixel-level replay of the human's hand.
 
 **The generated artifact and its run-time treatment.** Each takeover is classified:
@@ -75,35 +76,35 @@ pixel-level replay of the human's hand.
 
 **No human or LLM in the gate.** The manual step never puts a human in the deterministic `run`
 verdict. It either resolves to a deterministic bypass or stands as an explicit, visible non-CI
-marker — consistent with directives 1 and 2.
+marker, consistent with directives 1 and 2.
 
 **CLI and `serve`.** Both surfaces come from the substrate, but takeover uses them differently from
-the value pattern, and that difference is sharpest in the Web UI. The browser does **not** drive
-the device: the `serve` handoff pane is only the coordination surface — it explains what the AI
-could not do, and offers a single "I have operated the device — resume" control. The actual
+the value pattern, and the difference is sharpest in the Web UI. The browser does **not** drive
+the device. The `serve` handoff pane is merely the coordination surface: it explains what the AI
+could not do and offers a single "I have operated the device — resume" control. The actual
 tapping, biometric approval, or CAPTCHA solving happens on the device itself, and bajutsu re-reads
 the screen afterwards.
 
-That makes device *reach* a real precondition here, unlike value entry (which completes entirely
-in the browser). When `serve` runs on the same machine as the Simulator, the author operates it
-directly and the pane just coordinates the pause and resume. But on a **remote or self-hosted**
-`serve` (BE-0015 / BE-0016) the device is not in front of the author, so takeover needs a way to
-reach it — an interactive, mirrored device view in the browser, or a documented fallback
-(re-record where the device is, or wire the test-build bypass without a live takeover). This
-proposal flags the remote case as a first-class constraint rather than assuming it away; the
-interactive-mirror surface itself is out of scope here and would be its own item.
+Device *reach* is therefore a real precondition for takeover, unlike for value entry, which
+completes entirely in the browser. When `serve` runs on the same machine as the Simulator, the author operates it
+directly and the pane just coordinates the pause and resume. On a **remote or self-hosted**
+`serve` (BE-0015 / BE-0016), however, the device is not in front of the author, so takeover needs
+a way to reach it. The options are an interactive, mirrored device view in the browser, or a
+documented fallback (re-record where the device is, or wire the test-build bypass without a live
+takeover). This proposal flags the remote case as a first-class constraint instead of assuming it
+away. The interactive-mirror surface itself is out of scope here and would be its own item.
 
 ## Alternatives considered
 
-- **Emit a silent no-op / auto-pass for the manual step.** Rejected — a silent pass hides that the
-  flow is not really being exercised, which is the spirit of directive 1 (no hidden judgment on the
+- **Emit a silent no-op / auto-pass for the manual step.** Rejected: a silent pass hides that the
+  flow is not really exercised, which violates the spirit of directive 1 (no hidden judgment on the
   gate). An unreproducible operation must be *visible* as such.
-- **Fold this into the value-entry item and treat every takeover as a value.** Rejected — an
-  operation has no `${vars}` value to bridge; its determinism story (a test-build bypass, or an
-  explicit non-CI marker) is fundamentally different from the value case, which is precisely why the
+- **Fold this into the value-entry item and treat every takeover as a value.** Rejected: an
+  operation has no `${vars}` value to bridge. Its determinism story (a test-build bypass, or an
+  explicit non-CI marker) differs fundamentally from the value case, which is why the
   two are separate items over one shared substrate.
-- **Screen-record the human's raw gesture and replay the pixels.** Rejected — non-deterministic,
-  fragile across devices and screen sizes, and opaque to the report; it breaks both the
+- **Screen-record the human's raw gesture and replay the pixels.** Rejected: the replay is non-deterministic,
+  fragile across devices and screen sizes, and opaque to the report, and it breaks both the
   reviewable-YAML principle and app-agnosticism.
 
 ## Progress
