@@ -147,7 +147,7 @@ unaffected.
 - Resizing the image (the `record-screenshot-downscale` proposal).
 - Reducing turn count (BE-0178).
 - Dropping addressable elements, or summarizing the tree with an LLM. Either would risk accuracy, and
-  the LLM would put a model on the authoring critical path unnecessarily.
+  summarizing with an LLM would also put a model on the authoring critical path unnecessarily.
 - The `crawl` explorer's rendering (out of scope here).
 - Any scenario-schema or `run`/replay change.
 

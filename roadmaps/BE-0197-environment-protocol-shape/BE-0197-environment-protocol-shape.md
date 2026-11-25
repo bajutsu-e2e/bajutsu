@@ -68,7 +68,7 @@ be:
   predicates) serves the `run` lease. With both in one Protocol, every implementer must answer crawl
   questions even when the reader cares only about `run`. A future consumer that needs only the run
   lease still depends on the whole surface. BE-0009 slices 2 and 3 folded the two concerns into one
-  Protocol incrementally, and nothing about the concerns requires it.
+  Protocol incrementally, and nothing about the concerns requires them to share one.
 
 None of this is a bug, because the seam behaves correctly today. But BE-0009 explicitly frames Android
 as "slots in the same way" ([BE-0007](../BE-0007-android-backend/BE-0007-android-backend.md)), and the

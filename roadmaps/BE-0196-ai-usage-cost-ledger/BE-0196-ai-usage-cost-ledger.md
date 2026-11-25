@@ -24,7 +24,7 @@ scenario, step) and priced in dollars where the provider has per-token pricing.
 The ledger is the raw material for answering "where does our AI spend go, and which provider and model
 is most efficient for which task?" That question motivates smarter, data-driven provider selection.
 
-This item is the recording layer alone. Surfacing the ledger in the serve Web UI is a separate item
+This item covers the recording layer and nothing else. Surfacing the ledger in the serve Web UI is a separate item
 (`ai-usage-cost-dashboard`), which consumes the format defined here.
 
 ## Motivation
@@ -55,7 +55,7 @@ The item is observability, squarely on the AI authoring/investigation side of th
 No part of it runs during the deterministic `run` / CI verdict, and nothing in it lets an LLM
 influence pass/fail. Any *future* provider routing that reads this ledger must make its choice
 deterministically (config- or threshold-based), never by asking an LLM. That routing is out of scope
-here, because this item produces the data alone.
+here; this item only produces the data.
 
 ## Detailed design
 
@@ -75,8 +75,7 @@ The work comprises the following mutually exclusive, collectively exhaustive uni
    called, without re-instrumenting each call site. A context (a `contextvar`-based scope set by the
    CLI command or MCP tool, e.g. `with usage.attributed(command="crawl", scenario=…, step=…):`)
    carries them, and `bajutsu/usage.py` reads it when it records an event. The provider and model come
-   from the `AiBackend` in use, so `bajutsu/usage.py` reads them from the backend, and callers do not
-   pass them.
+   from the `AiBackend` in use, so they are read from the backend, not passed by every caller.
 
 3. **Per-provider/per-model cost computation.** A pricing table keyed by `(provider, model)` gives
    input/output (and cache) per-token rates, and applies them when an event is recorded. Pricing is
