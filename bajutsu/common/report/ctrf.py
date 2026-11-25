@@ -215,8 +215,8 @@ def _environment(provenance: dict[str, object] | None) -> dict[str, object] | No
     """The run environment, drawn only from stored data so the export stays reproducible.
 
     The commit and the build identity from provenance — no live host info, which would make
-    `ctrf.json` vary across machines and re-renders of the same run. CTRF's `environment` takes no
-    keys of its own, and a run can drive several apps, so the per-target identity goes in `extra`.
+    `ctrf.json` vary across machines and re-renders of the same run. CTRF's `environment` rejects a
+    key it does not define, and defines none for a per-target build identity, so it goes in `extra`.
     None when there's nothing to record, so the optional block is omitted rather than emitted empty.
     """
     environment: dict[str, object] = {}

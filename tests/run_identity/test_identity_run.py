@@ -111,10 +111,16 @@ def test_provenance_carries_the_identity() -> None:
     assert prov["toolSource"] == {"commit": "c", "source": "build-arg"}
 
 
-def test_read_run_identity_covers_every_target(tmp_path: Path) -> None:
-    identity = read_run_identity({"b": _eff(tmp_path, "b"), "a": _eff(tmp_path, "a")}, trusted=True)
+def test_read_run_identity_covers_every_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Pinned, since the real one answers for however this suite's own package was installed.
+    pinned = {"commit": "c", "source": "checkout"}
+    monkeypatch.setattr("bajutsu.common.run_identity.stamp.tool_source", lambda: pinned)
+    effs = {"b": _eff(tmp_path, "b"), "a": _eff(tmp_path, "a")}
+    identity = read_run_identity(effs, trusted=True)
     assert list(identity.targets) == ["a", "b"]
-    assert identity.tool_source is not None and identity.tool_source["source"] == "checkout"
+    assert identity.tool_source == pinned
 
 
 @pytest.fixture

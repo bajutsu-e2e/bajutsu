@@ -214,7 +214,7 @@ JUnit XML が run を名前、所要時間、失敗内容の塊まで削ぎ落�
 }
 ```
 
-`environment.commit` は `gitRevision` と同じ値です。CTRF は `environment` に独自のキーを許さないので、ビルドの識別情報は `environment.extra` に入ります。`extra.targets.<name>` が持つのはアプリの `hash` と `version`、ソースの `commit` と `uncommitted` です。`extra.toolSource` はツールの `commit`、`uncommitted`、`source` を持ちます。欠けた値は `null` のままで、理由は `unavailable` に入ります。
+`environment.commit` は `gitRevision` と同じ値です。CTRF は `environment` に未定義のキーを許さず、ターゲットごとのキーもないので、ビルドの識別情報は `environment.extra` に入ります。`extra.targets.<name>` が持つのはアプリの `hash` と `version`、ソースの `commit` と `uncommitted` です。`extra.toolSource` はツールの `commit`、`uncommitted`、`source` を持ちます。欠けた値は `null` のままで、理由は `unavailable` に入ります。
 
 - `summary.duration` と各 `tests[].duration` はミリ秒（Σ／シナリオごとの `duration_s`）で、CTRF の消費側が拠り所にするフィールドであり、正確です。`summary.start` と文書の `timestamp` は `YYYYMMDD-HHMMSS` の runId から導出します。runId は UTC で採番されるため、UTC として解釈します。`stop = start + duration` です。テストごとの絶対 start/stop は、シナリオごとの絶対エポックが要る（オプションの後続作業）ため、近似せず省きます。実行時のホスト状態は一切載せないので、`bajutsu report` は同じ実行の `ctrf.json` をバイト単位で同一に再生成します。
 - `tests[].status` は、実行した run では `passed` / `failed` です。対象外（not applicable）の記録（[端末の条件が作る実行](#端末の条件が作る実行)を参照）は `skipped` になります。他の CTRF の集計は `0` のままです。

@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from bajutsu.common.config.accessors import xcuitest_targets_real_device
 from bajutsu.common.config.effective import AndroidConfig, Effective, IosConfig
 from bajutsu.common.run_identity.app_version import android_version, ios_version
 from bajutsu.common.run_identity.binary import hash_binary
@@ -47,9 +48,7 @@ def _installed_elsewhere(eff: Effective) -> bool:
     A non-local device provider hands the device over with the app on it, and a real iOS device's
     build is installed out of band. The file at `subject.path` is then not known to be what ran.
     """
-    config = eff.platform_config
-    xcuitest = config.xcuitest if isinstance(config, IosConfig) else None
-    if xcuitest is not None and xcuitest.device_type == "device":
+    if xcuitest_targets_real_device(eff):
         return True
     return eff.device_provider is not None and eff.device_provider.kind != "local"
 

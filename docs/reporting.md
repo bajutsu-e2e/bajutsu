@@ -351,7 +351,8 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
   approximating. The export carries no live host state, so `bajutsu report` regenerates the same
   run's `ctrf.json` byte-for-byte.
 - `environment.commit` repeats `gitRevision`. The build identity sits under `environment.extra`,
-  because CTRF allows no keys of its own in `environment`. `extra.targets.<name>` carries the app
+  because CTRF accepts defined keys there and no others. None of those keys covers a per-target
+  build. `extra.targets.<name>` carries the app
   values `hash` and `version`. It also carries the source `commit` and `uncommitted`.
   `extra.toolSource` carries the tool `commit`, `uncommitted`, and `source`. A gap stays
   `null`, with its reason under `unavailable`.
