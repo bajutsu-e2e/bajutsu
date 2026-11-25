@@ -63,7 +63,7 @@ from bajutsu.serve.helpers import (
 )
 from bajutsu.serve.routes import ROUTES, Handle, Route, json_body_cap
 from bajutsu.serve.server.file_object_store import FileObjectStore, PendingPut
-from bajutsu.serve.sessions import MACHINE
+from bajutsu.serve.sessions import MACHINE, Principal
 from bajutsu.serve.state import ServeState
 from bajutsu.serve.upload_artifacts import ArtifactKind
 from bajutsu.serve.uploads import (
@@ -419,19 +419,18 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             return JSONResponse({"error": "forbidden"}, status_code=403)
         return None
 
-    def _gate_api_key(request: Request, admission: api_keys.Admission) -> Response | None:
+    def _gate_api_key(request: Request, key: Principal | api_keys.Refusal) -> Response | None:
         """The API-key half (BE-0509): such a request has no session to read and no user row for
-        the role gate, so `admission` is the whole verdict."""
-        if admission.status is not None or admission.principal is None:
-            status = admission.status or 401
-            error = "unauthorized" if status == 401 else "forbidden"
-            return JSONResponse({"error": error}, status_code=status)
-        request.state.gate_actor = admission.principal.identity
+        the role gate, so what `admit` answered is the whole verdict."""
+        if isinstance(key, api_keys.Refusal):
+            return JSONResponse({"error": key.error}, status_code=key.status)
+        request.state.gate_actor = key.identity
         # The same slot a machine session fills, so `state.org_for` answers the key's org.
-        request.state.machine_org = admission.principal.org
+        request.state.machine_org = key.org
         # Bound on the request's own context, which the endpoint copies: the threadpool binding
         # inside `admit` does not come back out of it.
-        oplog.bind_actor(admission.principal.identity or "")
+        if key.identity is not None:
+            oplog.bind_actor(key.identity)
         return None
 
     @app.middleware("http")
@@ -469,14 +468,16 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             and not gate.is_open(method, path, oidc=state.auth.oidc is not None)
         ):
             # An API key (BE-0509) is judged ahead of the session gates, as in the stdlib handler.
-            # Off the event loop: it reads and writes the database.
-            admission = await run_in_threadpool(
-                api_keys.admit, state, request.headers.get("authorization", ""), method, path
+            # Off the event loop, since it reads and writes the database — but only for a bearer
+            # shaped like one, so no other request waits on the shared threadpool to be gated.
+            header = request.headers.get("authorization", "")
+            key = (
+                await run_in_threadpool(api_keys.admit, state, header, method, path)
+                if api_keys.bearer_key(header) is not None
+                else None
             )
             refusal = (
-                _gate_session(request, method, path)
-                if admission is None
-                else _gate_api_key(request, admission)
+                _gate_session(request, method, path) if key is None else _gate_api_key(request, key)
             )
             if refusal is not None:
                 return _hardened(refusal)

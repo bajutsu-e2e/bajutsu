@@ -282,16 +282,13 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 return True
             # An API key (BE-0509) is judged ahead of both session gates below: it has no session
             # to read and no user row for the role gate.
-            admission = api_keys.admit(
-                state, self.headers.get("Authorization", ""), self.command, path
-            )
-            if admission is not None:
-                if admission.status is not None or admission.principal is None:
-                    status = admission.status or 401
-                    return self._refuse(status, "unauthorized" if status == 401 else "forbidden")
-                self._gate_actor = admission.principal.identity
+            key = api_keys.admit(state, self.headers.get("Authorization", ""), self.command, path)
+            if isinstance(key, api_keys.Refusal):
+                return self._refuse(key.status, key.error)
+            if key is not None:
+                self._gate_actor = key.identity
                 # The same slot a machine session fills, so `state.org_for` answers the key's org.
-                self._machine_org = admission.principal.org
+                self._machine_org = key.org
                 return True
             if self._authorized():
                 # Authenticated — but as which of the three caller shapes? A machine session

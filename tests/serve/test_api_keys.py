@@ -484,6 +484,7 @@ def test_issue_use_and_revoke_are_audited_by_identifier_alone(
     call = backend(state)
     assert call("GET", "/api/runs", bearer=key).status == 200
     assert call("GET", "/api/config", bearer=key).status == 403
+    assert _repository(state).list_api_keys("acme")[0].last_used_at is not None
     assert ops.revoke_api_key(state, "acme", key_id, actor="alice")[1] == 200
 
     rows = [row for row in _audit_rows(state) if row.action.startswith("apikey.")]
@@ -503,6 +504,56 @@ def test_issue_use_and_revoke_are_audited_by_identifier_alone(
     assert all(row.detail["apiKey"] == key_id for row in rows)
     secret = key.split("_", 2)[2]
     assert not any(secret in f"{row.target}{json.dumps(row.detail)}" for row in rows)
+
+
+def test_the_shared_token_issuing_and_revoking_is_audited_with_no_actor(tmp_path: Path) -> None:
+    state = _state(tmp_path, oauth=False)
+    payload, status = ops.create_api_key(state, "acme", {"name": "n", "role": "viewer"})
+    assert status == 200
+    assert ops.revoke_api_key(state, "acme", payload["id"])[1] == 200
+    rows = _audit_rows(state)
+    assert sorted(row.action for row in rows) == ["apikey.issue", "apikey.revoke"]
+    assert all((row.actor_id, row.org_id) == (None, "acme") for row in rows)
+
+
+def test_a_refused_key_is_logged_with_the_reason_the_caller_is_not_told(
+    tmp_path: Path,
+    backend: Callable[[ServeState], _Call],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    state = _state(tmp_path)
+    key_id, _key = _issue(state)
+    with caplog.at_level(logging.INFO):
+        reply = backend(state)("GET", "/api/runs", bearer=f"bajutsu_{key_id}_not-the-secret")
+    assert reply.body == {"error": "unauthorized"}
+    denied = next(r for r in caplog.records if getattr(r, "event", "") == "apikey.denied")
+    assert getattr(denied, "reason", None) == "bad_secret"
+    assert "not-the-secret" not in caplog.text
+
+
+def test_the_operation_sees_the_key_as_its_actor_not_the_cookie_sent_with_it(
+    tmp_path: Path,
+    backend: Callable[[ServeState], _Call],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(tmp_path)
+    seen: dict[str, Any] = {}
+
+    def start_run(_state: ServeState, _body: dict[str, Any], **kwargs: Any) -> tuple[Any, int]:
+        seen.update(kwargs)
+        return {"ok": True}, 200
+
+    monkeypatch.setattr(ops, "start_run", start_run)
+    _open_routes(monkeypatch, ("POST", "/api/run"))
+    key_id, key = _issue(state)
+    admin = state.auth.issue_session("alice")
+    reply = backend(state)("POST", "/api/run", bearer=key, session=admin, body={})
+    assert reply.status == 200
+    assert (seen["actor"], seen["machine_org"], seen["session"]) == (
+        f"api-key:{key_id}",
+        "acme",
+        None,
+    )
 
 
 def test_a_use_is_logged_under_the_key_and_never_with_its_secret(

@@ -50,16 +50,15 @@ class NewKey:
 
 
 @dataclass(frozen=True)
-class Admission:
-    """The verdict on a bearer value that names a key.
+class Refusal:
+    """How to turn away a request whose key does not admit it. The body says no more than that."""
 
-    Attributes:
-        status: None to admit the request, else the HTTP status to refuse it with.
-        principal: Who the request acts as; None when the key itself was refused (401).
-    """
+    status: int
+    error: str
 
-    status: int | None
-    principal: Principal | None = None
+
+_UNAUTHORIZED = Refusal(401, "unauthorized")
+_FORBIDDEN = Refusal(403, "forbidden")
 
 
 def new_key() -> NewKey:
@@ -86,7 +85,19 @@ def parse_key(value: str) -> tuple[str, str] | None:
     return parts[1], parts[2]
 
 
-def admit(state: ServeState, authorization: str, method: str, path: str) -> Admission | None:
+def bearer_key(authorization: str) -> tuple[str, str] | None:
+    """`(identifier, secret)` when the `Authorization` header carries a key-shaped bearer.
+
+    Reads no database, so a caller can skip `admit` for every other request.
+    """
+    if not authorization.startswith("Bearer "):
+        return None
+    return parse_key(authorization[len("Bearer ") :])
+
+
+def admit(
+    state: ServeState, authorization: str, method: str, path: str
+) -> Principal | Refusal | None:
     """Judge the request's `Authorization` header as an API key.
 
     None means it is not one — no bearer, not the key shape, an identifier no row has, or no
@@ -95,27 +106,37 @@ def admit(state: ServeState, authorization: str, method: str, path: str) -> Admi
 
     A key that is recognized is judged here and nowhere else: 401 with no hint when its secret is
     wrong, it expired, it was revoked, or its org is gone; 403 off the allowlist or above its role.
-    Every use of a valid key, refused or not, is audited.
+    Every use of a valid key, refused or not, is audited. A 401 is only logged, with the reason the
+    caller is not told.
     """
     repository = state.repository
-    if repository is None or not authorization.startswith("Bearer "):
-        return None
-    parsed = parse_key(authorization[len("Bearer ") :])
-    if parsed is None:
+    parsed = bearer_key(authorization)
+    if repository is None or parsed is None:
         return None
     key_id, secret = parsed
     key = repository.get_api_key(key_id)
     if key is None:
         return None
     now = datetime.now(UTC)
-    if (
-        not hmac.compare_digest(hash_secret(secret), key.secret_hash)
-        or key.revoked_at is not None
-        or key.expires_at <= now
-        # A retired org is a soft delete, so no cascade ever reaches its keys.
-        or repository.get_org(key.org_id) is None
-    ):
-        return Admission(status=401)
+    reason = None
+    if not hmac.compare_digest(hash_secret(secret), key.secret_hash):
+        reason = "bad_secret"
+    elif key.revoked_at is not None:
+        reason = "revoked"
+    elif key.expires_at <= now:
+        reason = "expired"
+    # A retired org is a soft delete, so no cascade ever reaches its keys.
+    elif repository.get_org(key.org_id) is None:
+        reason = "org_retired"
+    if reason is not None:
+        oplog.log_event(
+            _logger,
+            "apikey.denied",
+            f"refused api key {key.id}: {reason}",
+            org=key.org_id,
+            reason=reason,
+        )
+        return _UNAUTHORIZED
     principal = Principal(
         identity=api_key_identity(key.id), org=key.org_id, kind=API_KEY, role=key.role
     )
@@ -137,4 +158,4 @@ def admit(state: ServeState, authorization: str, method: str, path: str) -> Admi
         org=key.org_id,
         allowed=not refused,
     )
-    return Admission(status=403 if refused else None, principal=principal)
+    return _FORBIDDEN if refused else principal

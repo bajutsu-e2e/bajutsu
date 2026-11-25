@@ -130,6 +130,12 @@ def _audit(
 ) -> None:
     """Record a key's issue or revocation in both the operations log and the audit trail."""
     oplog.log_event(_logger, action, f"{action} {key_id} for org {slug!r}", org=slug)
-    _record_audit(
-        state, actor, state.org_of(actor), action, key_id, {**detail, "org": slug, "apiKey": key_id}
-    )
+    detail = {**detail, "org": slug, "apiKey": key_id}
+    if actor is None and state.repository is not None:
+        # The shared token names nobody, which `_record_audit` skips. A key is a new credential, so
+        # its issue and revocation are recorded anyway, under the org that holds it.
+        state.repository.record_audit(
+            org_id=slug, actor_id=None, action=action, target=key_id, detail=detail
+        )
+        return
+    _record_audit(state, actor, state.org_of(actor), action, key_id, detail)

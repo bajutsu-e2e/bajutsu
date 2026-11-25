@@ -44,6 +44,7 @@ EVENTS: frozenset[str] = frozenset(
         # matched: zero is a legitimate answer, but it is also what a mistyped repository returns,
         # and an operator reaching for that endpoint is acting on a name that has just changed.
         "org.machineSessions.revoke",
+        "apikey.denied",
         "apikey.issue",
         "apikey.revoke",
         "apikey.use",

@@ -1159,7 +1159,9 @@ organization also revokes its keys. A route on the allowlist still requires the 
 person, so a `viewer` key cannot call an `editor` route.
 
 The audit log records each issue, revocation, and use under the key's identifier. A use is recorded
-whether the route was allowed or refused. A key's last-used time updates at most once a minute.
+whether the route was allowed or refused. A `401` writes no audit entry; the operations log records
+it as `apikey.denied` with the reason the caller is not told. A key's last-used time updates at most
+once a minute.
 
 ### Operator secrets and the Claude API key
 
