@@ -30,7 +30,7 @@
 
 これらのプリミティブがないと、こうしたフローは非決定的な回避策に頼るか、そもそも自動化できません。
 
-**競合の文脈（Maestro）。** Maestro は、標準で幅広いデバイス制御の語彙を備えています。次の語彙を含みます。`setAirplaneMode` / `toggleAirplaneMode`、`setOrientation`、`setLocation` / `travel`、`setPermissions`、`clearKeychain`、`clearState`、`pressKey`、`hideKeyboard`、`openLink` です。これに並ぶのは前提条件です。Bajutsu は中核部分を BE-0035 で実装済みです。残るプリミティブ（タイムゾーン、クリップボードの仕込みと読み戻し、シェイク、アプリのレジューム）を埋めれば、「Maestro はできるが Bajutsu はできない」という安易な反論を取り除けます。
+**競合の文脈（Maestro）。** Maestro は、標準で幅広いデバイス制御の語彙を備えています。次の語彙を含みます。`setAirplaneMode` / `toggleAirplaneMode`、`setOrientation`、`setLocation` / `travel`、`setPermissions`、`clearKeychain`、`clearState`、`pressKey`、`hideKeyboard`、`openLink` です。この語彙に並ぶことは、競合に対する前提条件です。Bajutsu は中核部分を BE-0035 で実装済みです。残るプリミティブ（タイムゾーン、クリップボードの仕込みと読み戻し、シェイク、アプリのレジューム）を埋めれば、「Maestro はできるが Bajutsu はできない」という安易な反論を取り除けます。
 
 違いは*やり方*にあります。各プリミティブは、落ち着き待ちの sleep と AI を使わない、決定的な `simctl` レベルの副作用のままです。Bajutsu は、決定性の契約を手放さずに能力面のパリティへ到達します。
 

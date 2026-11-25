@@ -23,7 +23,7 @@
 
 Real flows depend on device state that the app does not control. A test that cannot set that state cannot exercise the flow deterministically. BE-0035 left four gaps:
 
-- **Timezone.** Date-dependent UI (a "Today" header, a countdown, a scheduling screen) can be tested across timezones merely if the test can pin the device's zone. Without the pin, the result drifts with where CI runs.
+- **Timezone.** Date-dependent UI (a "Today" header, a countdown, a scheduling screen) can be tested across timezones only if the test can pin the device's zone. Without the pin, the result drifts with where CI runs.
 - **Clipboard.** Paste flows (a coupon code, a shared link, a one-time code copied from elsewhere) need the test to seed the pasteboard. A "copy" action needs the test to read the pasteboard back for verification. BE-0035 shipped `clearClipboard`, which clears the pasteboard and nothing more. Seeding and reading remain.
 - **Shake.** Some apps bind "undo" or a debug menu to the shake gesture. No step triggers that gesture today.
 - **App resume.** BE-0035's `background` sends the app to the background. Resuming the app, and holding it backgrounded for a bounded interval, is the other half of a foreground/background transition. Neither is implemented.
@@ -48,7 +48,7 @@ Each primitive is a new step. It drives the Simulator through the existing `simc
 Mapping to the backend:
 
 - `setTimezone`, `setClipboard`, and `shake` correspond to `simctl` subcommands: `simctl status_bar` or `simctl spawn` for the zone, `simctl pbcopy` and `pbpaste` for the clipboard, and the shake device event. Each is built as a pure command function, like the existing `boot`, `launch`, and `openurl` builders. The injectable `RunFn` executes it.
-- `foreground` resumes an app that `background` (BE-0035) suspended. It must **not** reintroduce a fixed sleep. A condition wait gates any settling after the resume, where the scenario provides one: an element appearing or disappearing. A bare duration is allowed as an explicit, bounded backgrounded interval. It is never a "wait for the app to settle" sleep.
+- `foreground` resumes an app that `background` (BE-0035) suspended. It must **not** reintroduce a fixed sleep. A condition wait gates any settling after the resume, where the scenario provides one: an element appearing or disappearing. A bare duration is allowed only as an explicit, bounded backgrounded interval. It is never a "wait for the app to settle" sleep.
 - Like the existing device-control steps, these steps need a per-device control channel. They are **unavailable on the fake driver and in parallel runs**, and they fail cleanly there instead of crashing.
 
 The primitives preserve the prime directives:

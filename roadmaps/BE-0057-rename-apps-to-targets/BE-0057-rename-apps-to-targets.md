@@ -62,7 +62,7 @@ Only the **generic** term moves. Platform-specific field names that legitimately
 
 - `bundleId`, `appPath`, and `deeplinkScheme` name iOS specifics: a bundle identifier, a path to a built `.app`, and a URL scheme. They do not name the generic unit under test. A web target omits them and sets `baseUrl`.
 - The `scenarios/<name>/` layout and the per-target scenario directories keep their shape. The target's name keys them, and that name is unchanged.
-- The deterministic core (selector resolution, orchestrator, runner, assertions) is untouched. The change renames terms at the config and CLI boundary alone.
+- The deterministic core (selector resolution, orchestrator, runner, assertions) is untouched. The change renames terms at the config and CLI boundary only.
 
 ### Migration (hard cutover)
 
@@ -76,9 +76,9 @@ The updated [configuration.md](../../docs/configuration.md) and [cli.md](../../d
 
 ## Alternatives considered
 
-- **Keep `apps` and document that web targets reuse it.** Rejected. The term misleads on web and Android, and the code already narrates "target" in comments and validator messages. Documentation cannot fix a key whose name asserts the wrong thing.
-- **Add a deprecation alias (accept both, warn on `apps:`).** Rejected per the scoping decision. A dual-accept period puts two terms in the docs, adds a warning path to carry, and leaves a deferred removal to track. That cost pays off merely at a scale of external installs and published scenarios that Bajutsu has not reached. A clean cutover now is cheaper than a migration later.
-- **Rename the config key and leave `--app`.** Rejected. A config that says `targets:` and a CLI that says `--app` are incoherent together. The selector flag must match the key it selects.
+- **Keep `apps`, just document that web targets reuse it.** Rejected. The term misleads on web and Android, and the code already narrates "target" in comments and validator messages. Documentation cannot fix a key whose name asserts the wrong thing.
+- **Add a deprecation alias (accept both, warn on `apps:`).** Rejected per the scoping decision. A dual-accept period puts two terms in the docs, adds a warning path to carry, and leaves a deferred removal to track. That cost pays off only at a scale of external installs and published scenarios that Bajutsu has not reached. A clean cutover now is cheaper than a migration later.
+- **Rename the config key only, and leave `--app`.** Rejected. A config that says `targets:` and a CLI that says `--app` are incoherent together. The selector flag must match the key it selects.
 - **A different word: `subjects`, `systems`, `suts`, or `applications`.** Rejected. "Target" is the established term for the unit under test in E2E tooling. It is the shortest platform-neutral fit, and the codebase already uses it. It minimizes churn and surprise.
 
 ## Progress

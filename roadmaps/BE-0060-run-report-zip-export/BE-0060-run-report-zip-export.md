@@ -30,7 +30,7 @@ This is a Tier-1 convenience. It adds no LLM anywhere and never touches `run`'s 
 
 A run's output is **already complete and self-describing**. The deterministic runner writes `report.html`, `manifest.json`, `junit.xml`, the executed scenario, and the evidence tree. Yet that output is **trapped on the machine that produced it**. No first-class way lifts a *complete* copy out. The gap bites in four concrete ways:
 
-1. **`report.html` is not portable on its own.** The report references its evidence (screenshots, the interval video, `network.json`) by **relative link**. The local web UI exists partly to serve that evidence so those links resolve ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)). Copy the HTML out alone, and you get a report with broken images and no video. A *working* report moves only as the whole directory, intact, with its layout preserved.
+1. **`report.html` is not portable on its own.** The report references its evidence (screenshots, the interval video, `network.json`) by **relative link**. The local web UI exists partly to serve that evidence so those links resolve ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)). Copy just the HTML out, and you get a report with broken images and no video. A *working* report moves only as the whole directory, intact, with its layout preserved.
 2. **Sharing a failure is a daily need.** Attaching a run to a bug ticket, handing it to a teammate who has no Mac or Simulator, and keeping an offline record of a release run all need one portable file. Today people run `zip -r runs/<id>` by hand. That is easy to get wrong, because zipping from the wrong root breaks the relative links. It is also unavailable to anyone who is not sitting at that shell.
 3. **A hosted or remote `serve` gives the browser no file-system access.** `serve` may run on a remote worker or a shared host ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). The `runs/` directory then lives on that machine, not the user's. A browser user has *no* way to retrieve a complete run. They can view the embedded report but cannot take it with them. Only a download endpoint closes this gap.
 4. **CI wants the report as a single artifact.** With a zip, uploading run results from CI is one `upload-artifact` step over one file. Without it, CI ships a directory tree and hopes the relative layout survives. `bajutsu run --zip` makes "produce the artifact" part of the same command that produced the verdict.
@@ -72,7 +72,7 @@ In the UI, a **Download** button appears per run in the **History** list and on 
 
 ### Determinism, the gate, and secrets
 
-* **No LLM, no effect on the verdict.** The export is post-hoc packaging of artifacts that the deterministic `run` already produced. `run`'s pass/fail is computed before any zip, and independently of it. `--zip` adds a packaging step after the verdict. Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
+* **No LLM, no effect on the verdict.** The export is post-hoc packaging of artifacts that the deterministic `run` already produced. `run`'s pass/fail is computed before any zip, and independently of it. `--zip` only adds a packaging step after the verdict. Prime directives 1 and 2 ([CLAUDE.md](../../CLAUDE.md)) hold by construction.
 * **Linux-testable.** Zipping a directory needs no Simulator. Unit tests exercise the archiver and the endpoint on the existing Linux gate, against a fixture run dir.
 * **Secrets stay scrubbed.** A run already redacts secret values from its artifacts ([BE-0032](../BE-0032-secret-variables/BE-0032-secret-variables.md)). The zip packages what is on disk, so it inherits that scrub and re-introduces nothing. The archiver must archive **strictly the run dir**. It never reaches out to `.env`, config, or anything above the run dir.
 
@@ -89,13 +89,13 @@ Tests that need no Simulator pin the archiver and the endpoint:
 ### Out of scope
 
 - Multi-run bundles.
-- A lean "report plus referenced assets" subset (see *Alternatives*).
+- A lean "report plus referenced assets only" subset (see *Alternatives*).
 - Cloud upload and share-links, which are a hosting concern ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) and [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
 - Retention and cleanup of old runs.
 
 ## Alternatives considered
 
-* **Zip `report.html` alone (the single self-contained file).** Rejected as the default. The report links its evidence by relative path ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)), so a lone HTML loses every screenshot, the video, and the network log. The whole-run zip makes the report actually portable. A lean "report plus only the assets it references" variant could serve size-sensitive cases later. It is an optimization on top, not the safe default.
+* **Zip `report.html` only (the single self-contained file).** Rejected as the default. The report links its evidence by relative path ([BE-0011](../BE-0011-local-web-ui-serve/BE-0011-local-web-ui-serve.md)), so a lone HTML loses every screenshot, the video, and the network log. The whole-run zip makes the report actually portable. A lean "report plus only the assets it references" variant could serve size-sensitive cases later. It is an optimization on top, not the safe default.
 * **Tell users to run `zip -r runs/<id>` themselves.** This works at a local Mac shell, but it has three flaws. (a) It gives nothing to a *browser* user of a hosted or remote `serve`, who has no file-system access. (b) It is manual and easy to get wrong, because zipping from the wrong root breaks the report's relative links. (c) It leaves the UI and CI without a shared, stable contract for "what a run zip is". A built-in archiver with a fixed internal layout fixes all three.
 * **A different archive format or an external packaging dependency.** Rejected. The stdlib `zipfile` is universal, opens by double-click on every OS, and adds no dependency. That is consistent with `serve` being stdlib-only and the gate staying dependency-light. A tarball would be less friendly to the Windows users whom a shared report may reach.
 * **Always build the zip inside `run` (no flag).** Rejected. Most runs never need the zip, and building it would add I/O and disk to every CI run. The export stays opt-in (`--zip`) or on demand (`export` and the serve button).

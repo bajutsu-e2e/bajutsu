@@ -95,7 +95,7 @@ Key-based masking (sensitive field *names*) backstops both sources. It catches a
 - **Metrics, error tracking, and distributed tracing** (Prometheus, Sentry, OpenTelemetry). They belong to deployment and observability, which [BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md) owns.
 - **An audit-log viewer.** The `audit_log` table exists (BE-0015). Surfacing it is a separate concern.
 - **Evidence and run output.** The evidence subsystem and the LogBus already own them.
-- **A file sink and in-process rotation.** Output goes to stdout alone. See Alternatives.
+- **A file sink and in-process rotation.** Output goes to stdout only. See Alternatives.
 
 ## Alternatives considered
 
