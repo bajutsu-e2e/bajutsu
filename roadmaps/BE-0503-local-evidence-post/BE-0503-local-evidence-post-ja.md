@@ -1,14 +1,14 @@
-[English](BE-XXXX-local-evidence-post.md) · **日本語**
+[English](BE-0503-local-evidence-post.md) · **日本語**
 
-# BE-XXXX — 手元の実行の証跡を、補助スクリプトでプルリクエストや Issue に投稿する
+# BE-0503 — 手元の実行の証跡を、補助スクリプトでプルリクエストや Issue に投稿する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-local-evidence-post-ja.md) |
+| 提案 | [BE-0503](BE-0503-local-evidence-post-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0503") |
 | トピック | Integration with external services |
 | 関連 | [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check-ja.md) |
 <!-- /BE-METADATA -->

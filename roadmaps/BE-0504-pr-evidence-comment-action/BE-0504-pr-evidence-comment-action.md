@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-pr-evidence-comment-action-ja.md)
+**English** · [日本語](BE-0504-pr-evidence-comment-action-ja.md)
 
-# BE-XXXX — Post run evidence to a pull request or issue with a portable GitHub Action
+# BE-0504 — Post run evidence to a pull request or issue with a portable GitHub Action
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-pr-evidence-comment-action.md) |
+| Proposal | [BE-0504](BE-0504-pr-evidence-comment-action.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->

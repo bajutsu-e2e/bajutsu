@@ -1,14 +1,14 @@
-[English](BE-XXXX-pr-evidence-comment-action.md) · **日本語**
+[English](BE-0504-pr-evidence-comment-action.md) · **日本語**
 
-# BE-XXXX — 実行の証跡を、どのリポジトリでも使える GitHub Action でプルリクエストや Issue に投稿する
+# BE-0504 — 実行の証跡を、どのリポジトリでも使える GitHub Action でプルリクエストや Issue に投稿する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-pr-evidence-comment-action-ja.md) |
+| 提案 | [BE-0504](BE-0504-pr-evidence-comment-action-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
 | トピック | Integration with external services |
 | 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
