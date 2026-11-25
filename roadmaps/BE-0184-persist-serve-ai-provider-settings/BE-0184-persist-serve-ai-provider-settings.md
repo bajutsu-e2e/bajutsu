@@ -21,23 +21,23 @@ process's environment: they are written to `os.environ` on save and read back fr
 never to disk (BE-0175 documents this explicitly for the provider choice, "for this session
 only — never to disk"). Every restart of `serve` — a redeploy, a crash, a plain restart of
 the local process — resets these to whatever the launch environment (or the config file's
-`ai:` block) provides, and the operator re-enters them by hand. This item proposes an actual
-persistence layer so a saved choice survives a restart, the way the Claude API key already
+`ai:` block) provides, and the operator re-enters them by hand. This item proposes a
+persistence layer so that a saved choice survives a restart, as the Claude API key already
 does through the write-once secret store (BE-0136).
 
 ## Motivation
 
-An operator who sets up a provider, model, and effort in Settings expects that choice to
-stick — that expectation is exactly what BE-0136 already grants the API key, which is
-encrypted per organization and outlives a restart. Provider/model/effort are not secrets, so
-they do not need BE-0136's write-once, no-reveal shape, but a hosted, multi-tenant deployment
-(BE-0015) needs the same per-organization durability for them that the key already has:
-re-entering a provider and model after every deploy is friction with no security upside,
-since none of these values are sensitive.
+An operator who sets up a provider, model, and effort in Settings expects the choice to
+stick. BE-0136 already grants the API key exactly that: it encrypts the key per
+organization, and the key outlives a restart. Provider, model, and effort are not secrets, so
+they do not need BE-0136's write-once, no-reveal shape. A hosted, multi-tenant deployment
+(BE-0015) still needs the same per-organization durability for them that the key has.
+None of these values is sensitive, so re-entering a provider and model after every deploy
+is friction with no security upside.
 
 This item assumes the per-provider settings structure proposed in the companion item
-"Per-provider AI settings in the serve Web UI" (not yet numbered): persistence is about where
-that structure's values come from at boot and where they go on save, not about its shape.
+"Per-provider AI settings in the serve Web UI" (not yet numbered): persistence concerns where
+that structure's values come from at boot and where they go on save, and leaves its shape alone.
 
 ## Detailed design
 
@@ -45,28 +45,28 @@ that structure's values come from at boot and where they go on save, not about i
    alongside serve's other local state; a hosted, multi-tenant deployment persists it per
    organization through the same durable, DB-backed org storage the secret store and job
    records already use (BE-0015 / BE-0136 precedent). Neither path reuses the secret store
-   itself — see *Alternatives considered*.
+   itself (see *Alternatives considered*).
 2. **Boot read.** On startup, serve loads the persisted map, if one exists, before falling
    back to whatever the launch environment or the bound config's `ai:` block provides, so the
-   resolved provider/model/effort match what was last saved rather than resetting.
+   resolved provider, model, and effort match what was last saved instead of resetting.
 3. **Zero-config compatibility.** An operator who has never opened Settings sees no change:
    with nothing persisted, resolution falls back to today's env-derived defaults, keeping the
    AI-free zero-config path (BE-0101) exactly as it is.
-4. **Access.** Unlike the API key, these values are read back and displayed for editing —
-   there is no write-once or no-reveal constraint to carry over from BE-0136.
+4. **Access.** Unlike the API key, these values are read back and displayed for editing,
+   so the write-once and no-reveal constraints of BE-0136 do not carry over.
 
 ## Alternatives considered
 
 - **Persist by writing back into the operator's `bajutsu.config.yaml`.** Rejected: the
-  Settings panel must not mutate a config file the operator owns and tracks out from under
-  them. A Git-sourced or uploaded config is already treated as an external, largely read-only
-  input elsewhere (e.g. the build-command trust boundary in BE-0121); writing serve-local
-  preferences back into it would blur that boundary for no benefit a separate store doesn't
-  already give.
+  Settings panel must not mutate, behind the operator's back, a config file the operator owns
+  and tracks. Elsewhere a Git-sourced or uploaded config already counts as an external,
+  largely read-only input (for example, the build-command trust boundary in BE-0121). Writing
+  serve-local preferences back into it would blur that boundary, and a separate store gives
+  the same benefit without the blur.
 - **Reuse the existing write-once secret store (BE-0136) for these values too.** Rejected:
   that store is deliberately write-once and non-readable, which fits a credential but not a
-  value the UI must read back and let the operator see and edit. A plain, readable store is
-  the right shape here.
+  value the UI must read back so the operator can see and edit it. A plain, readable store
+  is the right shape here.
 
 ## Progress
 

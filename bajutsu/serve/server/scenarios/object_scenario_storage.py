@@ -18,6 +18,8 @@ class ObjectScenarioStorage:
     apps), keeping a Postgres registry out of the single-tenant path. The object-store client is
     injected (the `ObjectStore` slice), so a fake drives the gate."""
 
+    config_tree = False
+
     def __init__(
         self,
         store: ObjectStore,

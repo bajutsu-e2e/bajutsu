@@ -15,73 +15,78 @@
 
 ## Introduction
 
-This item adds a read-only **AI usage dashboard** to the serve Web UI: a page that reads the
-attributed usage ledger (defined by the `ai-usage-cost-ledger` item) and shows where Bajutsu's AI
-tokens and dollars go — broken down by provider, model, command, and scenario, and trended over
-time. It is the visualization half of the *AI usage and cost observability* topic; the recording
-half produces the data, and this item makes it legible enough to act on.
+This item adds a read-only **AI usage dashboard** to the serve Web UI. The page reads the attributed
+usage ledger (defined by the `ai-usage-cost-ledger` item) and shows where Bajutsu's AI tokens and
+dollars go. It breaks usage down by provider, model, command, and scenario, and trends it over time.
+
+The item is the visualization half of the *AI usage and cost observability* topic. The recording half
+produces the data, and this item makes the data legible enough to act on.
 
 ## Motivation
 
-The ledger is a growing JSONL file — durable and complete, but not something a team reads by hand.
-The whole point of recording attributed usage is to *see* it: to notice that one scenario dominates
+The ledger is a growing JSONL file: durable and complete, but not something a team reads by hand. The
+point of recording attributed usage is to *see* it. A team can then notice that one scenario dominates
 the crawl budget, that a model is disproportionately expensive for the value it returns, or that
-switching a command's provider would cut cost without hurting results. A raw log answers none of
-those at a glance; a dashboard does.
+switching a command's provider would cut cost without hurting results. A raw log answers none of those
+questions at a glance, and a dashboard does.
 
-Bajutsu already has the pattern for this. BE-0102 shipped a read-only run-stats dashboard in serve
-(aggregate pass/fail over test-run history), and BE-0169 added a `/metrics` observability endpoint.
-An AI-usage dashboard is the same shape applied to a new data source — and it is currently the one
-AI-usage surface that does not exist at all, since `bajutsu/usage.py` prints only to CLI stdout and
-`serve.js` shows nothing about tokens or cost.
+Bajutsu already has the pattern. BE-0102 shipped a read-only run-stats dashboard in serve (aggregate
+pass/fail over test-run history), and BE-0169 added a `/metrics` observability endpoint. An AI-usage
+dashboard applies the same shape to a new data source. It is also the one AI-usage surface that does
+not exist at all: `bajutsu/usage.py` prints only to CLI stdout, and `serve.js` shows nothing about
+tokens or cost.
 
-Crucially, this stays observability: the dashboard *reports* cost so a human can make a better
-provider/model decision. It does not decide anything at runtime, and it puts no LLM on the `run` /
-CI verdict path.
+The dashboard stays observability. It *reports* cost so a human can make a better provider or model
+decision. It decides nothing at runtime, and it puts no LLM on the `run` / CI verdict path.
 
 ## Detailed design
 
-The work is the following mutually exclusive, collectively exhaustive units:
+The work comprises the following mutually exclusive, collectively exhaustive units:
 
-1. **A read API for aggregated usage.** A serve endpoint (e.g. `GET /api/usage`) that reads the
-   ledger and returns aggregates grouped by the ledger's dimensions (provider, model, command,
-   scenario) over a requested time range, plus totals. Aggregation happens server-side so the
-   browser receives compact summaries, not the raw event stream. Follows the existing serve API
+1. **A read API for aggregated usage.** A serve endpoint (e.g. `GET /api/usage`) reads the ledger. It
+   returns totals and aggregates grouped by the ledger's dimensions (provider, model, command,
+   scenario) over a requested time range. Aggregation happens server-side, so the browser receives
+   compact summaries instead of the raw event stream. The endpoint follows the existing serve API
    conventions used by the run-stats dashboard (BE-0102).
 
-2. **A usage dashboard view.** A new view in `bajutsu/templates/serve.js` (rendered into a retained
-   pane, consistent with the desktop tiler's layout rules) showing: headline totals (tokens and
-   cost for the period), a breakdown table/chart by provider and by model, a by-command and
-   by-scenario breakdown, and a time trend. Subscription providers with `cost = null` are shown
-   with tokens and an explicit "no per-token price" marker rather than a fabricated dollar figure.
+2. **A usage dashboard view.** A new view in `bajutsu/templates/serve.js` renders into a retained pane,
+   consistent with the desktop tiler's layout rules. It shows:
+   - headline totals (tokens and cost for the period);
+   - a breakdown table or chart by provider and by model;
+   - a by-command and by-scenario breakdown;
+   - a time trend.
 
-3. **A provider/model comparison view.** The view that directly serves the optimization goal:
-   cost-per-call and cost-per-scenario compared across providers and models, so a team can read off
-   which provider/model is most efficient for a given kind of task. This is presentation of recorded
-   data only — the choice it informs is made by a human (or, later, by deterministic config), never
-   by the dashboard.
+   A subscription provider with `cost = null` appears with its tokens and an explicit "no per-token
+   price" marker, never a fabricated dollar figure.
 
-4. **Empty/absent-ledger handling.** When no ledger exists yet (AI paths never run, or persistence
-   disabled), the view renders a clear empty state explaining how usage recording is enabled, rather
-   than erroring — the same graceful degradation the doctor/readiness panels use.
+3. **A provider/model comparison view.** This view serves the optimization goal directly. It compares
+   cost-per-call and cost-per-scenario across providers and models, so a team can read off which
+   provider and model is most efficient for a given kind of task. The view presents recorded data and
+   nothing more. A human (or, later, deterministic config) makes the choice it informs, never the
+   dashboard.
 
-5. **Tests.** Unit-test the aggregation endpoint (grouping, time-range filtering, the `cost = null`
-   path, the empty-ledger case) against a fixture ledger — pure and Simulator-free, so they run in
-   the standard gate. The JS view is verified the way other `serve.js` views are.
+4. **Empty/absent-ledger handling.** When no ledger exists yet (AI paths never ran, or persistence is
+   disabled), the view renders a clear empty state that explains how to enable usage recording, instead
+   of raising an error. The doctor/readiness panels degrade the same way.
+
+5. **Tests.** Unit tests cover the aggregation endpoint (grouping, time-range filtering, the
+   `cost = null` path, the empty-ledger case) against a fixture ledger. They are pure and
+   Simulator-free, so they run in the standard gate. The JS view is verified the way other `serve.js`
+   views are.
 
 ## Alternatives considered
 
-- **Reuse BE-0102's run-stats dashboard instead of a new view.** Rejected: run-stats aggregates
-  test pass/fail history, a different data source and a different question. Folding AI cost into it
-  would overload one page; a sibling view under the same serve dashboard pattern is cleaner.
-- **Expose usage only through BE-0169's `/metrics` and let users bring their own Grafana.**
-  Reasonable for teams already running Prometheus, and worth doing as a small follow-up. Rejected as
-  the primary surface because it requires external tooling and does not serve the built-in,
-  zero-setup "open serve and see your AI spend" experience the run-stats dashboard set the precedent
-  for. The two can coexist: `/metrics` for scraping, this dashboard for the human view.
-- **A CLI subcommand (`bajutsu usage`) instead of a Web UI view.** Cheaper, but the topic's parent
-  motivation is a *visualization* surface, and serve is where Bajutsu already presents aggregate
-  history. A CLI reporter could be a later addition over the same ledger and read API.
+- **Reuse BE-0102's run-stats dashboard instead of a new view.** Rejected: run-stats aggregates test
+  pass/fail history, a different data source that answers a different question. Folding AI cost into it
+  would overload one page, whereas a sibling view under the same serve dashboard pattern is cleaner.
+- **Expose usage only through BE-0169's `/metrics` and let users bring their own Grafana.** This is
+  reasonable for teams already running Prometheus, and worth doing as a small follow-up. Rejected as
+  the primary surface, because it requires external tooling. It also gives up the built-in, zero-setup
+  "open serve and see your AI spend" experience that the run-stats dashboard set the precedent for. The
+  two can coexist: `/metrics` for scraping, this dashboard for the human view.
+- **A CLI subcommand (`bajutsu usage`) instead of a Web UI view.** This is cheaper, but the parent
+  topic's motivation is a *visualization* surface, and serve is where Bajutsu already presents
+  aggregate history. A CLI reporter could follow later over the same ledger and read API.
 
 ## Progress
 

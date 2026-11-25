@@ -49,8 +49,6 @@ CONFIG_YAML = (
     "      launch:\n"
     "        env: {SAMPLE_UITEST: '1'}\n"
     "      idNamespaces: [home, list, counter, settings]\n"
-    "    services:\n"
-    "      mockServer: {cmd: serve, port: 8080, stubs: ./mocks/sample}\n"
     "    evidence:\n"
     "      redact:\n"
     "        labels: [カード番号]\n"
@@ -66,7 +64,6 @@ def test_resolve_sample() -> None:
     assert eff.launch_env == {"SAMPLE_UITEST": "1"}
     assert eff.id_namespaces == ["home", "list", "counter", "settings"]
     assert eff.reserved_namespaces == ["auth", "nav"]
-    assert eff.mock_server is not None and eff.mock_server.port == 8080
 
 
 def test_redact_is_merged() -> None:
@@ -535,31 +532,50 @@ def test_device_provider_defaults_to_none() -> None:
     assert resolve(cfg, "app").device_provider is None
 
 
-def test_web_app_launch_server_parsed() -> None:
-    # `launchServer` declares how to bring up baseUrl's host for a run; readyUrl defaults to None
-    # (run falls back to baseUrl), readyTimeout to 30s.
+def test_hook_commands_parsed() -> None:
+    # The four command lists resolve onto `Effective.hooks`, with `timeout` defaulting to 300s and
+    # an after-entry's `on` to `always` (BE-0491).
     eff = resolve(
         load_config(
             "targets:\n"
             "  web:\n"
             "    platform: web\n"
             "    subject: {url: 'http://127.0.0.1:8799/'}\n"
-            "    services:\n"
-            "      server: {cmd: uv run bajutsu serve --port 8799, readyTimeout: 60}\n"
+            "    hooks:\n"
+            "      beforeRun:\n"
+            "        - {name: server, cmd: ./start.sh, timeout: 60}\n"
+            "      beforeScenario:\n"
+            "        - {name: user, cmd: ./create-user.sh}\n"
+            "      afterRun:\n"
+            "        - {on: always, cmd: ./stop.sh}\n"
         ),
         "web",
     )
-    assert eff.launch_server is not None
-    assert eff.launch_server.cmd == "uv run bajutsu serve --port 8799"
-    assert eff.launch_server.ready_timeout == 60.0
-    assert eff.launch_server.ready_url is None  # run falls back to baseUrl
-    assert (
-        resolve(
-            load_config("targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"),
-            "web",
-        ).launch_server
-        is None
-    )
+    assert [e.name for e in eff.hooks.before_run] == ["server"]
+    assert eff.hooks.before_run[0].cmd == "./start.sh"
+    assert eff.hooks.before_run[0].timeout == 60.0
+    assert eff.hooks.before_scenario[0].timeout == 300.0  # the default bound
+    assert eff.hooks.after_run[0].on == "always"
+    assert sorted(eff.hooks.named()) == ["server", "user"]
+    assert not resolve(
+        load_config("targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"),
+        "web",
+    ).hooks.any_command
+
+
+def test_removed_services_blocks_name_their_replacement() -> None:
+    # Both blocks left the schema with BE-0491; the loader reads neither name, so the error is the
+    # whole migration path (the rule BE-0452 applied when it renamed the target's keys).
+    for block, cmd in (("server", "{cmd: x}"), ("mockServer", "{cmd: x, port: 1}")):
+        with pytest.raises(ValidationError, match=r"hooks\.beforeRun"):
+            load_config(
+                "targets:\n"
+                "  web:\n"
+                "    platform: web\n"
+                "    subject: {url: 'http://x/'}\n"
+                "    services:\n"
+                f"      {block}: {cmd}\n"
+            )
 
 
 def test_app_without_bundleid_or_baseurl_rejected() -> None:
@@ -1718,3 +1734,51 @@ def test_destination_blocks_resolve_to_the_target_conditions_and_state() -> None
     web = resolve(cfg, "w")
     assert web.conditions == {"browser.version": ">=17"}  # one engine is the default, not a list
     assert _web(web).device_mode == "iPhone 13"
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        ({}, "exactly one of"),
+        ({"cmd": "x", "use": "y"}, "exactly one of"),
+        ({"cmd": "   "}, "cannot be empty"),
+        ({"cmd": "x", "name": "1bad"}, "must start with a letter"),
+        ({"cmd": "x", "name": "has__dunder"}, "contains '__'"),
+        ({"cmd": "x", "timeout": 0}, "must be positive"),
+    ],
+)
+def test_a_malformed_hook_entry_is_refused(entry: dict[str, object], message: str) -> None:
+    # The user-facing error surface of the four lists (BE-0491).
+    with pytest.raises(ValidationError, match=message):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            f"    hooks: {{beforeRun: [{entry!r}]}}\n".replace("'", '"')
+        )
+
+
+def test_a_before_list_entry_cannot_set_on() -> None:
+    # No verdict exists before the thing it precedes, so `on` belongs to the after lists.
+    with pytest.raises(ValidationError, match=r"cannot set `on`"):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            "    hooks: {beforeScenario: [{on: always, cmd: x}]}\n"
+        )
+
+
+def test_two_entries_of_one_target_cannot_share_a_hook_name() -> None:
+    # A `${hooks.<name>.<key>}` token must name one command.
+    with pytest.raises(ValidationError, match="two entries are named"):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            "    hooks:\n"
+            "      beforeRun: [{name: srv, cmd: a}]\n"
+            "      afterRun: [{name: srv, cmd: b}]\n"
+        )
+
+
+def test_a_sandbox_port_outside_the_range_is_refused() -> None:
+    with pytest.raises(ValidationError, match=r"ports must be in 1\.\.65535"):
+        load_config(
+            "targets:\n  web:\n    platform: web\n    subject: {url: 'http://x/'}\n"
+            "    hooks: {sandbox: {dockerImage: node:20-slim, ports: [0]}}\n"
+        )

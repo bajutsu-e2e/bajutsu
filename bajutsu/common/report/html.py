@@ -14,7 +14,11 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.common.capability.route_tokens import report_notices
+from bajutsu.common.capability.route_tokens import (
+    HOOKS_KEY,
+    report_hook_phases,
+    report_notices,
+)
 from bajutsu.common.evidence.redaction import Redactor
 from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import RunResult
@@ -155,6 +159,7 @@ def html_report(
     step_lines: list[list[int] | None] | None = None,
     not_applicable: Sequence[Mapping[str, str]] = (),
     notices: Sequence[str] = (),
+    hook_phases: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """A self-contained interactive HTML report (inline CSS + JS, no external assets).
 
@@ -169,6 +174,9 @@ def html_report(
     failures, places them in the run matrix, and lists each one's reason apart; a run with nothing
     but them executed nothing, so it reports FAIL. `notices` are run-level notes from the
     manifest's provenance (`report_notices`), listed apart without changing the verdict.
+    `hook_phases` are the target's external hook commands (BE-0491), each list its own block with a
+    link to that entry's log — apart from the scenarios' numbered steps, the way `setup` and
+    `cleanup` already are, so a reader can tell preparation and teardown from what was under test.
     """
     passed = sum(1 for r in results if r.ok)
 
@@ -227,6 +235,7 @@ def html_report(
             source_name=source_name,
             description=description,
             notices=list(notices),
+            hook_phases=list(hook_phases),
         )
     )
 
@@ -283,6 +292,7 @@ def write_html_and_junit(
             step_lines,
             not_applicable,
             report_notices(provenance),
+            report_hook_phases((provenance or {}).get(HOOKS_KEY)),
         ),
     )
 

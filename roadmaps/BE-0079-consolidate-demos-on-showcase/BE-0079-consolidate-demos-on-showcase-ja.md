@@ -17,18 +17,20 @@
 
 ## はじめに
 
-[BE-0045](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md) で、
-**showcase** 群（同じアプリを UIKit と SwiftUI で書き、各々をアクセシビリティ有／無の変種で出す。
-2 コードベースで 4 プロダクト）を、Bajutsu の次世代 dogfood 対象として出荷しました。ただし移行そのものは
-意図的にスコープから外しています。BE-0045 自身の設計ノートは、旧来の `sample` フィクスチャについて
-「showcase がオンデバイス CI と Web UI ツアーをカバーするまで残す。置き換えは後続作業であって本アイテムの一部ではない」
-と述べています。
-
-本アイテムがその後続作業です。showcase を**唯一**の iOS フィクスチャにします。すなわち、showcase を旧来の 3 アプリと
-同等の機能まで引き上げ、すべてのデモとオンデバイス CI ジョブの向き先を showcase に変え、その上で `demo`
+本アイテムは、showcase を**唯一**の iOS フィクスチャにします。showcase を旧来の 3 アプリと同等の機能まで
+引き上げ、すべてのデモとオンデバイス CI ジョブの向き先を showcase に変え、その上で `demo`
 （[`demos/app`](../../demos/app)）、`sample`（[`demos/features/app`](../../demos/features/app)）、`sample2`
-（[`demos/record/app`](../../demos/record/app)）を**退役**させます。Web フィクスチャ
-（[`demos/web`](../../demos/web)、Playwright backend）は別プラットフォームなのでスコープ外で、そのまま残します。
+（[`demos/record/app`](../../demos/record/app)）を**退役**させます。
+
+[BE-0045](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps-ja.md) は、**showcase** 群を
+Bajutsu の次世代 dogfood 対象として出荷しました。showcase 群は、同じアプリを UIKit と SwiftUI で書き、各々を
+アクセシビリティ有／無の変種で出すものです（2 コードベースで 4 プロダクト）。BE-0045 は移行そのものを
+意図的にスコープから外しており、設計ノートは旧来の `sample` フィクスチャについて「showcase がオンデバイス CI と
+Web UI ツアーをカバーするまで残す。置き換えは後続作業であって本アイテムの一部ではない」と述べています。
+本アイテムがその後続作業です。
+
+Web フィクスチャ（[`demos/web`](../../demos/web)、Playwright backend）は別プラットフォームなので
+スコープ外で、そのまま残します。
 
 ## 動機
 
@@ -42,18 +44,19 @@
 | `sample2` | [`demos/record/app`](../../demos/record/app) | `com.bajutsu.sample2` | `record` デモ |
 | `showcase`（4 プロダクト） | [`demos/showcase`](../../demos/showcase) | 4 つの `targets.<name>` | `run` / `doctor` / `record`、将来の `crawl` |
 
-どれも個別の Xcode プロジェクトで、ビルドし続け、アクセシビリティを保ち、DESIGN や規約と揃え続ける必要があります。
-新しい機能デモはそのつどどれか 1 つを選ばねばならず、コントリビュータは「どのアプリが何を示すのか」を覚える羽目に
-なります。フィクスチャが 1 本になれば、この負担が消えます。
+どのフィクスチャも個別の Xcode プロジェクトで、ビルドし続け、アクセシビリティを保ち、DESIGN や規約と揃え続ける
+必要があります。新しい機能デモはそのつどフィクスチャを 1 つ選ばねばならず、コントリビュータは「どのアプリが何を示すのか」を
+覚える羽目になります。フィクスチャが 1 本になれば、この負担が消えます。
 
 **2. showcase は明確に上位互換の後継であり、ドキュメントもすでにそう書いている。** showcase は操作面の全体
 （5 タブ、ナビゲーションの push、4 種すべてのモーダル、テキスト入力、非同期読み込み、ライブ＋モック可能なネットワーク、
-OS アラートを出す画面）を備え、さらに単一変種のアプリでは示せない 2 つの軸を持ちます。**ツールキット**軸
-（UIKit と SwiftUI の要素ツリーの違い）と、**アクセシビリティ**軸（`-a11y` ↔ `-noax`。セレクタ安定性の対照実験、
-[DESIGN §5](../../DESIGN.md)）です。showcase の README と `SPEC.md` は、すでに `sample` を置き換えるものとして
-記述しています。一方で [DESIGN §1.1](../../DESIGN.md) は今なお `demos/features/app`（`com.bajutsu.sample`）を
-「最初の dogfood 対象」と名指ししており、これは陳腐化しています。本アイテムは、その記述の向き先を showcase に変えて
-再び真にします。
+OS アラートを出す画面）を備え、さらに単一変種のアプリでは示せない 2 つの軸を持ちます。**ツールキット**軸は
+UIKit と SwiftUI の要素ツリーの違いを示します。**アクセシビリティ**軸（`-a11y` ↔ `-noax`）は、セレクタ安定性の
+対照実験です（[DESIGN §5](../../DESIGN.md)）。
+
+showcase の README と `SPEC.md` は、すでに `sample` を置き換えるものとして記述しています。一方で
+[DESIGN §1.1](../../DESIGN.md) は今なお `demos/features/app`（`com.bajutsu.sample`）を「最初の dogfood 対象」と
+名指ししており、この記述は陳腐化しています。記述の向き先を showcase に変えれば、再び真になります。
 
 **3. フィクスチャが 1 本なら、練習対象となる契約も 1 つで済む。** アプリ固有の差分はすべて config に寄せてある
 （[DESIGN §8](../../DESIGN.md)）ため、フィクスチャが 1 群あれば、今後のあらゆる機能（visual 回帰のベースライン、
@@ -76,13 +79,20 @@ CI 配線＋ドキュメントのみです。どのゲートにも LLM 呼び出
 ### A. showcase が既にカバーしているもの（正直なベースライン）
 
 showcase はすでにかなり近い位置にあり、作業は「ゼロから作り直す」ことではなく「特定の穴を埋める」ことです。
-[`SPEC.md` §5](../../demos/showcase/SPEC.md) のとおり、現状で次を備えています。push ナビゲーションを伴う 5 タブ、
-4 種すべてのモーダル（detent 付きシート、フルスクリーンカバー、アクションシート、自動で消えるトースト）、テキスト入力
-（`log.note`、`search.field`）、ステッパ（`log.count`）とトグル（`log.intense`、状態を value に映す `horse.favorite`）、
-非同期読み込み（Stable のカタログ）、スクロールして要素に到達する長いリスト（Notices）、`sample` と**同じ** BajutsuKit
-連携によるライブ＋モック可能なネットワーク（redaction 用に意図的に秘匿ヘッダ／ボディを載せたものを含む）、そして
-OS アラートの画面（Permissions）。その `scenarios/` はすでに、タブ、ナビゲーション、モーダル、検索、ネットワークモック、
-notices、permission、smoke 経路を駆動しています。
+[`SPEC.md` §5](../../demos/showcase/SPEC.md) のとおり、showcase は現状で次を備えています。
+
+- push ナビゲーションを伴う 5 タブ
+- 4 種すべてのモーダル（detent 付きシート、フルスクリーンカバー、アクションシート、自動で消えるトースト）
+- テキスト入力（`log.note`、`search.field`）、ステッパ（`log.count`）、トグル（`log.intense`、状態を value に映す
+  `horse.favorite`）
+- 非同期読み込み（Stable のカタログ）
+- スクロールして要素に到達する長いリスト（Notices）
+- `sample` と**同じ** BajutsuKit 連携によるライブ＋モック可能なネットワーク（redaction 用に意図的に秘匿ヘッダ／ボディを
+  載せたものを含む）
+- OS アラートの画面（Permissions）
+
+showcase の `scenarios/` はすでに、タブ、ナビゲーション、モーダル、検索、ネットワークモック、notices、permission、
+smoke 経路を駆動しています。
 
 ### B. 実装するもの（削除の前に埋める穴）
 
@@ -147,12 +157,12 @@ notices、permission、smoke 経路を駆動しています。
 
 B／C が入り、オンデバイス経路が showcase で緑になった後に限ります。
 
-- [`demos/app/`](../../demos/app) — `demo` アプリ（`BajutsuDemo`：Swift 5 ファイル＋ `Info.plist` ＋ `project.yml`）、
+- [`demos/app/`](../../demos/app)：`demo` アプリ（`BajutsuDemo`：Swift 5 ファイル＋ `Info.plist` ＋ `project.yml`）、
   その `scenarios/`（`counter.yaml`、`features.yaml`、`_components/login.yaml`）、README。
-- [`demos/features/app/`](../../demos/features/app) — `sample` アプリ（`BajutsuSample`、Swift 約 15 ファイル）、
+- [`demos/features/app/`](../../demos/features/app)：`sample` アプリ（`BajutsuSample`、Swift 約 15 ファイル）、
   `BajutsuSampleUITests/`、21 個すべての `scenarios/*.yaml` ＋ `baselines/`、`project.yml`、README。そのカバレッジを
   showcase 上で再現できてから（B）。
-- [`demos/record/app/`](../../demos/record/app) — `sample2` アプリ（`BajutsuSample`、`project.yml`、README）。
+- [`demos/record/app/`](../../demos/record/app)：`sample2` アプリ（`BajutsuSample`、`project.yml`、README）。
 - 孤立する per-app の config とハーネス：`demos/demo.config.yaml`、`demos/features/demo.config.yaml`、
   `demos/record/demo.config.yaml`、および `demos/tour/`、`demos/record/`、`demos/features/` のトップレベルの
   スクリプト／シナリオのうち showcase の配線が置き換えるもの（向け直す／削除する／`demos/showcase/scenarios/` へ移すの
@@ -160,8 +170,8 @@ B／C が入り、オンデバイス経路が showcase で緑になった後に�
 
 ### E. 段階分け（1 アイテム、PR は分割）
 
-各 PR をレビュー可能に保ち、その間ずっと CI を緑に保つためです。本移行は `.github/` と、ローカルゲートが走らせられない
-オンデバイス経路にまたがります。
+本移行は `.github/` と、ローカルゲートが走らせられないオンデバイス経路にまたがります。次の 3 段階に分けることで、各 PR を
+レビュー可能に保ち、その間ずっと CI を緑に保ちます。
 
 1. **パリティ。** B を showcase に実装し（UITests／codegen ターゲット、visual 回帰、不足する操作ターゲット、証跡ツアー）、
    showcase の CI ジョブを既存の `sample` ジョブと**並べて**足します。まだ何も削除せず、オンデバイス経路は両方とも緑にします。

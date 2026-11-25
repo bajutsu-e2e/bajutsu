@@ -18,18 +18,17 @@
 
 Apply Bajutsu's **backend-agnostic** philosophy — *a platform is a backend behind one interface* —
 to the AI paths as well: **an AI provider is a backend behind one interface.** Introduce a
-vendor-neutral seam that describes only what Bajutsu actually asks of a model (an agentic tool-use
-turn, vision input, plain completion), so that the Claude-using features can be re-pointed at a
-**different model family** — not merely a different Claude endpoint — without touching their call
-sites.
+vendor-neutral seam that describes only what Bajutsu actually asks of a model: an agentic tool-use
+turn, vision input, and plain completion. With the seam in place, the Claude-using features can be
+re-pointed at a **different model family**, not merely a different Claude endpoint, without
+touching their call sites.
 
-This item is **design plus a single reference adapter (the existing Anthropic path)**. It ships no
-second vendor; adding one (OpenAI-compatible endpoints, Google Gemini, a locally hosted OSS model)
-is deliberately deferred to follow-up items that plug into the seam this one defines. The goal here
-is to make "swap the AI" *possible and safe*, and to prove the seam with the provider already in
-use.
+This item delivers **design plus a single reference adapter (the existing Anthropic path)**. It
+ships no second vendor. Follow-up items will add one (OpenAI-compatible endpoints, Google Gemini,
+or a locally hosted OSS model) by plugging into the seam this item defines. The goal here is to
+make "swap the AI" *possible and safe*, and to prove the seam with the provider already in use.
 
-Nothing here goes near the prime directives: the seam lives entirely on the Tier-1
+The prime directives stay untouched: the seam lives entirely on the Tier-1
 authoring / investigation paths, and never on the deterministic `run` / CI gate.
 
 ## Motivation
@@ -38,18 +37,18 @@ authoring / investigation paths, and never on the deterministic `run` / CI gate.
 [BE-0053](../BE-0053-bedrock-ai-provider/BE-0053-bedrock-ai-provider.md) already made
 the *provider* pluggable — every AI path reaches a model through the single factory in
 `anthropic_client.py`, and config chooses the Anthropic API, Amazon Bedrock, or a self-hosted
-gateway. But that factory returns `Anthropic | AnthropicBedrock` — **both are Anthropic SDK
-clients**, and the call sites (`claude_agent.py`, `claude_triage.py`, `alerts.py`,
+gateway. But that factory returns `Anthropic | AnthropicBedrock`, and **both are Anthropic SDK
+clients**. The call sites (`claude_agent.py`, `claude_triage.py`, `alerts.py`,
 `claude_enrich_agent.py`, `crawl_guide.py`, `crawl_tabs.py`) speak the Anthropic Messages API
 directly: `tool_use` / `tool_result` content blocks, Anthropic's image-block shape for vision, its
-system-prompt convention. Today's "swap" is therefore *which Claude endpoint*, not *which model
+system-prompt convention. Today's "swap" therefore means *which Claude endpoint*, not *which model
 family*.
 
-Wanting the deeper seam is not tied to one destination — the value is that the choice stays open on
+The deeper seam is not tied to one destination. Its value is that the choice stays open on
 several axes at once:
 
-1. **Avoiding vendor lock-in.** The abstraction's payoff is that being able to substitute the model
-   is itself the feature. A single-vendor coupling that reaches into every AI call site is a
+1. **Avoiding vendor lock-in.** The ability to substitute the model is itself the
+   abstraction's payoff. A single-vendor coupling that reaches into every AI call site is a
    liability regardless of how good that vendor is; the architecture should not assume one forever.
 2. **On-prem / data sovereignty.** BE-0047 made "your AI, your key, your data" an enforced promise,
    but only across Anthropic-shaped endpoints. Some users need to run a **local or self-hosted OSS
@@ -62,12 +61,12 @@ several axes at once:
    tool-calling behavior for a particular path. Being able to pick it — for that path only — is
    worth the abstraction even before any second adapter ships.
 
-What blocks all four today is the same thing: the neutral shape doesn't exist. The call sites are
+The same gap blocks all four today: the neutral shape does not exist. The call sites are
 written against Anthropic types, so "add OpenAI" or "add a local model" means editing every AI path,
 not registering an adapter. This item creates the shape and proves it with Anthropic, so the four
 motivations above become follow-up adapters rather than cross-cutting rewrites.
 
-A second, structural payoff: **redaction becomes a property of the seam.** Today
+The seam has a second, structural payoff: **redaction becomes a property of the seam.** Today
 [BE-0047](../BE-0047-ai-data-sovereignty/BE-0047-ai-data-sovereignty.md) /
 [BE-0097](../BE-0097-crawl-ai-data-sovereignty/BE-0097-crawl-ai-data-sovereignty.md)
 route inputs through `redaction.py` before they reach the Anthropic client. If every provider must
@@ -77,11 +76,11 @@ of each vendor integration having to remember to redact.
 
 ## Detailed design
 
-Proposal altitude. The seam is a thin capability layer, not a general LLM framework: it describes
-*only* what Bajutsu's existing AI paths already use. Built on the seam that exists today
-(`anthropic_client.make_client` / `resolve_model` / `credential_gap`, the per-path `MODEL`
-constants, the `AiConfig` / `AiSettings` config blocks). The work is MECE along the seven pieces
-below.
+The design sits at the proposal altitude. The seam is a thin capability layer, not a general LLM
+framework: it describes *only* what Bajutsu's existing AI paths already use. It builds on the seam
+that exists today (`anthropic_client.make_client` / `resolve_model` / `credential_gap`, the
+per-path `MODEL` constants, and the `AiConfig` / `AiSettings` config blocks). The work is MECE
+along the seven pieces below.
 
 ### 1. Capability audit — the minimal neutral surface
 
@@ -96,9 +95,9 @@ narrow:
 - **Plain / short structured completion** — `crawl_tabs.py` (tab identification) is essentially a
   single-shot classification.
 
-The audit produces the definitive list of capabilities the neutral interface must express — and,
-just as importantly, the list of Anthropic-specific behaviors that are *not* used and need not be
-modeled.
+The audit produces two lists. One is the definitive list of capabilities the neutral interface
+must express. The other is the list of Anthropic-specific behaviors that are *not* used and need
+not be modeled.
 
 ### 2. The vendor-neutral interface
 
@@ -136,9 +135,8 @@ BE-0053 are preserved.
 
 Rewrite each AI path (`claude_agent.py`, `claude_triage.py`, `alerts.py`,
 `claude_enrich_agent.py`, `crawl_guide.py`, `crawl_tabs.py`) to construct and use the neutral
-interface instead of the `anthropic` client and its message/tool/image types. This is
-behavior-preserving refactoring — the observable output of each path is unchanged — and it is the
-step that actually removes the vendor coupling.
+interface instead of the `anthropic` client and its message/tool/image types. The refactoring preserves behavior, so the observable output of each path is unchanged, and this
+step is the one that actually removes the vendor coupling.
 
 ### 6. Config schema — an open provider
 
@@ -161,11 +159,11 @@ piece 5).
 ### Prime-directive compliance
 
 The seam is used **only** on the Tier-1 authoring / investigation paths that already call a model;
-it names and re-homes those calls, it never adds one. `run` and the CI gate stay model-free —
-deterministic, machine-only pass/fail — and the neutral interface is never imported on that path
+it names and re-homes those calls and never adds one. `run` and the CI gate stay model-free, with
+deterministic, machine-only pass/fail, and the neutral interface is never imported on that path
 (consistent with [BE-0101](../BE-0101-ai-free-zero-config/BE-0101-ai-free-zero-config.md)'s
 zero-config Claude-free guarantee). Provider choice remains config (`targets.<name>.ai`), so the
-tool / drivers / runner stay app-agnostic. Determinism is untouched — no path gains a `sleep` or an
+tool / drivers / runner stay app-agnostic. Determinism is untouched: no path gains a `sleep` or an
 ambiguous selector.
 
 ## Alternatives considered

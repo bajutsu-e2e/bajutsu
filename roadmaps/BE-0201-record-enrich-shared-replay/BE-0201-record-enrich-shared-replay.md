@@ -23,27 +23,29 @@ second copy.
 
 ## Motivation
 
-Both pairs are the same logic maintained twice:
+Each pair is the same logic maintained twice.
 
 - **Step replay** (`record.py:266-274` vs `enrich.py:26-37`): the same `_action_of` dispatch
-  (wait / `assert_` no-op / `_do_action`). They differ only in wait-failure handling — enrich
-  checks `_wait`'s `(ok, reason)` and raises `_ReplayFailed`, record ignores the return value.
+  (wait / `assert_` no-op / `_do_action`). They differ only in wait-failure handling. Enrich
+  checks `_wait`'s `(ok, reason)` and raises `_ReplayFailed`, while record ignores the return value.
 - **Alert clearing** (`_clear_blocking` in both): the same
   `for _ in range(max_tries)` / `shows_app_ui` / `guard(driver)` / `clock.sleep(0.5)` loop, and
   similar "screen … blocked …" reporting (record: "the app screen looks blocked …"; enrich:
-  "screen blocked …"). `record.py`'s version is the richer one (returns the dismissed labels,
-  reports each dismissal); `enrich.py`'s is a stripped copy that discards the guard's return value.
+  "screen blocked …"). The `record.py` version is richer: it returns the dismissed labels and
+  reports each dismissal. The `enrich.py` version is a stripped copy that discards the guard's
+  return value.
 
-Independently maintained copies drift — the screenshot helpers had exactly this history until
+Independently maintained copies drift. The screenshot helpers had exactly this history until
 BE-0132 consolidated them onto `record._screenshot_bytes`, which `enrich.py` already imports.
-This item finishes the same consolidation for the two remaining pairs, in the same file pair.
+This item finishes the same consolidation for the two remaining pairs in the same two files.
 
 ## Detailed design
 
-1. One shared step-replay executor with a wait-failure hook: `record.py` exports it (or it moves
-   to a small shared module beside the two), with an `on_wait_failure` callback (or returned
-   status) so enrich can raise `_ReplayFailed` and record can keep ignoring the result.
-2. One `_clear_blocking`, the reporting-rich `record.py` variant; `enrich.py` calls it and drops
+1. One shared step-replay executor with a wait-failure hook. `record.py` exports the executor, or
+   the executor moves to a small shared module beside the two files. An `on_wait_failure`
+   callback (or returned status) lets enrich raise `_ReplayFailed` while record keeps ignoring
+   the result.
+2. One `_clear_blocking`, the reporting-rich `record.py` variant. `enrich.py` calls it and drops
    the return value it does not need.
 3. Unit tests pinning the two behaviors that differ today (enrich fails the replay on a wait
    failure; record proceeds), so the consolidation provably preserves both.
@@ -52,8 +54,8 @@ This item finishes the same consolidation for the two remaining pairs, in the sa
 
 - **Leave the copies.** The known drift pattern (BE-0132's motivation) repeats: a fix to the
   alert-clearing loop or the dispatch lands on one side only.
-- **Move the shared helpers into `orchestrator`.** Wrong layer: these helpers exist for the AI
-  authoring/enrichment paths (Tier 1), and the deterministic core must not grow
+- **Move the shared helpers into `orchestrator`.** This is the wrong layer. The helpers exist for
+  the AI authoring and enrichment paths (Tier 1), and the deterministic core must not grow
   periphery-serving hooks (BE-0112 keeps the direction core ← periphery).
 
 ## Progress

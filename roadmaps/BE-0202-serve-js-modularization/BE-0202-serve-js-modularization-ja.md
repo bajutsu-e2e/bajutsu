@@ -19,14 +19,14 @@
 約 2,500 行、トップレベル宣言約 150 個にまで育ち、セクションコメント（login、config ブラウザ、
 settings、record、replay、triage、stats、coverage、約 400 行のグラフを含む crawl、codegen、
 タイル配置）で区切られています。本項目では、サーバが複数アセットの配信にすでに使っている
-テンプレート機構を通じて、これをいくつかのセクション別ファイルに分割し、コピーされた 3 つの
-ジョブ開始ハンドラを統一します。bundler を使わない方針は変えません。
+テンプレート機構を通じて、このファイルをいくつかのセクション別ファイルに分割します。あわせて、
+コピーされた 3 つのジョブ開始ハンドラを統一します。bundler を使わない方針は変えません。
 
 ## 動機
 
 このファイルは一貫性を保っているものの、テストのない 1 ファイルが支えられる規模を超えています。
 ESLint のガードレール（BE-0129）は約 1,500 行の時点の規模に合わせて調整されたもので、その後
-約 65% 成長しました。状態は機能領域ごとのモジュールレベル `let` グローバルで、DOM が真実の
+ファイルは約 65% 成長しました。状態は機能領域ごとのモジュールレベル `let` グローバルで、DOM が真実の
 所在です。セクション単位では成り立っていますが、2,500 行を横断して読むのは困難です。
 
 分割に新しいツールは要りません。`serve/handler.py` は `serve.css`、`serve.themes.css`、
@@ -43,8 +43,8 @@ crawl（`#crawl-go`）のジョブ開始ハンドラは同一の骨格を共有�
 
 1. `serve.js` をセクション別ファイル（2〜4 個。例: 共通ヘルパと共有状態、パネルのハンドラ、
    crawl のグラフ）に分割し、それぞれを `serve/handler.py` の既存テンプレート機構で独立した
-   アセットとして配信します。bundler なし、import なしで、グローバルスコープの意味論は現状の
-   まま、読み込み順はテンプレートが固定します。
+   アセットとして配信します。bundler と import のどちらも使いません。グローバルスコープの意味論は現状の
+   ままで、読み込み順はテンプレートが固定します。
 2. `startJob(…)` ヘルパを追加し、run、record、crawl の開始ハンドラを移行します。
 3. `eslint.config.mjs` の `files` リストを新しいファイル群に広げます（ルールは同一）。
 4. 分割をまたぐ挙動の固定は serve UI の dogfood ゲート（BE-0189）に任せ、隙間が見つかった
@@ -55,8 +55,8 @@ crawl（`#crawl-go`）のジョブ開始ハンドラは同一の骨格を共有�
 - **bundler やフレームワークの導入。** 設計として不採用です（`eslint.config.mjs` の理由書きを
   参照）。ここは Python のリポジトリで、この UI の価値はツールチェーン不要の単純さにあります。
   配信機構は bundler なしで複数ファイルにすでに対応しています。
-- **1 ファイルのまま維持。** 成長は着実で（serve の機能追加のたびに UI コードがここに増えます）、
-  現在の軌道では読解の負荷と単一の共有グローバルスコープの問題が悪化し続けます。
+- **1 ファイルのまま維持。** 成長は着実です（serve の機能追加のたびに UI コードがここに増えます）。
+  現在の軌道では、読解の負荷と単一の共有グローバルスコープの問題が悪化し続けます。
 - **JS のユニットテストハーネスを今導入する。** ESLint の設定は、分岐ロジックが必要とするまで
   ハーネスを先送りすると明記しています。crawl のグラフはその線を越えつつありますが、ハーネスは
   別個の大きな判断です。分割を純粋な再編成にとどめるため、本項目からは意図的に除外します。
@@ -74,7 +74,7 @@ crawl（`#crawl-go`）のジョブ開始ハンドラは同一の骨格を共有�
 
 ログ:
 
-- [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811) — `serve.js`（2544 行）を 4 つのセクション別ファイルに分割しました。`serve.core.js`
+- [#811](https://github.com/bajutsu-e2e/bajutsu/pull/811)：`serve.js`（2544 行）を 4 つのセクション別ファイルに分割しました。`serve.core.js`
   （共通ヘルパと共有状態、config、Settings）、`serve.panels.js`（Record、Replay、Triage、
   アップロード）、`serve.crawl.js`（Crawl とグラフ、ライトボックス）、`serve.author.js`
   （レイアウトの配線、Author タブ、起動処理）です。`handler.py` がこれらを固定順で連結し、
@@ -82,12 +82,12 @@ crawl（`#crawl-go`）のジョブ開始ハンドラは同一の骨格を共有�
   方式なので、配信される出力は変わりません。共通の `startJob(…)` 骨格を追加し、run、record、
   crawl の開始ハンドラを移行しました。`eslint.config.mjs` と `make lint-js` の対象を `serve.*.js`
   群に広げました。レビューでの追随対応として、共通化した `startJob(…)` が 3 つの開始ボタンすべての
-  入口になったため、ネットワーク切断・非 JSON 応答・`jobId` 欠如のときにボタンを回転させたまま
+  入口になったため、ネットワーク切断、非 JSON 応答、`jobId` 欠如のときにボタンを回転させたまま
   固まらせず、明示的に失敗を示してボタンを元に戻すよう堅牢化しました。
 
 ## 参考
 
 - セクション別ファイル: [`serve.core.js`](../../bajutsu/templates/serve.core.js) · [`serve.panels.js`](../../bajutsu/templates/serve.panels.js) · [`serve.crawl.js`](../../bajutsu/templates/serve.crawl.js) · [`serve.author.js`](../../bajutsu/templates/serve.author.js)
 - [`bajutsu/serve/handler.py`](../../bajutsu/serve/handler.py) · [`eslint.config.mjs`](../../eslint.config.mjs)
-- [BE-0129](../BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary-ja.md) — このファイルが調整時の規模を超えたガードレール
-- [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate-ja.md) — 分割をまたいで UI の挙動を固定する dogfood ゲート
+- [BE-0129](../BE-0129-serve-scope-boundary/BE-0129-serve-scope-boundary-ja.md)：このファイルが調整時の規模を超えたガードレール
+- [BE-0189](../BE-0189-serve-ui-dogfood-ci-gate/BE-0189-serve-ui-dogfood-ci-gate-ja.md)：分割をまたいで UI の挙動を固定する dogfood ゲート

@@ -96,6 +96,7 @@ from bajutsu.common.scenario.models.scenario import (
     Preconditions,
     Scenario,
     ScenarioFile,
+    ScenarioHooks,
     SystemAlertRule,
 )
 from bajutsu.common.scenario.models.scenario import (
@@ -197,6 +198,7 @@ __all__ = [
     "Rotate",
     "Scenario",
     "ScenarioFile",
+    "ScenarioHooks",
     "Scroll",
     "SelectOption",
     "SelectPhotos",

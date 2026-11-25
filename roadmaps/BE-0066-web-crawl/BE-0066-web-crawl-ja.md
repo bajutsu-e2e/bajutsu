@@ -15,45 +15,30 @@
 
 ## はじめに
 
-自律クロール（[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）を
-Web（Playwright）backend（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）へ広げ、
-`bajutsu crawl --backend web` で web アプリを幅優先に探索できるようにします。iOS のクロールと同じ成果物、すなわち
-画面マップ、クラッシュ再現シナリオ、候補シナリオ、全画面カバレッジ用のダンプを、オプションの AI ガイド
-（`--guide ai`）まで含めて等価に得ます。クロールのエンジンはすでにプラットフォーム非依存です。本項目が足すのは
-プラットフォーム固有のライフサイクル配線と、web に適したクラッシュ判定およびダイアログ処理で、いずれも AI を
-判定に入れない原則（[prime directive #1](../../CLAUDE.md)）を保ったまま行います。
+本項目は、自律クロール（[BE-0038](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)）を Web（Playwright）backend（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）へ広げます。これにより、`bajutsu crawl --backend web` が web アプリを幅優先に探索し、iOS のクロールと同じ成果物を等価に出力します。成果物は、画面マップ、クラッシュ再現シナリオ、候補シナリオ、全画面カバレッジ用のダンプです。オプションの AI ガイド（`--guide ai`）も含みます。
+
+クロールのエンジンは、すでにプラットフォーム非依存です。本項目が足すのは、プラットフォーム固有のライフサイクル配線と、web に適したクラッシュ判定およびダイアログ処理です。いずれも、AI を判定に入れない原則（[prime directive #1](../../CLAUDE.md)）を保ったまま行います。
 
 ## 動機
 
-**エンジンはすでにプラットフォーム非依存で、iOS に縛られているのはコマンドだけです。**
-クロールのエンジン（[`crawl.py`](../../bajutsu/crawl.py)）は `Driver` 抽象（`query` / `tap` / `type_text` /
-`tap_point` / `screenshot`）の上だけで書かれており、モジュールの docstring も「AI も Simulator 配線も持たない」と
-明言しています。したがって web クロールは、エンジンの作り直しではなく、配線と判定の意味付けを補う作業です。
-いまだ iOS に固定された唯一の Tier-1 経路は、クロールの**コマンド**
-（[`cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py)）です。その `reset` クロージャは `bundle_id` を
-鍵にした `simctl` での再起動（`_env.Env.terminate` / `launch`）を行い、`_await_ready` で待機し、クラッシュ判定は
-iOS のアクセシビリティツリー崩壊（`shows_app_ui`）で、進捗表示は「preparing the simulator」と出します。
+**エンジンはすでにプラットフォーム非依存で、iOS に縛られているのはコマンドだけです。** クロールのエンジン（[`crawl.py`](../../bajutsu/crawl.py)）は、`Driver` 抽象（`query`、`tap`、`type_text`、`tap_point`、`screenshot`）の上だけで書かれています。モジュールの docstring も、「AI も Simulator 配線も持たない」と明言しています。したがって、web クロールで足りないのは*配線と判定の意味付け*であり、エンジンの作り直しではありません。
 
-**web のライフサイクル seam はすでにあり、`run` が使っています。**
-`run` は web ドライバを `driver.navigate()` で起動し（[`runner/launch.py`](../../bajutsu/runner/launch.py)）、
-シナリオ間の再起動は `_web_relauncher`（中身はもう一度の `navigate()`）で行います
-（[`runner/pool.py`](../../bajutsu/runner/pool.py)）。新しい `BrowserContext` が `erase` に相当し、そのコストは
-ほぼゼロです。クロールは自前の iOS 専用 reset を抱える代わりに、この seam を再利用すべきです。
+いまだ iOS に固定されている唯一の Tier-1 経路は、クロールの**コマンド**（[`cli/commands/crawl.py`](../../bajutsu/cli/commands/crawl.py)）です。
 
-**web はクロールの効果を最も低コストで確かめられる場所です。**
-web は Mac もエミュレータも要らず、既存の Linux の `make check` / CI ゲートで動きます
-（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。そのため web クロールを CI の
-中で発見の一手として走らせられます。BE-0038 が埋める三つの欠落は、web アプリにもそのまま当てはまります。
-オーサリング前の発見（画面マップが「このアプリを知らない」を「これが画面一覧、ここから書くものを選ぶ」に
-変える）、全画面のカバレッジ計測（[DESIGN §7.2](../../DESIGN.md)。クロールは `doctor --from <runId>` が消費する
-画面ごとのダンプを生む実行です）、そして頑健性のスモークテスト（オーサリング不要の広い探索が、ハッピーパスでは
-踏まない異常を表に出す）です。
+- `reset` クロージャが、`bundle_id` を鍵にした `simctl` での再起動（`_env.Env.terminate` と `launch`）を行います。
+- 待機には `_await_ready` を使います。
+- クラッシュ判定は、iOS のアクセシビリティツリーの崩壊（`shows_app_ui`）です。
+- 進捗表示は、「preparing the simulator」と出します。
 
-**決定性の境界は変わりません。**
-クロールは本質的に非決定的なので、Tier-1 の発見ツールにとどまり、CI ゲートにはなりません。決定的な副産物、すなわち
-クラッシュの再現パスと発見した各フローは素の YAML として出力し、`run` が AI なしの Tier-2 リグレッションとして
-再生します。クラッシュは、ぶれるクロールとしてではなく、コミットされた再現シナリオとして CI に届きます。これは
-BE-0038 がすでに述べているハブモデルそのもので、web になっても何も変わりません。
+**web のライフサイクル seam はすでにあり、`run` が使っています。** `run` は、web ドライバを `driver.navigate()` で起動します（[`runner/launch.py`](../../bajutsu/runner/launch.py)）。シナリオ間の再起動は、`_web_relauncher`（中身はもう一度の `navigate()`）で行います（[`runner/pool.py`](../../bajutsu/runner/pool.py)）。新しい `BrowserContext` が `erase` に相当し、コストはほぼゼロです。クロールは、自前の iOS 専用 reset を抱える代わりに、この seam を再利用すべきです。
+
+**web は、クロールの効果を最も低コストで確かめられる場所です。** web は Mac もエミュレータも要らず、既存の Linux の `make check` / CI ゲートで動きます（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）。そのため、web クロールを CI の中で発見の一手として走らせられます。BE-0038 が埋める 3 つの欠落は、web アプリにもそのまま当てはまります。
+
+- *オーサリング前の発見。* 画面マップが、「このアプリを知らない」を「これが画面の一覧で、ここから書くものを選ぶ」に変えます。
+- *全画面のカバレッジ計測*（[DESIGN §7.2](../../DESIGN.md)）。クロールは、`doctor --from <runId>` が消費する画面ごとのダンプを生む実行です。
+- *頑健性のスモークテスト。* オーサリング不要の広い探索が、ハッピーパスでは踏まない異常を表に出します。
+
+**決定性の境界は変わりません。** クロールは本質的に非決定的なので、Tier-1 の発見ツールにとどまり、CI ゲートにはなりません。決定的な*副産物*は、クラッシュの再現パスと、発見した各フローです。これらは素の YAML として出力し、`run` が AI なしの Tier-2 リグレッションとして再生します。クラッシュは、ぶれるクロールとしてではなく、コミットされた再現シナリオとして CI に届きます。このハブモデルは BE-0038 がすでに述べており、web になっても何も変わりません。
 
 ## 詳細設計
 
@@ -66,15 +51,13 @@ bajutsu crawl --app <web-app> --backend web
     [--guide ai|off] [--out runs/<runId>]
 ```
 
-web アプリは `bundleId` ではなく `baseUrl` で識別します。per-app config はこれをすでにモデル化しており
-（[`config.py`](../../bajutsu/config.py) では、アプリは `bundleId`（iOS）か `baseUrl`（web）のいずれかを要する）、
-他のフラグは iOS のクロールからそのまま引き継ぎます。`--seed` は deeplink ではなく URL かパスになります。iOS と
-同じく AI ライブ経路で、決定的ゲートには含まれません。`--guide off` は識別子由来のヒューリスティックだけで動き、
-モデルを必要としません。`--guide ai` はオプションのガイドを上に重ねます。どちらでも AI は合否を決めません。
+web アプリは、`bundleId` ではなく `baseUrl` で識別します。per-app config は、これをすでにモデル化しています。アプリは `bundleId`（iOS）か `baseUrl`（web）のいずれかを要します（[`config.py`](../../bajutsu/config.py)）。他のフラグは、iOS のクロールからそのまま引き継ぎます。`--seed` は、deeplink ではなく URL かパスになります。
 
-### ライフサイクル seam（`run` のものを再利用し、プラットフォームで分岐）
+iOS と同じく、これは AI ライブの経路であり、決定的ゲートには含まれません。`--guide off` は、識別子由来のヒューリスティックだけで動き、モデルを必要としません。`--guide ai` は、オプションのガイドを上に重ねます。どちらでも、AI は合否を決めません。
 
-クロールコマンドの `reset` を iOS 分岐から括り出し、`run` と同じやり方でプラットフォームに応じて切り替えます。
+### ライフサイクル seam
+
+クロールコマンドの `reset` を iOS の分岐から括り出し、`run` と同じやり方で、プラットフォームに応じて切り替えます。再利用するのは `run` の seam です。
 
 | 段階 | iOS（現状） | Web（本項目） |
 |---|---|---|
@@ -82,80 +65,45 @@ web アプリは `bundleId` ではなく `baseUrl` で識別します。per-app 
 | reset / 再起動 | `_env.Env.terminate` ＋ `launch`（simctl） | `driver.navigate()`。新しい `BrowserContext` ＝ erase でほぼ無料（`_web_relauncher` に倣う） |
 | 準備待ち / settle | `_await_ready` のポーリング | Playwright のネイティブ auto-wait（`conditionWait`）。同期ドライバなのでエンジンの `settle` は省く |
 
-`launch_driver` は web に対してすでに正しく振る舞うので、クロール側の変更は `reset` クロージャだけです。この再起動を
-`run` とクロールで共有する小さなファクトリに括り出せば、「クリーンな初期状態へ戻す」という定義がプラットフォームごとに
-一つになり、両経路がずれなくなります。
+`launch_driver` は web に対してすでに正しく振る舞うので、クロール側の変更は `reset` クロージャだけです。`run` とクロールが共有する小さなファクトリに、この再起動を括り出せます。すると、「クリーンな初期状態へ戻す」という定義がプラットフォームごとに 1 つになり、両経路がずれなくなります。
 
-### web でのクラッシュ判定（唯一の新しい設計面で、決定的なまま）
+### web でのクラッシュ判定
 
-iOS のクラッシュ信号、すなわちアプリプロセスの死と、素のウィンドウへ崩壊したアクセシビリティツリー
-（`shows_app_ui`）は、web に存在しません。web には固有の**決定的**な信号があり、いずれも LLM の判断ではありません。
+ここが唯一の新しい設計面で、決定的なままにします。iOS のクラッシュ信号は、アプリのプロセスが死に、アクセシビリティツリーが素のウィンドウへ崩壊すること（`shows_app_ui`）です。この信号は web に存在しません。web には固有の**決定的**な信号があり、どれも LLM の判断ではありません。
 
-- **未捕捉の JS 例外**：直前の操作以降に `page.on("pageerror")` が発火したか（イベントという事実）。
-- **エラーへの遷移**：メインフレームの応答が HTTP 4xx / 5xx を返したか（数値）。
-- **空または崩壊した文書**：DOM が実質的に空になったか（集合の空であり、iOS の崩壊ツリーの web 版）。
+- **未捕捉の JS 例外。** 直前の操作以降に `page.on("pageerror")` が発火したか（イベントという事実）。
+- **エラーへの遷移。** メインフレームの応答が、HTTP 4xx または 5xx を返したか（数値）。
+- **空または崩壊した文書。** DOM が実質的に空になったか（集合の空であり、iOS の崩壊ツリーの web 版）。
 
-これには [`PlaywrightDriver`](../../bajutsu/drivers/playwright.py) への小さな追加が要ります。`pageerror`
-（とコンソールエラー）のハンドラを登録し、直近のメインフレーム応答ステータスを保持して、クロールが読む健全性
-アクセサとして公開します。これは `is_app_alive` の web 版です。エンジンにある唯一の `is_app_alive(landed)` 呼び出しは、
-プラットフォームで分岐する健全性チェックになります（iOS は `shows_app_ui`、web はドライバの信号）。クラッシュを
-検出したら、既存の `result:error` 安全網で証跡一式を取得し（[DESIGN §9](../../DESIGN.md)）、再生したパス（入口 URL と
-記録した操作）を最小の再現シナリオとして出力します。これは web の `run` でそのまま実行できます。pageerror は
-イベント、HTTP ステータスは数値、空 DOM は集合の空なので、[prime directive #1](../../CLAUDE.md) は保たれ、AI は
-判定の外にとどまります。
+これらの信号には、[`PlaywrightDriver`](../../bajutsu/drivers/playwright.py) への小さな追加が要ります。ドライバは、`pageerror`（とコンソールエラー）のハンドラを登録し、直近のメインフレーム応答ステータスを保持します。両方を、クロールが読む健全性アクセサとして公開します。これは `is_app_alive` の web 版です。エンジンにある唯一の `is_app_alive(landed)` 呼び出しは、プラットフォームで分岐する健全性チェックになります。iOS は `shows_app_ui` を、web はドライバの信号を使います。
+
+クラッシュを検出すると、クロールは既存の `result:error` 安全網で証跡一式を取得します（[DESIGN §9](../../DESIGN.md)）。再生したパス（入口 URL と記録した操作）は、最小の再現シナリオとして出力します。このシナリオは、web の `run` でそのまま実行できます。pageerror はイベント、HTTP ステータスは数値、空 DOM は集合の空です。したがって [prime directive #1](../../CLAUDE.md) は保たれ、AI は判定の外にとどまります。
 
 ### 妨害オーバーレイのガードから web のダイアログハンドラへ
 
-iOS ではアラートガード（`_clear_blocking`、Claude vision）が、クロールがクラッシュと読み違える予期しない OS
-プロンプトを閉じます。web に OS アラートはありません。あるのは JS ダイアログ（`alert` / `confirm` /
-`beforeunload`）で、Playwright が `page.on("dialog")` を通じて決定的に扱えます。位置情報や通知には `BrowserContext`
-の権限モデルもあります。したがって web では `clear_blocking` は**決定的**なダイアログ自動処理（固定方針に従って受諾
-または却下）になり、モデル呼び出しも vision 往復も要りません。何を探索するかを提案する AI ガイドはそのままで、
-変わるのはダイアログを片付ける手順だけです。
+iOS では、アラートガード（`_clear_blocking`、Claude vision）が、クロールがクラッシュと読み違える予期しない OS プロンプトを閉じます。web に OS アラートはありません。あるのは JS ダイアログ（`alert`、`confirm`、`beforeunload`）で、Playwright が `page.on("dialog")` を通じて決定的に扱えます。位置情報や通知には、`BrowserContext` の権限モデルもあります。
+
+したがって web では、`clear_blocking` は**決定的**なダイアログの自動処理になります。固定の方針に従って、受諾するか却下します。モデル呼び出しも vision の往復も要りません。何を探索するかを提案する AI ガイドは、そのままです。変わるのは、ダイアログを片付ける手順だけです。
 
 ### そのまま引き継ぐもの
 
-- **状態の fingerprint**：主は `data-testid` の id 集合（Playwright ドライバは `data-testid` を `identifier` に
-  対応づける）、id の少ないページには構造的フォールバック。`crawl.py` の同じコード経路で、web 専用の分岐は
-  ありません。
-- **AI ガイド（`--guide ai`）**：ガイドは要素ツリーを読んで操作や現実的な入力を提案するもので、すでにドライバ
-  非依存です。iOS 固有のガイド機能である vision のタブロケータ（ツリーで指定できないネイティブのタブバーに
-  `tap_point` を出す）は web ではまず不要です（DOM のコントロールは role や `data-testid` で指定できる）。
-  `tap_point` は Playwright ドライバにあるので、仮にガイドが使っても破綻しません。
-- **出力**：`screenmap.json` と `report.html` に描いたグラフ、クラッシュ再現シナリオ（YAML、web の `run` で実行
-  可能）、候補シナリオ（人間のレビュー用の*提案*として出し、コミット済み YAML に黙って書き込まない）、そして
-  doctor が web に対応した後に `doctor --from <runId>` が使う画面ごとの `elements` カバレッジダンプ。
-  スクリーンショットは Playwright ドライバが備える `driver.screenshot()` を使います。
+- **状態の fingerprint。** 主となるのは `data-testid` の id 集合です。Playwright ドライバが `data-testid` を `identifier` に対応づけるからです。id の少ないページには、構造的なフォールバックを使います。`crawl.py` のコード経路はまったく同じで、web 専用の分岐はありません。
+- **AI ガイド（`--guide ai`）。** ガイドは、要素ツリーを読んで操作と現実的な入力を提案します。すでにドライバ非依存です。iOS 固有のガイド機能が 1 つあります。vision のタブロケータで、ツリーで指定できないネイティブのタブバーに `tap_point` を出します。web ではまず不要です。DOM のコントロールは、role や `data-testid` で指定できるからです。`tap_point` は Playwright ドライバにあるので、仮にガイドが使っても破綻しません。
+- **出力。** クロールは、これまでどおり `screenmap.json` と、`report.html` に描いたグラフを出力します。クラッシュ再現シナリオ（YAML、web の `run` で実行可能）と、候補シナリオも出力します。候補は、人間がレビューする*提案*として出し、コミット済みの YAML には黙って書き込みません。画面ごとの `elements` カバレッジダンプは、doctor が web に対応した後に、`doctor --from <runId>` が使います。スクリーンショットは、Playwright ドライバが備える `driver.screenshot()` を使います。
 
 ### WebUI（serve）
 
-Crawl タブに、Simulator と並ぶターゲットとして web backend を加えます。ライブの画面マップ配信は既存のものを再利用
-します（`screenmap.json` は backend によらず同じ書き方で出力されます）。
+Crawl タブに、Simulator と並ぶターゲットとして web backend を加えます。ライブの画面マップ配信は、既存のものを再利用します。`screenmap.json` は、backend によらず同じ書き方で出力されるからです。
 
 ## 検討した代替案
 
-**共有エンジンではなく Playwright のネイティブなクロールやセマンティッククリックを使う.**
-却下します。マッチングを Playwright 自身のエンジン（`get_by_test_id().click()`）に通すと決定性コアから外れます。
-[`drivers/playwright.py`](../../bajutsu/drivers/playwright.py) が、すべての操作を `query()` スナップショットに対する
-共有の `base.resolve_unique` で解決しているのは、まさにこの理由です。共有のクロールエンジンは web と iOS の
-クロールを同一に保ち、画面マップを比較可能にします。
+**共有エンジンではなく、Playwright のネイティブなクロールやセマンティッククリックを使う。** 却下します。マッチングを Playwright 自身のエンジン（`get_by_test_id().click()`）に通すと、決定性コアから外れます。[`drivers/playwright.py`](../../bajutsu/drivers/playwright.py) が、すべての操作を `query()` スナップショットに対する共有の `base.resolve_unique` で解決しているのは、この理由によります。共有のクロールエンジンは、web と iOS のクロールを同一に保ち、画面マップを比較可能にします。
 
-**AI にクラッシュを判定させる**（「ページが壊れて見えるかをモデルに尋ねる」）。
-却下します。[prime directive #1](../../CLAUDE.md) に反しますし、web にはモデルを要しない安価な決定的信号
-（pageerror / HTTP ステータス / 空 DOM）がすでにあります。
+**AI にクラッシュを判定させる**（「ページが壊れて見えるかをモデルに尋ねる」）。却下します。[prime directive #1](../../CLAUDE.md) に反します。web には、モデルを要しない安価な決定的信号（pageerror、HTTP ステータス、空 DOM）がすでにあります。
 
-**BE-0038 に統合する.**
-却下します。BE-0038 は全面的に iOS を前提に書かれており、すでに着手済みです。web のクラッシュ判定とライフサイクル
-seam は独立した設計面です。これは、web の `run` 経路が `run` の改修ではなく独立項目
-（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）になったのと同じ筋です。
-[BE-0064（並列クロール）](../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)が BE-0038 に対して持つ「同じ
-エンジン、別の軸」の関係とも同型です（あちらは並行度を、本項目はプラットフォームを変えます）。
+**BE-0038 に統合する。** 却下します。BE-0038 は全面的に iOS を前提に書かれており、すでに着手済みです。web のクラッシュ判定とライフサイクル seam は、独立した設計面です。web の `run` 経路も、同じ道をたどりました。`run` の改修ではなく、独立した項目（[BE-0041](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)）になったのです。[BE-0064（並列クロール）](../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)も、BE-0038 に対して「同じエンジン、別の軸」という同じ関係にあります。あちらは並行度を変え、本項目はプラットフォームを変えます。
 
-**[BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)（web backend の完成）を待つ.**
-必要ありません。クロールが要るのは `query` / `tap` / `type` / `tap_point` / `screenshot`、ライフサイクル seam、
-健全性信号だけで、いずれもすでにあるか小さな追加です。BE-0054 のリッチな取得（ネイティブ network、video、並列
-実行）は後の web クロールを豊かにしますが、本項目を妨げません。とくに web の並列クロールは、本項目と
-parallel-crawl の軸の交点で、両者が入った後に続けられます。
+**[BE-0054](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)（web backend の完成）を待つ。** 必要ありません。クロールが要るのは、`query`、`tap`、`type`、`tap_point`、`screenshot` と、ライフサイクル seam、健全性信号です。いずれもすでにあるか、小さな追加で済みます。BE-0054 のリッチな取得（ネイティブ network、video、並列実行）は、後の web クロールを豊かにしますが、本項目を妨げません。web の並列クロールは、本項目と parallel-crawl の軸の交点です。両者が入った後に続けられます。
 
 ## 進捗
 
@@ -163,7 +111,7 @@ parallel-crawl の軸の交点で、両者が入った後に続けられます�
 
 ## 参考
 
-- [BE-0038 — 自律クロール探索](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)：本項目が新しい backend へ広げる、プラットフォーム非依存のエンジン。
+- [BE-0038 自律クロール探索](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration-ja.md)：本項目が新しい backend へ広げる、プラットフォーム非依存のエンジン。
 - [BE-0041 — Web（Playwright）backend](../BE-0041-web-playwright-backend/BE-0041-web-playwright-backend-ja.md)：web ドライバと、決定的な web の `run` 経路。
 - [BE-0054 — Web backend の完成](../BE-0054-web-backend-completion/BE-0054-web-backend-completion-ja.md)：後の web クロールを豊かにするリッチな取得（network / video / 並列）。
 - [BE-0064 — 複数シミュレータでの並列クロール](../BE-0064-parallel-crawl/BE-0064-parallel-crawl-ja.md)：別の軸（並行度）の兄弟項目。web の並列クロールは両者の交点。

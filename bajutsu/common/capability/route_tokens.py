@@ -22,7 +22,14 @@ from collections.abc import Iterable, Mapping
 from typing import TYPE_CHECKING, get_args
 
 from bajutsu.common.capability import capability_preflight
-from bajutsu.common.capability.command_policy import COMMAND_EXECUTIONS_KEY, command_notices
+from bajutsu.common.capability.command_policy import (
+    COMMAND_EXECUTIONS_KEY,
+    NAMED_COMMAND_PREFIX,
+    ConfigSource,
+    command_notices,
+    command_requirement,
+    named_requirement,
+)
 from bajutsu.common.capability.settings_support import (
     Route,
     route_for,
@@ -38,6 +45,7 @@ from bajutsu.common.drivers import base
 if TYPE_CHECKING:
     from bajutsu.common.config import Effective
     from bajutsu.common.scenario import Scenario
+    from bajutsu.common.scenario.models.hook_command import HookCommand
 
 ROUTES: tuple[Route, ...] = get_args(Route)
 
@@ -59,6 +67,50 @@ UNCHECKED_NOTICE = (
 # The provenance entry a worker stamps on a `run-set` job it runs: the job names no placement, so the
 # report says where it ran (BE-0484).
 WORKER_ENVIRONMENT_KEY = "workerEnvironment"
+
+
+# The provenance key one run's hook records live under in `manifest.json` (BE-0491), so a finished
+# run's report can be re-rendered offline from the manifest alone (BE-0068). Read here rather than
+# in the runner, which the report's own import path must not pull in.
+HOOKS_KEY = "hooks"
+
+
+def report_hook_phases(records: object) -> list[dict[str, object]]:
+    """The report's hook blocks, one per list and level, read from the manifest's records.
+
+    A phase is its own block, apart from the scenario's numbered steps, the way `setup` and
+    `cleanup` already are: a reader can tell what was prepared and torn down from what was under
+    test. A scenario's own entries form a block apart from the targets' (BE-0501). Anything that is
+    not a list of records yields no block, so an older manifest renders exactly as it did before.
+    """
+    if not isinstance(records, list):
+        return []
+    blocks: dict[tuple[str, str], dict[str, object]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        name = str(record.get("list", ""))
+        scenario = record.get("declaredBy")
+        level = "target" if scenario is None else "scenario"
+        block = blocks.setdefault(
+            (name, level), {"list": name, "level": level, "entries": [], "ok": True}
+        )
+        entries = block["entries"]
+        assert isinstance(entries, list)
+        failure = record.get("failure")
+        entries.append(
+            {
+                "entry": str(record.get("entry", "")),
+                "owner": str(record.get("target", "") if scenario is None else scenario),
+                "log": record.get("log"),
+                "skipped": bool(record.get("skipped")),
+                "reason": record.get("reason") or failure or "",
+                "ok": failure is None,
+            }
+        )
+        if failure is not None:
+            block["ok"] = False
+    return list(blocks.values())
 
 
 def report_notices(provenance: Mapping[str, object] | None) -> list[str]:
@@ -193,4 +245,28 @@ def target_route_needs(
     for key in settings_in_effect(eff, pre, s.permissions):
         if key not in declared:
             needs[setting_token(route, key)] = [f"target '{name}': setting {key}"]
+    return needs
+
+
+def hook_command_needs(
+    entries: Iterable[HookCommand], source: ConfigSource, where: str
+) -> dict[str, list[str]]:
+    """The tokens a job needs for its hook *entries*, each with what needs it (BE-0492, BE-0501).
+
+    A spelled-out `cmd` needs a worker that runs command lines from *source*. A `use` entry needs one
+    that runs named commands from *source* and has that script installed.
+
+    Args:
+        entries: The hook entries, from a target or a scenario.
+        source: Where the job's config came from.
+        where: What declares the entries, as a refusal names it.
+    """
+    needs: dict[str, list[str]] = {}
+    for entry in entries:
+        if entry.use is None:
+            tokens = [command_requirement(source)]
+        else:
+            tokens = [named_requirement(source), f"{NAMED_COMMAND_PREFIX}{entry.use}"]
+        for token in tokens:
+            needs[token] = [where]
     return needs

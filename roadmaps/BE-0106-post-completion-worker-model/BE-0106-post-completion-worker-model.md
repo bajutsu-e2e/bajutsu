@@ -57,13 +57,13 @@ checklist entirely.
 
 ## Detailed design
 
-The four swap-in seams that let local and server hosting diverge already exist
-(`RunExecutor`, `LogBus`, `SessionStore`, and the `Repository` system of record). This design
-**replaces the three server-side seam implementations** that reach for Redis with ones backed by
-Postgres and HTTP, and leaves the **local implementations untouched** — `LocalExecutor`,
-`InMemoryLogBus`, and `InMemorySessionStore` are what a laptop `bajutsu serve` uses, and this change
-never loads them differently. Postgres, already in the deployment and already the `Repository`
-seam's backing, becomes the single stateful dependency the server backend needs.
+Four swap-in seams already let local and server hosting diverge: `RunExecutor`, `LogBus`,
+`SessionStore`, and the `Repository` system of record. This design **replaces the three server-side
+seam implementations** that reach for Redis with ones backed by Postgres and HTTP. It leaves the
+**local implementations untouched**: a laptop `bajutsu serve` uses `LocalExecutor`,
+`InMemoryLogBus`, and `InMemorySessionStore`, and this change never loads them differently.
+Postgres is already in the deployment and already backs the `Repository` seam, so it becomes the
+single stateful dependency the server backend needs.
 
 ### 1. Job dispatch — a Postgres jobs table leased over HTTP
 
@@ -152,7 +152,7 @@ deterministic run is unchanged (#2), and nothing here is app-specific (#3).
 2. **Job dispatch + result collection + post-completion log.** The coupled core: the `jobs` table +
    migration, `Repository.enqueue_job`/`lease_job`/`complete_job`, `DbQueueExecutor`, the
    `/api/worker/lease` + `/api/worker/result` endpoints, the `bajutsu worker` HTTP loop, the worker's
-   `console.log` upload, and `PostCompletionLogBus`. This is the slice that lets Redis leave the
+   `console.log` upload, and `PostCompletionLogBus`. This slice lets Redis leave the
    worker↔control-plane path entirely.
 3. **Deployment & docs cleanup.** Drop `redis` from `deploy/self-host`, drop RQ/Redis from the
    `worker` extra, require `BAJUTSU_DATABASE_URL` for the server backend, update `docs/self-hosting.md`
@@ -162,8 +162,8 @@ deterministic run is unchanged (#2), and nothing here is app-specific (#3).
 ## Alternatives considered
 
 - **Keep Redis but remove the LogBus only.** This removes the pub/sub role but keeps Redis for the
-  job broker and sessions. Simpler change, but misses the opportunity to eliminate the Redis
-  dependency entirely when the broker and session store can also be replaced.
+  job broker and sessions. The change is simpler, but it misses the chance to eliminate the Redis
+  dependency entirely, since the broker and session store can also be replaced.
 - **Replace Redis with a lighter message queue (e.g. SQLite-backed queue, Postgres LISTEN/NOTIFY).**
   Still requires a broker abstraction; the question is whether the broker is needed at all when
   HTTP polling or push can serve the same purpose with fewer moving parts.

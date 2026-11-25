@@ -1,8 +1,8 @@
 """Whether a config's commands run on this worker: the `commandExecution` policy (BE-0492).
 
 A config can declare commands that Bajutsu runs on the machine that executes a run: the target's
-server command (`services.server.cmd`), the app build (`subject.build`), and the XCUITest runner
-build (`driver.runner.build`). The worker that runs them carries the risk, so the worker's own
+hook commands (`hooks.beforeRun` and the three lists beside it, BE-0491), the app build
+(`subject.build`), and the XCUITest runner build (`driver.runner.build`). The worker that runs them carries the risk, so the worker's own
 `worker.yaml` decides, per trust level of the config — its *source* — whether each kind runs.
 
 The decision is a table lookup on the source and the command's kind, so the same file, source, and
@@ -38,8 +38,9 @@ COMMAND_EXECUTION_PREFIX = "command-execution:"
 NAMED_EXECUTION_PREFIX = "named-execution:"
 NAMED_COMMAND_PREFIX = "named-command:"
 
-# The config fields that declare a governed command, as the command record names them.
-SERVER_FIELD = "services.server.cmd"
+# The config fields that declare a governed command, as the command record names them. A hook entry
+# names its own list and slot (`hooks.beforeRun[server].cmd`), which `hook_commands` builds.
+HOOKS_FIELD = "hooks"
 SUBJECT_BUILD_FIELD = "subject.build"
 RUNNER_BUILD_FIELD = "driver.runner.build"
 
@@ -149,7 +150,7 @@ Action = Literal["host", "sandbox", "refuse", "skip"]
 CommandKind = Literal["command", "build", "named"]
 
 _TABLE: dict[CommandKind, dict[CommandMode, Action]] = {
-    # A command line the config spells out (`services.server.cmd`).
+    # A command line the config spells out (a `hooks.*` entry's `cmd`).
     "command": {"allow": "host", "sandbox": "sandbox", "named": "refuse", "deny": "refuse"},
     # `subject.build` / `driver.runner.build`: an iOS build needs the macOS toolchain, which no
     # Linux container provides, so neither runs under `sandbox`.
@@ -226,6 +227,15 @@ def advertised_tokens(
 def command_requirement(source: ConfigSource) -> str:
     """The token a job whose config declares a governed command line requires."""
     return f"{COMMAND_EXECUTION_PREFIX}{source}"
+
+
+def named_requirement(source: ConfigSource) -> str:
+    """The token a job whose config runs a named command requires (BE-0491).
+
+    Separate from the script's own `named-command:<name>`: a worker may run named commands from this
+    source and still not have installed the one this config asks for, so a job needs both.
+    """
+    return f"{NAMED_EXECUTION_PREFIX}{source}"
 
 
 class NamedCommandError(ValueError):

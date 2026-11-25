@@ -30,6 +30,8 @@ class LocalTreeScenarioStorage:
     reason this class holds one (in practice an `ObjectScenarioStorage`, but nothing here depends on
     more than the `ScenarioStorage` protocol it satisfies)."""
 
+    config_tree = True
+
     def __init__(self, state: ServeState, save_storage: ScenarioStorage) -> None:
         # The read side resolves against the configuration the *requesting session* is bound to
         # (BE-0393 unit 2); the local store's `scope` hands the resolver that session per call.
