@@ -20,12 +20,12 @@ The serve Web UI binds one **active config** that every tab (Record / Replay / C
 against. Today the header shows only that config's **path** beside "Open config". This proposal adds
 a **View** button that opens the bound config for inspection: its content as a collapsible key/value
 tree (with a raw-YAML toggle) and, when it came from a Git source, the commit it was materialized
-from. It is a read-only affordance — it never edits or re-binds the config.
+from. The button is read-only: it never edits or re-binds the config.
 
 ## Motivation
 
-Once a config is bound you cannot see, from the UI, *what* you are actually running against. The
-path is shown, but for a **Git-sourced config** ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md))
+Once a config is bound, the UI does not show *what* the tabs actually run against. It shows the
+path, but for a **Git-sourced config** ([BE-0063](../BE-0063-git-config-source/BE-0063-git-config-source.md))
 that path is an opaque content-addressed cache location
 (`…/gitsrc/<host>/<owner>/<repo>/<sha>/…`). Two problems follow:
 
@@ -36,37 +36,36 @@ that path is an opaque content-addressed cache location
   does contain that SHA, but reading a 40-character hash out of a long path is not a usable "which
   commit am I on?" answer, and a branch ref gives no hint at all of what it resolved to.
 
-The information already exists server-side — the bound path, the file's bytes, and (for a Git bind)
-the `source_provenance` stamp BE-0063 computes and already returns from the bind — it is simply never
-surfaced *in the UI* afterward. Surfacing it would turn "trust that the right thing is bound" into
-"see that the right thing is bound", which matters most for the Git path this builds on.
+The server already holds the information: the bound path, the file's bytes, and (for a Git bind)
+the `source_provenance` stamp that BE-0063 computes and already returns from the bind. The UI never
+surfaces it afterward. Surfacing it would turn "trust that the right thing is bound" into
+"see that the right thing is bound", which matters most for the Git path this item builds on.
 
 ## Detailed design
 
-A read-only serve endpoint plus a viewer in the UI. No `run`/CI path is touched (prime directive 1);
-this is a Tier‑1 convenience surface.
+The design is a read-only serve endpoint plus a viewer in the UI. It touches no `run`/CI path
+(prime directive 1) and is a Tier‑1 convenience surface.
 
 - **Persist Git provenance on the bound state.** `ServeState` would gain a `config_provenance` field
   holding BE-0063's `source_provenance` stamp (host / owner / repo / requested ref / resolved SHA)
   when the active config came from a Git source, or `None` for a local file or an uploaded bundle.
-  It is set on a runtime Git bind and cleared on a local-file / bundle bind; a Git `--config` at
-  startup threads its provenance through into the state too, so a startup-bound Git config also
-  reports its commit.
+  A runtime Git bind sets the field, and a local-file or bundle bind clears it. A Git `--config` at
+  startup also threads its provenance into the state, so a startup-bound Git config reports its
+  commit too.
 - **A config-content serve operation + endpoint.** A read operation returns the bound config's
   verbatim text, its path, its parsed structure (loaded with the project's restricted YAML loader, so
   an `on:` key stays the string `"on"` rather than being coerced to a boolean, then coerced to
-  JSON-safe types), and the provenance (or `None`). It is exposed as `GET /api/config/content` on both
-  serve transports (the stdlib handler and the FastAPI app) and returns 404 when no config is bound.
-  Because the full config body is a wider disclosure than the path-only `/api/config`, this read is
-  gated to the `admin` role (it is ungated only on a local, tokenless deployment).
+  JSON-safe types), and the provenance (or `None`). The endpoint is `GET /api/config/content` on both
+  serve transports (the stdlib handler and the FastAPI app), and it returns 404 when no config is bound.
+  The full config body is a wider disclosure than the path-only `/api/config`, so the read is
+  gated to the `admin` role (ungated only on a local, tokenless deployment).
 - **Verbatim about placeholders, not a secret redactor.** The text (and parsed structure) is the file
   as bound: `${secrets.*}` placeholders appear as written and are never resolved, so the view adds no
-  disclosure beyond the file already committed to Git or shipped in the bundle. It is *not* a redactor,
-  though — a secret written **literally** into a local or uploaded config would be shown as-is. Keeping
-  secrets out of the file (as `${secrets.*}` refs) remains the contract; the `admin` gate above bounds
-  who can read the body regardless.
-- **UI: a "View" button + a viewer modal.** A **View** button beside the config name (revealed only
-  once a config is bound) opens a modal showing the provenance line (for a Git source), the path, and
+  disclosure beyond the file already committed to Git or shipped in the bundle. The view is *not* a
+  redactor, though: a secret written **literally** into a local or uploaded config appears as-is.
+  Keeping secrets out of the file (as `${secrets.*}` refs) remains the contract, and the `admin` gate
+  above bounds who can read the body regardless.
+- **UI: a "View" button + a viewer modal.** A **View** button beside the config name (revealed once a config is bound) opens a modal showing the provenance line (for a Git source), the path, and
   the config in two switchable views: a **Structured** collapsible key/value tree (nested objects and
   lists are toggles, the first couple of levels open by default, scalars colored by type) and a
   **Raw** toggle showing the verbatim YAML. An unparseable config falls back to the raw view.
@@ -76,11 +75,11 @@ this is a Tier‑1 convenience surface.
 ## Alternatives considered
 
 - **Show the full YAML inline in the header, no modal.** A config is long, and the header is shared
-  with the tab bar; a click-to-open modal keeps the default UI uncluttered.
+  with the tab bar. A click-to-open modal keeps the default UI uncluttered.
 - **Only reformat the header path (show `owner/repo@ref` instead of the cache path), no content
-  view.** This solves the "which commit" half but not the "what content" half; an operator still
-  cannot confirm the bound targets/scenarios without leaving the UI. The content view subsumes it.
-- **Resolve `${secrets.*}` for display.** Rejected outright — it would turn a read-only inspection
+  view.** This solves the "which commit" half but not the "what content" half, because an operator still
+  cannot confirm the bound targets and scenarios without leaving the UI. The content view subsumes it.
+- **Resolve `${secrets.*}` for display.** Rejected outright: resolving would turn a read-only inspection
   surface into a secret-disclosure vector. The view is deliberately verbatim.
 - **Make it editable (bind an edited config from the viewer).** Out of scope: binding already has its
   own sources (file browser / Git / upload). This item is inspection only.
