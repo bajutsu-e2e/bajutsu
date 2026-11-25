@@ -429,8 +429,7 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
         request.state.machine_org = key.org
         # Bound on the request's own context, which the endpoint copies: the threadpool binding
         # inside `admit` does not come back out of it.
-        if key.identity is not None:
-            oplog.bind_actor(key.identity)
+        oplog.bind_actor(key.identity)
         return None
 
     @app.middleware("http")

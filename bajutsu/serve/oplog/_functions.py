@@ -200,7 +200,7 @@ def bind_request(request_id: str) -> None:
     _actor.set(None)
 
 
-def bind_actor(actor: str) -> None:
+def bind_actor(actor: str | None) -> None:
     """Name *actor* on every later log line of this request; `bind_request` clears it."""
     _actor.set(actor)
 
