@@ -7,13 +7,21 @@
 |---|---|
 | Proposal | [BE-0503](BE-0503-local-evidence-post.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0503") |
 | Topic | Integration with external services |
 | Related | [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
+
+> **Rejected — the evidence belongs in the server's store, linked by URL.**
+> GitHub gives a script no documented way to put a run's zip into a comment. `gh --attach` takes
+> images and videos alone, and it refuses a zip before it posts. A release asset is the fallback.
+> It leaves one release entry for each thread, and a draft release opens for people with write
+> access alone. An Actions artifact needs a runner, which a local run lacks. Nothing here waits on
+> a blocker, so the item is rejected rather than deferred. A later item persists the finished run
+> in the `serve` store and links its URL from the comment.
 
 This item adds a helper script, `scripts/post_evidence.py`, that takes a finished run from a developer's own machine and posts it to a pull request or an issue. The comment names each failed scenario, the failing step, and the reason, and it links to the run's evidence. Running the script again updates the same comment instead of adding a new one. The script uses the developer's own GitHub credentials, and it runs after the verdict, so it never changes what the run decided.
 

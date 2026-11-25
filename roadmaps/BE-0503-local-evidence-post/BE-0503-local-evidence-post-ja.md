@@ -7,13 +7,21 @@
 |---|---|
 | 提案 | [BE-0503](BE-0503-local-evidence-post-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **却下** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0503") |
 | トピック | Integration with external services |
 | 関連 | [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications-ja.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
+
+> **却下（証跡は、サーバーのストアに置き、URL でリンクするほうが適しています）。**
+> GitHub には、スクリプトが run の zip をコメントへ載せる、文書化された手段がありません。
+> `gh --attach` が扱うのは画像と動画だけで、zip は投稿の前に拒否します。代わりのリリースのアセットは、
+> スレッドごとにリリースを1件ずつ残し、ドラフトのリリースを開けるのは、書き込み権限を持つ人だけです。
+> Actions のアーティファクトにはランナーが要り、手元の実行にはそれがありません。
+> 何かの解消を待っているわけではないので、この項目は保留ではなく却下とします。
+> 後続の項目で、完了した run を `serve` のストアに保存し、そこで得た URL をコメントからリンクします。
 
 開発者の手元で終えた実行を、プルリクエストまたは Issue に投稿する補助スクリプト `scripts/post_evidence.py` を追加します。コメントには、失敗したシナリオ、失敗したステップ、その理由を載せ、実行の証跡へのリンクを付けます。スクリプトをもう一度実行すると、新しいコメントを増やさず、同じコメントを更新します。スクリプトは開発者自身の GitHub の認証情報を使い、判定のあとに動きます。そのため、実行が決めた結果を変えることはありません。
 
