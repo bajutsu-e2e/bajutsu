@@ -1,14 +1,14 @@
-[English](BE-XXXX-post-run-url-comment.md) · **日本語**
+[English](BE-0508-post-run-url-comment.md) · **日本語**
 
-# BE-XXXX — 補助スクリプトで serve の run の URL をプルリクエスト、Issue、リリースに投稿する
+# BE-0508 — 補助スクリプトで serve の run の URL をプルリクエスト、Issue、リリースに投稿する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-post-run-url-comment-ja.md) |
+| 提案 | [BE-0508](BE-0508-post-run-url-comment-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0508") |
 | トピック | 外部サービスとの連携 |
 | 関連 | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md) |
 <!-- /BE-METADATA -->

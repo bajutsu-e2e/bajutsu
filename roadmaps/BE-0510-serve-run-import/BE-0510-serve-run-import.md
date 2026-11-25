@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-run-import-ja.md)
+**English** · [日本語](BE-0510-serve-run-import-ja.md)
 
-# BE-XXXX — Import a finished local run into serve and return its URL
+# BE-0510 — Import a finished local run into serve and return its URL
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-run-import.md) |
+| Proposal | [BE-0510](BE-0510-serve-run-import.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
 | Topic | Hosting the web UI |
 | Related | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md) |
 <!-- /BE-METADATA -->

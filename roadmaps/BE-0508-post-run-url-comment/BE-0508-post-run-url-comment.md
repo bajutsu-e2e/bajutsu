@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-post-run-url-comment-ja.md)
+**English** · [日本語](BE-0508-post-run-url-comment-ja.md)
 
-# BE-XXXX — Post a serve run URL to a pull request, an issue, or a release with a helper script
+# BE-0508 — Post a serve run URL to a pull request, an issue, or a release with a helper script
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-post-run-url-comment.md) |
+| Proposal | [BE-0508](BE-0508-post-run-url-comment.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0508") |
 | Topic | Integration with external services |
 | Related | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md) |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-serve-org-api-keys-ja.md)
+**English** · [日本語](BE-0509-serve-org-api-keys-ja.md)
 
-# BE-XXXX — Issue organization-scoped API keys so a script can call a hosted serve
+# BE-0509 — Issue organization-scoped API keys so a script can call a hosted serve
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-serve-org-api-keys.md) |
+| Proposal | [BE-0509](BE-0509-serve-org-api-keys.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0509") |
 | Topic | Hosting the web UI |
 | Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) |
 <!-- /BE-METADATA -->

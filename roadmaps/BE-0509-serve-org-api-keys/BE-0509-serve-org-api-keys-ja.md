@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-org-api-keys.md) · **日本語**
+[English](BE-0509-serve-org-api-keys.md) · **日本語**
 
-# BE-XXXX — スクリプトがホストされた serve を呼べるよう、組織単位の API キーを発行する
+# BE-0509 — スクリプトがホストされた serve を呼べるよう、組織単位の API キーを発行する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-org-api-keys-ja.md) |
+| 提案 | [BE-0509](BE-0509-serve-org-api-keys-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0509") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) |
 <!-- /BE-METADATA -->

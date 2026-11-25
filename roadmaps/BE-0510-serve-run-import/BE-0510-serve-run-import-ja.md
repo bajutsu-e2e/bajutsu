@@ -1,14 +1,14 @@
-[English](BE-XXXX-serve-run-import.md) · **日本語**
+[English](BE-0510-serve-run-import.md) · **日本語**
 
-# BE-XXXX — 完了したローカルの run を serve に取り込み、その URL を返す
+# BE-0510 — 完了したローカルの run を serve に取り込み、その URL を返す
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-serve-run-import-ja.md) |
+| 提案 | [BE-0510](BE-0510-serve-run-import-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md) |
 <!-- /BE-METADATA -->
