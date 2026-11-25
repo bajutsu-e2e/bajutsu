@@ -221,8 +221,7 @@ is your spec. The deterministic gate is the judge, never an LLM.
 
 The skill accepts a full id, a bare number (`300`), or a slug fragment. First it **explains the item
 back to you**: id, title, a plain-language summary, and current state. Then it notes that the item
-was already accepted at its review-gated merge (two approvals, or one under the
-`single-approver proposal` waiver). Implementing it **starts** it, and this PR will flip it to
+was already accepted at its review-gated merge. Implementing it **starts** it, and this PR will flip it to
 `Implemented`.
 
 ### Step B2 — It claims the tracking issue
