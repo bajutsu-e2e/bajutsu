@@ -58,11 +58,11 @@ Bajutsu 自身の `serve` Web UI を駆動する `demos/serve-ui` ハーネス�
 [`.github/workflows/web-e2e.yml`](../../.github/workflows/web-e2e.yml) に、既存の
 `smoke (playwright)` ジョブを写した 3 本目のジョブを置きます。手順は次の順です。
 
-1. チェックアウトする。
-2. uv をインストールする。
-3. Chromium をキャッシュする。
-4. `uv sync --extra web` と `playwright install` を実行する。
-5. `make -C demos/serve-ui e2e` を実行する。
+1. チェックアウトします。
+2. uv をインストールします。
+3. Chromium をキャッシュします。
+4. `uv sync --extra web` と `playwright install` を実行します。
+5. `make -C demos/serve-ui e2e` を実行します。
 
 ドッグフードに必要なのは `web` extra だけで、dev グループは要らないため、smoke と同じく `UV_NO_DEV: "1"`
 を付けます。駆動する内側の `serve` は config の `launchServer` が起動と停止を担うので、ジョブ側で手動起動

@@ -43,7 +43,7 @@ a CI pass.
 
 ## Detailed design
 
-This item builds on the substrate and defines the takeover behavior and, the delicate part, the
+This item builds on the substrate and defines the takeover behavior and — the delicate part — the
 recorded artifact's run-time treatment.
 
 **Takeover trigger.** The substrate's "needs human" outcome is raised when a target cannot be
@@ -57,7 +57,7 @@ scoped here to a single blocking operation inside an AI recording.
 
 **Resume by re-observation.** On "done", the loop re-queries and continues from the observed screen
 (the substrate's resume semantics). bajutsu records the **state transition** it observes, not the
-opaque manual gesture — so the scenario receives the app reaching the next screen, and no
+opaque manual gesture — so the scenario records the app reaching the next screen, not a
 pixel-level replay of the human's hand.
 
 **The generated artifact and its run-time treatment.** Each takeover is classified:
