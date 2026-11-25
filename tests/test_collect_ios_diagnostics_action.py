@@ -198,9 +198,12 @@ def test_the_sampler_ranks_by_cpu_only_over_an_interval(tmp_path: Path) -> None:
     # runs detached, so its own output is not this step's to observe.
     _run("start", tmp_path, hangs=False)
     sampler = (tmp_path / "bajutsu-host-telemetry.sh").read_text()
-    assert "top -l 1 -n 15 -o mem" in sampler, sampler
-    assert "top -l 2 -n 15 -o cpu -s 1" in sampler, sampler
-    assert "-l 1 -n 15 -o cpu" not in sampler, sampler
+    # One invocation per line, judged by its own flags rather than by their order in the script.
+    tops = [line.strip() for line in sampler.splitlines() if "/usr/bin/top" in line]
+    single = next(t for t in tops if "-l 1" in t)
+    interval = next(t for t in tops if "-l 2" in t)
+    assert "-o mem" in single and "-o cpu" not in single, sampler
+    assert "-o cpu" in interval and "-s 1" in interval, sampler
     # The heredoc keeps awk's field reference instead of expanding it in the step's own shell.
     assert 'print "Interval " $0' in sampler, sampler
 

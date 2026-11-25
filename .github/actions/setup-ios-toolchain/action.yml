@@ -59,7 +59,11 @@ runs:
     # host with the Simulator through whole jobs. Nothing a job runs searches the index.
     - name: Turn off Spotlight indexing
       shell: bash
-      run: sudo -n mdutil -a -i off || echo "::warning::could not turn off Spotlight indexing"
+      run: |
+        sudo -n mdutil -a -i off || echo "::warning::could not turn off Spotlight indexing"
+        # `mdutil -a -i off` can print a per-volume error and still exit 0, so the resulting status is
+        # the only record of whether indexing really stopped.
+        sudo -n mdutil -a -s || true
 
     # Start the boot before the caller's build step so a fresh boot's ~80s overlaps with it.
     # `wait: false` returns once the boot is initiated; the caller blocks on "booted" itself
