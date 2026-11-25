@@ -2151,8 +2151,10 @@ The demo mode differs from `simctl status_bar` in three ways:
 A step that sets `wifiBars` can enter the demo mode twice. System UI draws two Wi-Fi icons when it
 first registers its Wi-Fi icon during the demo mode, as can happen soon after a System UI restart.
 The step reads System UI's icon list first. When the Wi-Fi icon is not registered yet, the step waits
-on a condition until it is, leaves the demo mode, and enters it again. When no registration happens
-within five seconds, the first override stays in place.
+on a condition until it is, leaves the demo mode, and enters it again. The second entry sends every
+field pinned since the last `clearStatusBar`, so a field an earlier step set stays pinned. When no
+registration happens within five seconds, the first override stays in place and the run logs a
+warning.
 
 On both platforms the override persists on the device until a `clearStatusBar` step runs.
 

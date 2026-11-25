@@ -271,14 +271,48 @@ def test_status_bar_enters_once_when_the_wifi_icon_cannot_double(dump: str) -> N
     assert _override_wifi([dump]) == [_ICONS_PROBE, *_WIFI_OVERRIDE]
 
 
+def test_status_bar_reentry_restores_what_earlier_steps_pinned() -> None:
+    # Leaving the demo mode drops every pinned field, not only this step's.
+    calls: list[list[str]] = []
+    replies = iter([_WIFI_UNREGISTERED, _WIFI_REGISTERED])
+
+    def reply(argv: list[str]) -> str:
+        return next(replies, _WIFI_REGISTERED) if "dumpsys" in argv else ""
+
+    control = platform_lifecycle.android_device_control("E", _PKG, _recorder(calls, reply))
+    control.override_status_bar(time="9:41")
+    calls.clear()
+    control.override_status_bar(wifi_bars=3)
+    clock = _demo("clock", "-e", "hhmm", "0941")
+    wifi = _WIFI_OVERRIDE[-1]
+    assert calls == [
+        _ICONS_PROBE,
+        *_PREAMBLE,
+        wifi,
+        _ICONS_PROBE,
+        _demo("exit"),
+        *_PREAMBLE,
+        clock,
+        wifi,
+    ]
+
+    # A clear forgets them.
+    control.clear_status_bar()
+    calls.clear()
+    replies = iter([_WIFI_UNREGISTERED, _WIFI_REGISTERED])
+    control.override_status_bar(wifi_bars=3)
+    assert clock not in calls
+
+
 def test_status_bar_keeps_the_override_when_the_wifi_icon_never_registers(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr(_DEVICE_CONTROL, "_WIFI_ICON_TIMEOUT", 0.05)
     monkeypatch.setattr(_DEVICE_CONTROL, "_WIFI_ICON_POLL", 0.01)
     monkeypatch.setattr(_DEVICE_CONTROL, "_WIFI_ICON_POLL_MAX", 0.01)
     calls = _override_wifi([_WIFI_UNREGISTERED])
     assert [c for c in calls if c != _ICONS_PROBE] == _WIFI_OVERRIDE
+    assert "registered no Wi-Fi icon" in caplog.text
 
 
 def _sc(*steps: dict[str, object]) -> Scenario:
