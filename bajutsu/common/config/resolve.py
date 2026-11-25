@@ -149,6 +149,7 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
             package=app.id,
             app_path=app.path,
             build=app.build,
+            source_root=app.source_root,
             grant_permissions=list(app.grant_permissions),
             native_z=driver.native_z,
             resident_read_retries=driver.resident_recovery.read_retries,
@@ -160,6 +161,7 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
             bundle_id=app.id,
             app_path=app.path,
             build=app.build,
+            source_root=app.source_root,
             xcuitest=_xcuitest(a.driver, a.runs_on),
         )
     return IosConfig(bundle_id=getattr(app, "id", None) or "")

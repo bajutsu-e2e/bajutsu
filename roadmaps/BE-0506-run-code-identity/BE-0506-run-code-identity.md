@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0506](BE-0506-run-code-identity.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0506") |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
@@ -95,7 +95,7 @@ A raw message can carry a local path or a token. The run directory does not othe
 | `manifest-unparsable` | The manifest inside the `.apk` did not decode |
 | `not-a-git-repo` | The `sourceRoot` is not inside a Git checkout |
 | `git-unavailable` | The `git` command is missing or timed out |
-| `status-read-failed` | `git status` errored |
+| `status-read-failed` | `git status` errored, or the runner did not run it |
 
 A group the target never configured is a different case. A target with no `app.path` has no hash to attempt. An app preinstalled on the device is one example. The runner omits the `app` group for it. A target with no `sourceRoot` omits `appSource` the same way. Omission means "not configured". A `null` with a reason means "tried and could not read". A reader can tell the two apart.
 
@@ -166,12 +166,31 @@ The manifest would claim one build identity. The verdict also depended on anothe
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Move the Git identity reader into `bajutsu/common/`
-- [ ] Add the binary hasher and the version readers
-- [ ] Add the `sourceRoot` target key
-- [ ] Stamp every target once per run and raise `schemaVersion` to 19
-- [ ] Surface the stamp, gaps included, in `ctrf.json` and `report.html`
-- [ ] Update the bilingual docs, `DESIGN.md`, and `docs/architecture.md`
+- [x] Move the Git identity reader into `bajutsu/common/`
+- [x] Add the binary hasher and the version readers
+- [x] Add the `sourceRoot` target key
+- [x] Stamp every target once per run and raise `schemaVersion` to 19
+- [x] Surface the stamp, gaps included, in `ctrf.json` and `report.html`
+- [x] Update the bilingual docs, `DESIGN.md`, and `docs/architecture.md`
+
+Log:
+
+- 2026-11-26 — All six units landed together. These points go beyond the design above.
+  - The target key is `subject.sourceRoot`, beside `subject.path`. The group `app` carries the name
+    `subject` since BE-0470.
+  - A target whose app arrives some other way records no `app` group. A device provider and a real
+    iOS device are the two cases. The file at `subject.path` is not known to be the binary under test.
+  - The read follows the `beforeRun` entries, which may write an app.
+  - The Git reads turn off the repository's `core.fsmonitor` command and its Git scripts. They also
+    leave its index alone.
+  - `git status` runs for the operator's own config alone. An uploaded or remote config records
+    `status-read-failed`, since the tree can configure commands that a status read runs.
+  - A `sourceRoot` with no tracked file records `not-a-git-repo`, and an empty bundle records
+    `path-missing`.
+  - `ctrf.json` also carries `uncommitted`, because a bare commit reads as a clean tree.
+  - A readable `Info.plist` or manifest without a version value records `plist-unreadable` or
+    `manifest-unparsable`, because the fixed set has no narrower code.
+  - `DESIGN.md` describes no stamp keys, so it needed no change.
 
 ## References
 

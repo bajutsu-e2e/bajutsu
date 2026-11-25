@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0506](BE-0506-run-code-identity-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0506") |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
@@ -90,7 +90,7 @@ runner がチェックアウトとして受け入れるのは、そのチェッ�
 | `manifest-unparsable` | `.apk` 内のマニフェストをデコードできなかった |
 | `not-a-git-repo` | `sourceRoot` が Git チェックアウトの内側にない |
 | `git-unavailable` | `git` コマンドがない、またはタイムアウトした |
-| `status-read-failed` | `git status` がエラーになった |
+| `status-read-failed` | `git status` がエラーになったか、実行しなかった |
 
 target が設定していないグループは、別の扱いです。`app.path` を持たない target では、ハッシュを試す対象がありません。デバイスへ事前に入れたアプリが一例です。runner は、その target の `app` グループを省略します。`sourceRoot` がなければ、`appSource` も同じく省略します。省略は「設定されていない」ことを表します。理由つきの `null` は、「試みたが読めなかった」ことを表します。読み手は両者を区別できます。
 
@@ -169,12 +169,29 @@ manifest は 1 つのビルドの識別情報を主張します。判定は、�
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] Git の識別情報を読むヘルパーを `bajutsu/common/` に移す
-- [ ] バイナリのハッシュ計算とバージョン読み取りを加える
-- [ ] target キー `sourceRoot` を加える
-- [ ] すべての target のスタンプを run ごとに 1 回記録し、`schemaVersion` を 19 に上げる
-- [ ] 欠落も含めて、スタンプを `ctrf.json` と `report.html` に出す
-- [ ] 日英のドキュメント、`DESIGN.md`、`docs/architecture.md` を更新する
+- [x] Git の識別情報を読むヘルパーを `bajutsu/common/` に移す
+- [x] バイナリのハッシュ計算とバージョン読み取りを加える
+- [x] target キー `sourceRoot` を加える
+- [x] すべての target のスタンプを run ごとに 1 回記録し、`schemaVersion` を 19 に上げる
+- [x] 欠落も含めて、スタンプを `ctrf.json` と `report.html` に出す
+- [x] 日英のドキュメント、`DESIGN.md`、`docs/architecture.md` を更新する
+
+ログは次のとおりです。
+
+- 2026-11-26 — 6 つの単位をまとめて実装
+
+上の設計から踏み込んだ点は次の表のとおりです。
+
+| 点 | 内容と理由 |
+|---|---|
+| キーの場所 | `subject.path` と並ぶ `subject.sourceRoot` に配置。BE-0470 以降、`app` グループの名前は `subject` |
+| 別経路の導入 | デバイスプロバイダと iOS の実機では `app` を省略。`subject.path` のファイルがテスト対象とは言えないため |
+| 読む時点 | `beforeRun` フックの後。フックがアプリを書き換える場合があるため |
+| 追跡のない対象 | 追跡ファイルのない `sourceRoot` は `not-a-git-repo`。空のバンドルは `path-missing` |
+| CTRF | `uncommitted` も出力。コミットだけではクリーンに見えるため |
+| Git の読み取り | リポジトリ側の `core.fsmonitor` とフックは無効化。アップロードや遠隔の config では `git status` を実行せず `status-read-failed` |
+
+バージョンの値がない `Info.plist` は `plist-unreadable` と記録します。マニフェストの場合は `manifest-unparsable` です。`DESIGN.md` にはスタンプのキーの記述がないので、変更していません。
 
 ## 参考
 

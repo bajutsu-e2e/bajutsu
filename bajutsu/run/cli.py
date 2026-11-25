@@ -9,7 +9,7 @@ import sys
 import time
 import typing
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
 
@@ -63,6 +63,7 @@ from bajutsu.common.cancellation import (
 )
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.command_gate import CommandGate
+from bajutsu.common.capability.command_policy import OPERATOR
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import (
     AndroidConfig,
@@ -86,6 +87,7 @@ from bajutsu.common.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.common.report import ScenarioPlanSource
 from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
+from bajutsu.common.run_identity.stamp import RunIdentity, read_run_identity
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import (
@@ -2305,6 +2307,8 @@ class _RunPlan:
     # The runs `runsOn` conditions formed (BE-0452), indexed into `scenarios`; None when no scenario
     # runs any target under a condition, which keeps the single-engine and `--browsers` paths.
     matrix: DeviceMatrix | None = None
+    # Which app builds and sources this run exercises (BE-0506), read once by `_dispatch`.
+    identity: RunIdentity = field(default_factory=RunIdentity)
 
 
 def _finish_hooks(plan: _RunPlan) -> None:
@@ -2439,6 +2443,16 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
             before.reason,
         )
     try:
+        # Read once, here: after every build and `beforeRun` entry, either of which may write an
+        # app, and before the first lease. Each binary hashes once, so a rebuild mid-run changes
+        # nothing. Inside the `try`, so the `afterRun` backstop covers it too.
+        plan = replace(
+            plan,
+            identity=read_run_identity(
+                {name: setup.eff for name, setup in plan.targets.items()},
+                trusted=plan.command_gate.policy.source == OPERATOR,
+            ),
+        )
         if plan.matrix is not None:
             return _dispatch_runs(plan, plan.matrix, progress_fn)
         if len(plan.engines) > 1:
@@ -2536,6 +2550,7 @@ def _open_pools(plan: _RunPlan) -> dict[str, tuple[LeaseFn, Callable[[], None]]]
                 log_subsystem=plan.log_subsystem or _log_subsystem_default(setup.eff),
                 secret_values=plan.secret_values,
                 provision=setup.device.provision,
+                identity=plan.identity,
             )
     except BaseException:
         # `mid_run=True`: a pool that came up before a later one failed to must not have its own
@@ -2615,6 +2630,7 @@ def _dispatch_single(
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             worker_failures=plan.worker_failures,
             config_source=plan.config_source,
+            identity=plan.identity,
             command_executions=plan.command_gate.records,
             label=plan.label or None,
             golden_context=plan.golden_context,
@@ -2657,6 +2673,7 @@ def _dispatch_matrix(
             log_subsystem=plan.log_subsystem or _log_subsystem_default(eff_e),
             secret_values=plan.secret_values,
             provision=plan.provision,
+            identity=plan.identity,
         )
         try:
             return run_all(
@@ -2702,6 +2719,7 @@ def _dispatch_matrix(
         secret_values=plan.secret_values,
         label=plan.label or None,
         config_source=plan.config_source,
+        identity=plan.identity,
         command_executions=plan.command_gate.records,
         cancelled=plan.cancelled,
         worker_failures=plan.worker_failures,
@@ -2787,6 +2805,7 @@ def _dispatch_runs(
         plan_sources=plan.plan_sources,
         secret_values=plan.secret_values,
         config_source=plan.config_source,
+        identity=plan.identity,
         command_executions=plan.command_gate.records,
         label=plan.label or None,
         worker_failures=plan.worker_failures,
@@ -2851,6 +2870,7 @@ def _run_cell(
                 log_subsystem=plan.log_subsystem or _log_subsystem_default(effs[name]),
                 secret_values=plan.secret_values,
                 provision=setup.device.provision,
+                identity=plan.identity,
             )
         # Each worker holds one device per participant on a pool for the scenario's whole length.
         demand: dict[tuple[str, tuple[str, ...], str], int] = {}

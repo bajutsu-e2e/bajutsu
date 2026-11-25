@@ -12,6 +12,7 @@ from xml.etree import ElementTree as ET
 from bajutsu import __version__
 from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.orchestrator import RunResult, StepOutcome, scenario_slug
+from bajutsu.common.run_identity.stamp import RunIdentity
 
 # A run-history label longer than this is rejected at the boundary rather than truncated (BE-0404
 # unit 2), so an operator learns the label was refused instead of finding a silently shortened one.
@@ -118,7 +119,11 @@ def _run_backend(results: list[RunResult]) -> str:
 # v18: a scenario carries "channel_degraded" — why the read channel had fallen back when the scenario
 #   ended, empty when healthy — and "channel_notes", what it did after the last step drained. A step's
 #   own such notes join its "warnings". Absent on an older run, which a reader treats as healthy.
-SCHEMA_VERSION = 18
+# v19: `provenance.targets.<name>` records which build and source each target ran — `app` (`hash` /
+# `hashKind` / `version` / `buildNumber`) and `appSource` (`commit` / `uncommitted`) — and
+# `provenance.toolSource` records Bajutsu's own commit. An unreadable value is null, named under a
+# sibling `unavailable` mapping (BE-0506).
+SCHEMA_VERSION = 19
 
 # How the run matrix heads the column of a run no condition formed: a scenario without conditions,
 # run in an invocation where other scenarios' conditions formed runs.
@@ -232,6 +237,7 @@ def run_provenance(
     *,
     git_revision: str | None,
     config_source: dict[str, str] | None = None,
+    identity: RunIdentity | None = None,
 ) -> dict[str, object]:
     """Stamp identifying the executed scenario and the tooling, for the longitudinal flakiness view.
 
@@ -251,6 +257,8 @@ def run_provenance(
         config_source: When the config came from a Git source (BE-0063), the repo + resolved commit
             (`host` / `owner` / `repo` / `ref` / `sha`), so a branch-based run states the exact commit
             it executed. None for a local config (the key is then omitted).
+        identity: Which build of which code the run exercised (BE-0506), read once per run. Adds
+            `targets` and `toolSource`, each omitted when empty.
     """
     prov: dict[str, object] = {
         "scenarioHash": "sha256:" + hashlib.sha256(scenario_yaml.encode("utf-8")).hexdigest(),
@@ -260,6 +268,11 @@ def run_provenance(
         prov["gitRevision"] = git_revision
     if config_source is not None:
         prov["configSource"] = config_source
+    if identity is not None:
+        if identity.targets:
+            prov["targets"] = {name: dict(stamp) for name, stamp in identity.targets.items()}
+        if identity.tool_source is not None:
+            prov["toolSource"] = dict(identity.tool_source)
     return prov
 
 

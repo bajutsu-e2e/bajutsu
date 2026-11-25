@@ -13,11 +13,12 @@ from pathlib import Path
 import pytest
 
 import bajutsu
+from bajutsu.common.run_identity.git import GIT_LOCATION_ENV
 from bajutsu.serve.operations import version as version_ops
 
 # Under a git hook (the pre-push gate), git exports GIT_DIR / GIT_INDEX_FILE into the child env,
 # which would redirect these `cwd`-scoped calls at the outer repo. Strip them so the temp repo wins.
-_CLEAN_GIT_ENV = {k: v for k, v in os.environ.items() if k not in version_ops._GIT_LOCATION_ENV}
+_CLEAN_GIT_ENV = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_ENV}
 
 
 def _git_in(root: Path, *args: str) -> subprocess.CompletedProcess[bytes]:

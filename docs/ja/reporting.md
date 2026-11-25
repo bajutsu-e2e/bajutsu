@@ -121,8 +121,9 @@ runs/<runId>/
   - `toolVersion`：`bajutsu.__version__` です。
   - `gitRevision`：コミットです。git チェックアウト内の run のときだけ付きます。
   - `configSource`：`{ host, owner, repo, ref, sha }` で、ブランチ指定の run が実際に実行した正確なコミットです。config が Git ソース由来のときに付きます（[BE-0063](../../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source-ja.md)）。
+  - `targets` と `toolSource`：どのコードのどのビルドを実行したかです（[後述](#ビルドとソースの識別情報)）。
 
-  このスタンプで蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `18` です。）
+  このスタンプで蓄積した run を同一性でグルーピングできるので、フィンガープリントが変わっていないのに判定が反転すれば、それは編集ではなく**真の flakiness** だと分かります。純粋なメタデータで、`ok` には一切入りません。（このブロックが出るようになった時点で `schemaVersion` は `3` 以上です。現在は `19` です。）
 
   `run-set` の job は実行場所を指定しないので、同じ job をもう一度実行すると別の場所に割り当てられることがあります。そのため worker は、実行した自分の環境を `workerEnvironment` として記録します。値は `local` や `devicefarm` などです。レポートは、この記録を *notices* に載せます（[BE-0484](../../roadmaps/BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md)）。
 - `target`（トップ、任意）: この run が実行した target です。「Android の target は通るのに iOS の target は落ちる」を、保存済みのデータから計算できます（[BE-0404](../../roadmaps/BE-0404-collapse-project-layer/BE-0404-collapse-project-layer-ja.md)）。1 つの run が解決する target は 1 つなので、シナリオごとではなく `backend` の隣に置きます。`serve` はこれを run の行へ写し、target どうしを順位付けします。target を持たない run では省かれます。（この項目が出るようになった時点で `schemaVersion` は `10` 以上です。）
@@ -131,6 +132,42 @@ runs/<runId>/
 - `matrix`（トップ、任意）: クロスブラウザのエンジン × シナリオのグリッドで、`bajutsu run --browsers` の run のときだけ出ます（[BE-0076](../../roadmaps/BE-0076-web-cross-browser-engines/BE-0076-web-cross-browser-engines-ja.md)）。`scenarios` はフラットな結果リストのままで、各エントリに `engine` が付きます。`matrix` は `{ engines, scenarios, cells: { "<scenario>": { "<engine>": { ok, sid, failure } } } }` で、エンジンごとの判定を集約しただけのものです（report はこれをグリッドとして描画します）。`ok` はエンジン × シナリオのすべてに対する all-must-pass です。単一エンジン／iOS の run では省かれます。
 
   複数ファイルにまたがる run では `name` の一意性は保証されません。そのため、同じ名前のシナリオが2つ目以降にあると、最初のセルを上書きするのではなく、`(2)`、`(3)` などの接尾辞が付いた別の行として保持します。（このブロックが出るようになった時点で `schemaVersion` は `4` 以上です。）
+
+### ビルドとソースの識別情報
+
+スタンプは、run が操作した各アプリのビルドを記録します（[BE-0506](../../roadmaps/BE-0506-run-code-identity/BE-0506-run-code-identity-ja.md)）。`gitRevision` の意味は変わりません。run を起動したディレクトリのコミットです。次の 2 つのキーは `schemaVersion` 19 から現れます。キーを持たない run は、古い run として読みます。
+
+`provenance.targets.<name>` には、run が操作したターゲットごとに 1 件が入ります。1 件の中身は 2 つのグループです。
+
+| キー | 内容 |
+|---|---|
+| `app.hash` | `subject.path` のバイナリの `sha256:<hex>` ダイジェスト |
+| `app.hashKind` | `.apk` は `file`、`.app` バンドルは `tree` |
+| `app.version` | `CFBundleShortVersionString` または `versionName` |
+| `app.buildNumber` | `CFBundleVersion` または `versionCode` の文字列 |
+| `appSource.commit` | `subject.sourceRoot` のリポジトリの完全なコミットハッシュ |
+| `appSource.uncommitted` | 作業ツリーに未コミットの変更があれば `true` |
+
+`provenance.toolSource` は Bajutsu 自身のコードを表します。持つキーは `commit` と `source` です。`source` が `checkout` のときは `uncommitted` も持ちます。チェックアウトと見なす条件は、Bajutsu のパッケージを追跡していることです。`source` が `build-arg` の場合は、チェックアウトのないインストールで使う `BAJUTSU_BUILD_COMMIT` の値です。どちらもなければ、`toolSource` は省かれます。
+
+ランナーはこれらの値を run につき一度だけ読みます。読むのはビルドと `beforeRun` フックの後、最初のリースの前です。そのため、どのシナリオも同じビルドを報告します。コミットが表すのは作業ツリーで、バイナリではありません。両者は食い違うことがあるので、スタンプは両方を残します。
+
+読めなかった値は `null` としてスタンプに残ります。同じ階層の `unavailable` が、キーごとの理由を示します。読めない値があっても、判定は変わらず、run も止まりません。
+
+| 理由 | 意味 |
+|---|---|
+| `path-missing` | `subject.path` にバイナリがないか、バンドルにファイルがない |
+| `read-error` | ランナーがバイナリを読めなかった |
+| `plist-unreadable` | `Info.plist` を解析できないか、バージョンのキーがない |
+| `apk-unreadable` | `.apk` を zip として開けないか、マニフェストがない |
+| `manifest-unparsable` | マニフェストをデコードできないか、バージョンが直接の値でない |
+| `not-a-git-repo` | `subject.sourceRoot` に Git が追跡するファイルがない |
+| `git-unavailable` | `git` コマンドがないか、時間切れ |
+| `status-read-failed` | `git status` がエラーを返したか、実行しなかった |
+
+ランナーが `git status` を実行するのは、運用者が選んだ config の場合だけです。`--config-source` が `uploaded` か `remote` のときは、代わりに `status-read-failed` を記録します。そうしたツリーが設定したコマンドを、Git が status の読み取り中に起動できるためです。コミットは記録します。
+
+ターゲットが設定していないグループは省かれます。`subject.path` のないターゲットには `app` がありません。`subject.sourceRoot` のないターゲットには `appSource` がありません。web ターゲットには両方ともありません。デバイスプロバイダがアプリをインストールするターゲットにも、`app` はありません。iOS の実機も同じです。ビルドは Bajutsu の外でインストールされます。これらの場合、`subject.path` のファイルがテスト対象のバイナリだとは言えないためです。
 
 ## junit.xml
 
@@ -177,6 +214,8 @@ JUnit XML が run を名前、所要時間、失敗内容の塊まで削ぎ落�
 }
 ```
 
+`environment.commit` は `gitRevision` と同じ値です。CTRF は `environment` に独自のキーを許さないので、ビルドの識別情報は `environment.extra` に入ります。`extra.targets.<name>` が持つのはアプリの `hash` と `version`、ソースの `commit` と `uncommitted` です。`extra.toolSource` はツールの `commit`、`uncommitted`、`source` を持ちます。欠けた値は `null` のままで、理由は `unavailable` に入ります。
+
 - `summary.duration` と各 `tests[].duration` はミリ秒（Σ／シナリオごとの `duration_s`）で、CTRF の消費側が拠り所にするフィールドであり、正確です。`summary.start` と文書の `timestamp` は `YYYYMMDD-HHMMSS` の runId から導出します。runId は UTC で採番されるため、UTC として解釈します。`stop = start + duration` です。テストごとの絶対 start/stop は、シナリオごとの絶対エポックが要る（オプションの後続作業）ため、近似せず省きます。実行時のホスト状態は一切載せないので、`bajutsu report` は同じ実行の `ctrf.json` をバイト単位で同一に再生成します。
 - `tests[].status` は、実行した run では `passed` / `failed` です。対象外（not applicable）の記録（[端末の条件が作る実行](#端末の条件が作る実行)を参照）は `skipped` になります。他の CTRF の集計は `0` のままです。
 - CTRF の `step` は `{ name, status, extra }` しか許さないので、ステップのより豊かなデータ（duration、reason、ステップごとのアサーション、アーティファクト）は `step.extra` に入れます。name／status だけを描画する消費側にはきれいな一覧が見え、Bajutsu を理解するツールは extra を読めます。
@@ -204,6 +243,10 @@ JUnit XML が run を名前、所要時間、失敗内容の塊まで削ぎ落�
 ヘッダには run id と全体の PASS/FAIL を表示し、その下にシナリオファイル名（`source_name`）を表示します。
 `source_name` は run 全体のラベルです。単一ファイルならそのファイル名、複数ファイルやディレクトリ指定なら
 親ディレクトリ名になります。ファイルレベルの `description` があれば、さらに表示します。
+
+その下に、ターゲットごとのビルドを 1 行ずつ表示します（[ビルドとソースの識別情報](#ビルドとソースの識別情報)）。
+行の中身は、アプリのバージョン、短いハッシュ、短いソースコミットです。ソースツリーに変更があれば
+`uncommitted` の目印が付きます。欠けた値は `unknown` と理由で表示します。
 
 各シナリオ行のサマリには、シナリオ名と、そのシナリオ自身の元ファイル名（`source_files`）を表示します。
 元ファイル名は `source_name` とは別物です。`bajutsu run` がディスクからシナリオを読んだ場合だけ設定され、
@@ -403,8 +446,8 @@ Device Log / App Trace は別タブのままです。
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None, writer=None, target=None, label=None, source_files=None, step_lines=None) -> Path  # 4 形式を書く。definitions=シナリオ毎の dict、sources=生 YAML、source_name=シナリオファイル名（run 全体）、description=ファイルレベルの説明、source_files/step_lines=live run が復元できたときの各シナリオ自身のファイル名とステップの元の行番号、provenance=run の同一性スタンプ（BE-0049）
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None, writer=None, source_files=None, step_lines=None) -> None  # 再生成できる側だけ（report.html + junit.xml + ctrf.json）。manifest.json は触らない。再描画が使う。provenance は CTRF の tool/environment フィールドに使う
 def manifest_dict(run_id, results, *, source_name=None, provenance=None, target=None, label=None) -> dict  # バージョン付き render モデル（schemaVersion）。manifest の素（テスト、検査用）
-def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # run の同一性スタンプ: scenarioHash + toolVersion + 任意の gitRevision（BE-0049）+ 任意の configSource（BE-0063）
-def ctrf_json(run_id, results, *, provenance=None) -> dict  # 実行結果モデルの CTRF への射影（BE-0161）。provenance は tool.version / environment.commit に使う
+def run_provenance(scenario_yaml, *, git_revision, config_source=None, identity=None) -> dict  # run の同一性スタンプ: scenarioHash + toolVersion + 任意の gitRevision（BE-0049）+ 任意の configSource（BE-0063）+ 任意の targets / toolSource（BE-0506）
+def ctrf_json(run_id, results, *, provenance=None) -> dict  # 実行結果モデルの CTRF への射影（BE-0161）。provenance は tool.version / environment.commit / environment.extra に使う
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None, source_files=None, step_lines=None) -> str
 def scenario_render_inputs(scenarios, plan_sources=None) -> tuple[list[dict], list[str]]  # (definitions, sources)。初回 bake と再描画で共有。plan_sources（宣言されたシナリオ名がキー）が復元できたときは、sources に各シナリオ自身の生 YAML を使う。復元できなければ従来どおり構造化データから作り直す

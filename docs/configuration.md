@@ -109,7 +109,7 @@ so a key another platform takes fails as unknown on this one, with the accepted 
 
 | Group | iOS | Android | Web |
 |---|---|---|---|
-| `subject` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
+| `subject` | `id`, `path`, `build`, `sourceRoot`, `reinstall`, `launch.env`, `launch.args`, `launch.deeplink`, `startWhen`, `idNamespaces` | `id`, `path`, `build`, `sourceRoot`, `reinstall`, `launch.env`, `launch.deeplink`, `grantPermissions`, `startWhen`, `idNamespaces` | `url`, `launch.env`, `startWhen`, `idNamespaces` |
 | `runsOn` | `ios.model`, `ios.os`, `ios.kind`, `ios.family`, `ios.locale`, `ios.seedPhotos` | `android.avd`, `android.apiLevel`, `android.locale`, `android.seedPhotos` | `browser.kind`, `browser.version`, `browser.emulate` |
 | `driver` | `runner.testRunner`, `runner.build`, `runner.hostAddress` | `nativeZ`, `residentRecovery.readRetries`, `residentRecovery.restart` | `headless` |
 
@@ -243,7 +243,7 @@ a component file:
 - The file must stay inside the suite root.
 - A relative value inside the file resolves against the file's own directory. The value can be a
   nested `extends` entry, a path field, or a component its `hooks` call with `use`. The path fields
-  are `subject.path`, `runsOn.ios.seedPhotos`, `driver.runner.testRunner`, and `paths.*`.
+  are `subject.path`, `subject.sourceRoot`, `runsOn.ios.seedPhotos`, `driver.runner.testRunner`, and `paths.*`.
 - A build command (`subject.build`, `driver.runner.build`) is not rewritten. It runs in the config
   file's directory, as a target's own does. Keep a build command and the path it produces in the
   same place. Split across files, the build writes to one directory and the path points at another.
@@ -493,6 +493,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `platform_config.base_url` (`WebConfig`) | `subject.url` | web target URL (Playwright backend) |
 | `platform_config.package` (`AndroidConfig`) | `subject.id` | Android target identifier |
 | `platform_config.app_path` / `.build` (`IosConfig`, `AndroidConfig`) | `subject.path` / `subject.build` | the built app a run installs before each scenario (if missing), and the shell command that builds it on demand |
+| `platform_config.source_root` (`IosConfig`, `AndroidConfig`) | `subject.sourceRoot` | optional: the app's source repository, whose commit the manifest records ([reporting](reporting.md#build-and-source-identity)) |
 | `platform_config.xcuitest` (`IosConfig`) | `driver.runner` + `runsOn.ios.kind` | the XCUITest runner: `testRunner` (a prebuilt `.xctestrun`), `build` (the command that builds it), `hostAddress` ([below](#real-device-host-address-driverrunnerhostaddress)), and the destination `kind` |
 | `platform_config.grant_permissions` (`AndroidConfig`) | `subject.grantPermissions` | Android only: runtime permissions granted before launch (`pm grant`), so a permission prompt never blocks a scenario |
 | `platform_config.native_z` (`AndroidConfig`) | `driver.nativeZ` | Android only: `nativeZ: true` asks the device for each opted-in view's own `View.getZ()`, which `elements.json` reports as the diagnostic `nativeZ` field ([BE-0355](../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position.md)). Off by default, because the node walk that answers it runs on every screen read — 20-100 ms — and reports nothing at all unless the app under test links `BajutsuAndroid` and opts views in. A target that turns it on also gives up the round trip a confirmed gesture's own reply would otherwise have saved: that reply cannot carry a `nativeZ` reading, so such a target asks the device not to build the tree at all rather than take one whose positions would all read absent ([BE-0407](../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning.md) units 18-19). iOS needs no such flag: its responder answers only for an app that linked BajutsuKit |

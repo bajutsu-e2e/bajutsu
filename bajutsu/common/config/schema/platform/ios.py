@@ -25,6 +25,8 @@ class IosApp(AppCommon):
     id: str = Field(min_length=1)
     path: str | None = None
     build: str | None = None
+    # The app's source repository, whose commit the run's provenance records (BE-0506).
+    source_root: str | None = Field(default=None, alias="sourceRoot")
     reinstall: Reinstall | None = None
     launch: IosLaunch = Field(default_factory=IosLaunch)
 
