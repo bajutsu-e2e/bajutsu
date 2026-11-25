@@ -54,6 +54,9 @@ def _run(
         "FAKE_LOG": str(tmp_path / "log"),
         "FAKE_DAMAGED": DAMAGED,
     }
+    # The script's SDK_CHANNEL default is what the argv assertions pin, so an ambient value must
+    # not reach it.
+    env.pop("SDK_CHANNEL", None)
     proc = subprocess.run(
         ["bash", str(SCRIPT), *packages], env=env, capture_output=True, text=True, check=False
     )

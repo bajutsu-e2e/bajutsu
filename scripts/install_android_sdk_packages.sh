@@ -42,7 +42,7 @@ for package in "$@"; do
   while :; do
     echo "Installing $package (attempt $attempt of $ATTEMPTS)"
     status=0
-    output=$("$SDKMANAGER" --install "$package" --channel="$SDK_CHANNEL" 2>&1) || status=$?
+    output=$("$SDKMANAGER" --install "$package" --channel="$SDK_CHANNEL" --sdk_root="$ANDROID_HOME" 2>&1) || status=$?
     # Echo the output this script captured, so the log keeps what sdkmanager said either way.
     printf '%s\n' "$output"
     if [ "$status" -ne 0 ]; then
