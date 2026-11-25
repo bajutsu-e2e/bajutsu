@@ -181,10 +181,8 @@ guard, the deletion after success, no deletion after failure, and a run director
   to a reviewer without write access. The sink stays for the zip and for hosts that `gh --attach`
   does not support.
 - **Edit the last comment with `--edit-last`.** It edits only the current user's last comment, which
-  another tool may own. A later item can use it as an optimization once the spike confirms that it
-  composes with `--attach`.
-- **Write the upload protocol into the script.** No documented API exists, and the script would
-  then copy an undocumented one.
+  another tool may own. The spike confirmed that it composes with `--attach`, so a later item can
+  use it as an optimization.
 
 ## Progress
 
@@ -192,14 +190,14 @@ guard, the deletion after success, no deletion after failure, and a run director
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: on a throwaway thread, measure what this item takes from the help text and the public write-up. Confirm that `gh pr comment --attach` and `gh issue comment --attach` work with a token given only through `GH_TOKEN`. Record the version floor, the accepted types, and the size caps. Record how `gh` rewrites a video reference, and whether `--edit-last` composes with `--attach`. Check that the marker stays the first line after the rewrite, what a partial failure leaves behind, and whether files outlive a deleted comment.
+- [x] Spike: on a throwaway thread, measured what this item takes from the help text and the public write-up. The results are in *Measured behavior* above. `gh pr comment --attach` and `gh issue comment --attach` work with a token given only through `GH_TOKEN`. The record also holds the accepted types and the size caps, how `gh` rewrites a video reference, that `--edit-last` composes with `--attach`, that the marker stays the first line after the rewrite, what a partial failure leaves behind, and that files outlive a deleted comment. The version floor stayed unmeasured.
 - [ ] CLI and plan: `--sink attach`, `--attach-video-mb`, and the plan's lines for files, skips, deletions, and privacy.
-- [ ] Staging and guards: media types, size caps, the file cap, unique staged names, and the body references.
-- [ ] The `gh` call: the version check, the host refusal, the subcommand choice, the child environment and working directory, and the error report that covers a partial failure.
-- [ ] The sticky comment: the snapshot, the deletion by id after a successful post, and the report of a failed delete.
-- [ ] Tests: a fake `gh` and the fake GitHub server of BE-0503.
-- [ ] The run zip: the zip as an asset of the evidence release, uploaded before the comment, with the size guard and `--publish`.
-- [ ] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
+- [ ] Not pursued: Staging and guards: media types, size caps, the file cap, unique staged names, and the body references.
+- [ ] Not pursued: The `gh` call: the version check, the host refusal, the subcommand choice, the child environment and working directory, and the error report that covers a partial failure.
+- [ ] Not pursued: The sticky comment: the snapshot, the deletion by id after a successful post, and the report of a failed delete.
+- [ ] Not pursued: Tests: a fake `gh` and the fake GitHub server of BE-0503.
+- [ ] Not pursued: The run zip: the zip as an asset of the evidence release, uploaded before the comment, with the size guard and `--publish`.
+- [ ] Not pursued: Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
 
 
 ## References
