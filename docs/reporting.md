@@ -641,6 +641,7 @@ links instead, and `--sink` decides what the links point to.
 |---|---|---|
 | `none` (default) | Nothing. The comment names each file by its path in the run directory. With `--evidence-base-url`, each path becomes a link to a copy the developer serves. | Whoever can open the base URL. |
 | `release` | The failing screenshots, the failing scenarios' videos, and a zip of the run, as assets of the release `bajutsu-evidence #<number>`. | A draft release opens for people with write access alone. `--publish` opens it to everyone who can see the repository. |
+| `attach` | The failing screenshots and the failing scenarios' videos, through `gh --attach`. GitHub hosts the files, and the comment shows them inline. | Whoever can view the thread. For a public repository, anyone. |
 
 The `none` sink pairs with a run that `bajutsu run --evidence-store` uploaded
 ([evidence](evidence.md)). Pass the public base URL of the store's prefix as `--evidence-base-url`.
@@ -651,6 +652,35 @@ The `release` sink creates a draft prerelease that never becomes the repository'
 A rerun reuses that release and uploads the assets it lacks. The script never deletes a release, so
 removing one stays a manual step. Publishing creates the tag `bajutsu-evidence-<number>`. The plan
 lists each workflow in the target repository whose triggers mention a release or a tag.
+
+### Attach screenshots and videos through the GitHub CLI
+
+`--sink attach` passes the failing screenshots and videos to the GitHub CLI (`gh`). It uses the
+`--attach` flag of `gh`. The comment then shows each screenshot inline and each video as a player.
+The sink needs no hosted copy and no release. It extends the script of
+[BE-0503](../roadmaps/BE-0503-local-evidence-post/BE-0503-local-evidence-post.md).
+
+```bash
+python3 scripts/post_evidence.py runs/20261125-101530 --to acme/app#42 --sink attach --dry-run
+```
+
+The sink needs `gh` 2.99.0 or newer on `PATH`. It supports `github.com` alone. The script passes
+the token to `gh` through `GH_TOKEN` in the child environment, never on a command line. The target
+decides between `gh pr comment` and `gh issue comment`.
+
+- **Only media goes up.** The sink takes the image and video types that `gh --attach` accepts.
+  A zip and a device log stay out, so the comment has no link to the whole run.
+- **Limits stay bounded.** The script skips an image above 10 MB. It skips a video above
+  `--attach-video-mb` (default 10) and any file past the 50th. The plan and the comment name each
+  skip.
+- **A rerun moves the comment.** `gh` creates a comment and edits none. After a successful post,
+  the script deletes this key's older comments, which the plan lists first. Subscribers of the
+  thread get one more notification.
+- **A `gh` error deletes nothing.** The comment may still exist with some attachments. Check the
+  thread before you run the script again.
+- **Files stay public.** A public repository serves attached files without signing in.
+  Deleting a comment removes the comment and keeps the files it uploaded. `--yes` accepts that
+  exposure.
 
 ### What the script guards
 

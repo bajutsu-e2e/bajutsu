@@ -45,6 +45,13 @@ URL_PATTERN = re.compile(
     r"/(?:pull|issues)/(?P<number>\d+)(?:[/?#].*)?"
 )
 PAGE_SIZE = 100
+# What `gh ... --attach` accepts,.
+ATTACH_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp4", ".mov", ".webm")
+VIDEO_SUFFIXES = (".mp4", ".mov", ".webm")
+ATTACH_IMAGE_LIMIT_MB = 10
+ATTACH_VIDEO_MAX_MB = 100
+ATTACH_MAX_FILES = 50
+GH_MIN_VERSION = (2, 99, 0)
 SCREENSHOT_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 # Exit statuses. A failed run is not among them: the verdict never reaches the exit status.
 EXIT_OK = 0
@@ -256,7 +263,7 @@ def marker(key: str) -> str:
     return f"<!-- {MARKER_PREFIX}{key} -->"
 
 
-def _evidence_lines(failure: Failure, links: Mapping[str, str]) -> list[str]:
+def _evidence_lines(failure: Failure, links: Mapping[str, str], *, embed_videos: bool) -> list[str]:
     lines = []
     for path in failure.screenshots:
         if path in links:
@@ -264,21 +271,23 @@ def _evidence_lines(failure: Failure, links: Mapping[str, str]) -> list[str]:
         else:
             lines.append(f"  - Screenshot {literal(path)}")
     for path in failure.videos:
-        if path in links:
+        if path in links and embed_videos:
+            lines.append(f"  - Video {literal(path)}:<br>![video]({links[path]})")
+        elif path in links:
             lines.append(f"  - [Video]({links[path]}) {literal(path)}")
         else:
             lines.append(f"  - Video {literal(path)}")
     return lines
 
 
-def _failure_block(failure: Failure, links: Mapping[str, str]) -> list[str]:
+def _failure_block(failure: Failure, links: Mapping[str, str], *, embed_videos: bool) -> list[str]:
     lines = [
         f"#### {literal(failure.name)}",
         "",
         f"- Failed at: {literal(failure.step)}",
         f"- Reason: {literal(failure.reason)}",
     ]
-    evidence = _evidence_lines(failure, links)
+    evidence = _evidence_lines(failure, links, embed_videos=embed_videos)
     if evidence:
         lines += ["- Evidence:", *evidence]
     return [*lines, ""]
@@ -292,6 +301,7 @@ def render(
     max_failures: int,
     notes: Sequence[str] = (),
     run_link: str | None = None,
+    embed_videos: bool = False,
 ) -> str:
     """Render the comment's Markdown.
 
@@ -303,6 +313,8 @@ def render(
         max_failures: How many failed scenarios get a block; the rest are counted.
         notes: Lines stating each truncation and skipped file.
         run_link: A link to the whole run (a zip asset or a hosted report), if any.
+        embed_videos: Reference each linked video as `![video](...)`, so `gh --attach` rewrites it
+            and GitHub shows a player, instead of a plain link.
     """
     verdict = "passed" if run.ok else "failed"
     total = run.passed + run.failed
@@ -318,7 +330,7 @@ def render(
         lines.append(f"[Whole run]({run_link})")
     lines.append("")
     for failure in run.failures[: max(max_failures, 0)]:
-        lines += _failure_block(failure, links)
+        lines += _failure_block(failure, links, embed_videos=embed_videos)
     omitted = len(run.failures) - max(max_failures, 0)
     if omitted > 0:
         lines += [f"{omitted} more failed scenarios are not shown.", ""]
@@ -575,6 +587,11 @@ class Plan:
     workflows: list[str] = field(default_factory=list)
     workflows_error: str = ""
     remote_checked: bool = False
+    attach_dir: Path | None = None
+    is_pull_request: bool | None = None
+    gh_path: str | None = None
+    gh_problem: str = ""
+    stale_comments: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def tag(self) -> str:
@@ -776,6 +793,164 @@ def upload_assets(
     return links
 
 
+# --- The attach sink (gh --attach) -------------------------------------------------------------
+
+
+def stage_attach(
+    run_dir: Path,
+    run: RunView,
+    attach_dir: Path,
+    *,
+    max_failures: int,
+    video_mb: int,
+) -> tuple[list[Staged], list[str]]:
+    """Copy the failing screenshots and videos that `gh --attach` accepts into `attach_dir`.
+
+    Each file gets a unique name, because the body refers to it as `./<name>` and `gh` resolves
+    the path against the body file's directory. A file of another type, one over its size limit,
+    one past the 50th, and one that leaves the run directory is skipped, and each skip is noted.
+    """
+    notes: list[str] = []
+    staged: list[Staged] = []
+    wanted: list[str] = []
+    for f in run.failures[: max(max_failures, 0)]:
+        wanted += [p for p in (*f.screenshots, *f.videos) if p not in wanted]
+    attach_dir.mkdir(parents=True, exist_ok=True)
+    for path in wanted:
+        src = _inside(run_dir, path)
+        reason = ""
+        if src is None:
+            reason = "the path leaves the run directory"
+        elif not src.is_file():
+            reason = "it is named by the run but missing from the run directory"
+        elif src.suffix.lower() not in ATTACH_SUFFIXES:
+            reason = f"gh --attach does not take a {src.suffix or 'file without a suffix'}"
+        elif src.stat().st_size > _attach_limit_mb(src, video_mb) * 1024 * 1024:
+            reason = f"it exceeds {_attach_limit_mb(src, video_mb)} MB"
+        elif len(staged) >= ATTACH_MAX_FILES:
+            reason = f"gh --attach takes at most {ATTACH_MAX_FILES} files"
+        if reason or src is None:  # `src is None` narrows the type for mypy; `reason` is set then
+            notes.append(f"{literal(path)} skipped: {reason}.")
+            continue
+        dest = attach_dir / f"{len(staged) + 1:02d}-{asset_name('', Path(path).name)}"
+        shutil.copyfile(src, dest)
+        staged.append(Staged(path, dest, dest.stat().st_size))
+    return staged, notes
+
+
+def _attach_limit_mb(src: Path, video_mb: int) -> int:
+    return video_mb if src.suffix.lower() in VIDEO_SUFFIXES else ATTACH_IMAGE_LIMIT_MB
+
+
+def check_attach_host(api_url: str) -> None:
+    """Refuse any API host but github.com, which is all that `gh --attach` supports.
+
+    Raises:
+        PostError: `GITHUB_API_URL` names another instance.
+    """
+    if urllib.parse.urlsplit(api_url).netloc.lower() != "api.github.com":
+        raise PostError(f"--sink attach supports github.com alone, not the API at {api_url}")
+
+
+def gh_version(gh_path: str, env: Mapping[str, str]) -> tuple[int, int, int] | None:
+    """The version `gh --version` prints, or None when it cannot be read."""
+    try:
+        done = subprocess.run(
+            [gh_path, "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+            env=dict(env),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"gh version (\d+)\.(\d+)\.(\d+)", done.stdout)
+    return (int(match[1]), int(match[2]), int(match[3])) if match else None
+
+
+def check_gh(env: Mapping[str, str]) -> tuple[str | None, str]:
+    """Find `gh` on the environment's `PATH` and check it is new enough for `--attach`.
+
+    Returns:
+        The path of `gh` (None when absent) and a problem line, empty when `gh` is usable.
+    """
+    gh_path = shutil.which("gh", path=env.get("PATH"))
+    if gh_path is None:
+        return None, "the GitHub CLI (gh) is not on PATH; --sink attach needs gh 2.99.0 or newer"
+    version = gh_version(gh_path, env)
+    need = ".".join(map(str, GH_MIN_VERSION))
+    if version is None:
+        return (
+            gh_path,
+            f"cannot read the version of {gh_path}; --sink attach needs gh {need} or newer",
+        )
+    if version < GH_MIN_VERSION:
+        return (
+            gh_path,
+            f"gh {'.'.join(map(str, version))} is too old for --attach; need {need} or newer",
+        )
+    return gh_path, ""
+
+
+def gh_command(plan: Plan, body_path: Path) -> list[str]:
+    """The `gh` argument list for the comment, without the executable and without any token."""
+    t = plan.target
+    sub = "pr" if plan.is_pull_request else "issue"
+    argv = [
+        sub,
+        "comment",
+        str(t.number),
+        "--repo",
+        f"github.com/{t.slug}",
+        "--body-file",
+        body_path.name,
+    ]
+    for f in plan.files:
+        # `gh` gives a video no alt text, so a `#` suffix on one could be refused.
+        alt = "" if f.source.suffix.lower() in VIDEO_SUFFIXES else "#failing step"
+        argv += ["--attach", f"./{f.source.name}{alt}"]
+    return argv
+
+
+def run_gh_comment(plan: Plan, io_env: Mapping[str, str], token: str, body_path: Path) -> str:
+    """Post the comment through `gh --attach` and return its URL.
+
+    The token reaches `gh` only through `GH_TOKEN` in the child's environment, and `gh` runs in the
+    body file's directory, where the staged files sit.
+
+    Raises:
+        PostError: `gh` exited non-zero, or printed no URL. `gh` can fail after it creates the
+            comment, so the message says the comment may already exist.
+    """
+    drop = ("GITHUB_TOKEN", "GH_TOKEN", "GH_HOST", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+    env = {k: v for k, v in io_env.items() if k not in drop}
+    env |= {"GH_TOKEN": token, "GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"}
+    assert plan.gh_path is not None  # check_gh ran before any write
+    try:
+        done = subprocess.run(
+            [plan.gh_path, *gh_command(plan, body_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=900,
+            cwd=body_path.parent,
+            env=env,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        raise PostError(f"could not run gh: {e}") from e
+    lines = [ln.strip() for ln in done.stdout.splitlines() if ln.strip()]
+    if done.returncode != 0 or not lines or not lines[-1].startswith("http"):
+        detail = done.stderr.strip()[-500:] or done.stdout.strip()[-500:] or "no output"
+        raise PostError(
+            f"gh exited {done.returncode}: {detail}\n"
+            "The comment may already exist with some of its attachments, and uploaded files may "
+            "already be reachable by URL. Check the thread before you run the script again. "
+            "Nothing was deleted."
+        )
+    return lines[-1]
+
+
 # --- The plan and the post ---------------------------------------------------------------------
 
 
@@ -794,6 +969,8 @@ def format_plan(plan: Plan, *, publish: bool, base_url: str | None) -> str:
         lines.append(
             f"Evidence links: {base_url}" if base_url else "Evidence links: none (paths only)"
         )
+    elif plan.sink == "attach":
+        lines += _attach_plan_lines(plan)
     else:
         lines += _release_plan_lines(plan, publish=publish)
         lines.append("Files:")
@@ -801,6 +978,30 @@ def format_plan(plan: Plan, *, publish: bool, base_url: str | None) -> str:
         lines.append(f"Total: {_mb(sum(f.size for f in plan.files))}")
     lines += [f"Note: {n}" for n in plan.notes]
     return "\n".join(lines)
+
+
+def _attach_plan_lines(plan: Plan) -> list[str]:
+    lines = [f"gh: {plan.gh_path or 'not found'}"]
+    if plan.gh_problem:
+        lines.append(f"  Problem: {plan.gh_problem}")
+    if not plan.remote_checked:
+        lines.append(
+            "Remote state not read (no token): the subcommand, the repository visibility, and "
+            "the comments to delete are unknown."
+        )
+    else:
+        sub = "gh pr comment" if plan.is_pull_request else "gh issue comment"
+        lines.append(f"Command: {sub} {plan.target.number} --repo github.com/{plan.target.slug}")
+    lines.append("Attach:")
+    lines += [f"  {f.path}  {_mb(f.size)}" for f in plan.files]
+    lines.append(f"Total: {_mb(sum(f.size for f in plan.files))}")
+    if plan.visibility == "public":
+        lines.append("  Files attached through gh --attach are viewable without signing in.")
+    lines.append("  Deleting a comment removes the comment, not the files it uploaded.")
+    if plan.stale_comments:
+        ids = ", ".join(f"#{c.get('id')}" for c in plan.stale_comments)
+        lines.append(f"Comments to delete after a successful post: {ids}")
+    return lines
 
 
 def _release_plan_lines(plan: Plan, *, publish: bool) -> list[str]:
@@ -860,12 +1061,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("run", help="a run directory, or a run id under --runs")
     p.add_argument("--to", required=True, help="owner/repo#NUMBER, or a pull request or issue URL")
     p.add_argument("--runs", default="runs", help="where a run id is looked up (default: runs)")
-    p.add_argument("--sink", choices=("none", "release"), default="none")
+    p.add_argument("--sink", choices=("none", "release", "attach"), default="none")
     p.add_argument("--publish", action="store_true", help="publish the release (release sink)")
     p.add_argument("--evidence-base-url", help="where a hosted copy of the run directory lives")
     p.add_argument("--key", default=DEFAULT_KEY, help="the sticky comment's key (default: local)")
     p.add_argument("--author", help="the comment author's login, for a token with no user")
     p.add_argument("--max-failures", type=int, default=10)
+    p.add_argument("--attach-video-mb", type=int, default=10, help="video size cap, attach sink")
     p.add_argument("--log-tail-kb", type=int, default=256)
     p.add_argument("--size-warn-mb", type=int, default=100)
     p.add_argument("--dry-run", action="store_true", help="print the plan and the comment only")
@@ -894,15 +1096,12 @@ def _base_links(run: RunView, base_url: str | None, max_failures: int) -> dict[s
     }
 
 
-def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
-    target = parse_target(args.to)
-    key = check_key(args.key)
-    run_dir = resolve_run_dir(args.run, Path(args.runs))
-    run = load_run(run_dir)
-    check_host(target, io.env.get(API_URL_ENV) or DEFAULT_API_URL)
-    plan = Plan(target=target, sink=args.sink)
-    if args.sink == "release":
-        try:
+def _stage_sink(
+    args: argparse.Namespace, io: Io, run_dir: Path, run: RunView, plan: Plan, staging: Path
+) -> None:
+    """Stage the files the chosen sink uploads, and check `gh` for the attach sink."""
+    try:
+        if args.sink == "release":
             plan.files, plan.notes = stage(
                 run_dir,
                 run,
@@ -911,23 +1110,61 @@ def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
                 log_tail_kb=args.log_tail_kb,
                 size_warn_mb=args.size_warn_mb,
             )
-        except OSError as e:
-            raise PostError(f"cannot stage evidence from {run_dir}: {e}") from e
+        elif args.sink == "attach":
+            if not 1 <= args.attach_video_mb <= ATTACH_VIDEO_MAX_MB:
+                raise PostError(f"--attach-video-mb must be between 1 and {ATTACH_VIDEO_MAX_MB}")
+            check_attach_host(io.env.get(API_URL_ENV) or DEFAULT_API_URL)
+            plan.attach_dir = staging / "attach"
+            plan.files, plan.notes = stage_attach(
+                run_dir,
+                run,
+                plan.attach_dir,
+                max_failures=args.max_failures,
+                video_mb=args.attach_video_mb,
+            )
+    except OSError as e:
+        raise PostError(f"cannot stage evidence from {run_dir}: {e}") from e
+    if args.sink == "attach":
+        plan.gh_path, plan.gh_problem = check_gh(io.env)
+        if plan.gh_problem and not args.dry_run:
+            raise PostError(plan.gh_problem)
+
+
+def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
+    target = parse_target(args.to)
+    key = check_key(args.key)
+    run_dir = resolve_run_dir(args.run, Path(args.runs))
+    run = load_run(run_dir)
+    check_host(target, io.env.get(API_URL_ENV) or DEFAULT_API_URL)
+    plan = Plan(target=target, sink=args.sink)
+    _stage_sink(args, io, run_dir, run, plan, staging)
     plan.notes = [*run.notes, *plan.notes]
     token = resolve_token(io.env, io.run_gh)
     gh = GitHub(token or "", io.env.get(API_URL_ENV) or DEFAULT_API_URL)
     if token is None and not args.dry_run:
         raise PostError("no token: set GITHUB_TOKEN or GH_TOKEN, or sign in with `gh auth login`")
     if token is not None:
-        _read_remote_state(gh, plan, publish=args.publish)
+        _read_remote_state(gh, plan, publish=args.publish, key=key, author=args.author)
     print(format_plan(plan, publish=args.publish, base_url=args.evidence_base_url), file=io.out)
     links = _base_links(run, args.evidence_base_url, args.max_failures)
+    if args.sink == "attach":
+        links = {f.path: f"./{f.source.name}" for f in plan.files}
+    embed = args.sink == "attach"
     if args.dry_run:
-        body = render(run, key=key, links=links, max_failures=args.max_failures, notes=plan.notes)
+        body = render(
+            run,
+            key=key,
+            links=links,
+            max_failures=args.max_failures,
+            notes=plan.notes,
+            embed_videos=embed,
+        )
         print("\n--- comment (dry run: nothing was written) ---\n" + body, file=io.out)
         return None
     if not args.yes and not confirm(io.stdin, io.out):
         raise PostError("not confirmed; nothing was posted")
+    if args.sink == "attach":
+        return _post_with_gh(args, io, plan, gh, token or "", run, key, links)
     author = args.author or gh.login()
     run_link = None
     if args.sink == "release":
@@ -944,7 +1181,9 @@ def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
     return upsert_comment(gh, target, key, author, body)
 
 
-def _read_remote_state(gh: GitHub, plan: Plan, *, publish: bool) -> None:
+def _read_remote_state(
+    gh: GitHub, plan: Plan, *, publish: bool, key: str, author: str | None
+) -> None:
     repo = gh.request("GET", f"/repos/{plan.target.slug}")
     if isinstance(repo, dict):
         plan.visibility = str(
@@ -954,7 +1193,62 @@ def _read_remote_state(gh: GitHub, plan: Plan, *, publish: bool) -> None:
         plan.release = find_release(gh, plan.target)
         if publish:
             plan.workflows, plan.workflows_error = tag_workflows(gh, plan.target)
+    if plan.sink == "attach":
+        t = plan.target
+        thread = gh.request("GET", f"/repos/{t.slug}/issues/{t.number}")
+        plan.is_pull_request = isinstance(thread, dict) and "pull_request" in thread
+        login = author or gh.login()
+        plan.stale_comments = [
+            c
+            for c in gh.paged(f"/repos/{t.slug}/issues/{t.number}/comments")
+            if is_own_comment(c, key, login)
+        ]
     plan.remote_checked = True
+
+
+def _post_with_gh(
+    args: argparse.Namespace,
+    io: Io,
+    plan: Plan,
+    gh: GitHub,
+    token: str,
+    run: RunView,
+    key: str,
+    links: Mapping[str, str],
+) -> str:
+    """Post through `gh --attach`, then delete this key's older comments.
+
+    The older comments go only after `gh` succeeded, so a failed post never leaves the thread
+    without evidence. A delete that fails afterwards is reported loudly, never swallowed.
+    """
+    assert plan.attach_dir is not None
+    body = render(
+        run,
+        key=key,
+        links=links,
+        max_failures=args.max_failures,
+        notes=plan.notes,
+        embed_videos=True,
+    )
+    body_path = plan.attach_dir / "body.md"
+    body_path.write_text(body, encoding="utf-8")
+    url = run_gh_comment(plan, io.env, token, body_path)
+    failures: list[str] = []
+    deleted = 0
+    for comment in plan.stale_comments:
+        # Delete exactly the ids the plan listed, never one that `gh` just created.
+        if url.endswith(f"#issuecomment-{comment['id']}"):
+            continue
+        try:
+            gh.request("DELETE", f"/repos/{plan.target.slug}/issues/comments/{comment['id']}")
+            deleted += 1
+        except PostError as e:
+            failures.append(f"#{comment['id']}: {e}")
+    if deleted:
+        print(f"Deleted {deleted} older comment(s).", file=io.out)
+    if failures:
+        raise PostError(f"posted {url}, but could not delete: " + "; ".join(failures))
+    return url
 
 
 def main(argv: Sequence[str] | None = None, io: Io | None = None) -> int:

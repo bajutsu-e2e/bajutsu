@@ -52,6 +52,9 @@ class FakeGitHub:
     blobs: dict[str, bytes] = field(default_factory=dict)
     comments_reply: object = None
     redirect_to: str = ""
+    is_pr: bool = True
+    visibility: str = "private"
+    fail_delete: bool = False
     fail_writes: bool = False
 
     def writes(self) -> list[tuple[str, str]]:
@@ -65,15 +68,23 @@ class FakeGitHub:
         query = {k: v[0] for k, v in parse_qs(parts.query).items()}
         return self._route(method, parts.path, query, body)
 
-    def _route(
+    def _route(  # noqa: C901, PLR0911 — a flat route table reads best as one function
         self, method: str, path: str, query: dict[str, str], body: bytes
     ) -> tuple[int, object]:
+        if path == ISSUE and method == "GET":
+            return 200, ({"pull_request": {}} if self.is_pr else {})
+        if path.startswith(f"/repos/{OWNER}/{REPO}/issues/comments/") and method == "DELETE":
+            if self.fail_delete:
+                return 500, {"message": "no"}
+            wanted = int(path.rsplit("/", 1)[1])
+            self.comments[:] = [c for c in self.comments if c["id"] != wanted]
+            return 204, ""
         if path == "/user" and self.redirect_to:
             return 302, self.redirect_to
         if path == "/user":
             return (200, {"login": self.login}) if self.login else (403, {"message": "no user"})
         if path == f"/repos/{OWNER}/{REPO}" and method == "GET":
-            return 200, {"visibility": "private"}
+            return 200, {"visibility": self.visibility}
         if path == f"{ISSUE}/comments":
             return self._comments(method, query, body)
         if path.startswith(f"/repos/{OWNER}/{REPO}/issues/comments/"):
@@ -163,7 +174,7 @@ def github() -> Iterator[FakeGitHub]:
             self.end_headers()
             self.wfile.write(data)
 
-        do_GET = do_POST = do_PATCH = _serve  # noqa: N815 — the stdlib handler's naming
+        do_GET = do_POST = do_PATCH = do_DELETE = _serve  # noqa: N815 — the stdlib handler's naming
 
         def log_message(self, *_: object) -> None:  # keep pytest output clean
             pass
@@ -707,3 +718,266 @@ def test_the_token_is_not_forwarded_on_a_redirect(github: FakeGitHub, run_dir: P
         other.shutdown()
         other.server_close()
     assert seen == [None]
+
+
+# --- The attach sink ---------------------------------------------------------------------------
+
+FAKE_GH = """#!{python}
+import json, os, sys, urllib.request
+args = sys.argv[1:]
+if args[:1] == ["--version"]:
+    print("gh version " + os.environ.get("FAKE_GH_VERSION", "2.105.0") + " (2026-11-17)")
+    sys.exit(0)
+body = open(args[args.index("--body-file") + 1], encoding="utf-8").read()
+files = [a.split("#")[0] for i, a in enumerate(args) if i and args[i - 1] == "--attach"]
+record = {{
+    "argv": args,
+    "cwd": os.getcwd(),
+    "token": os.environ.get("GH_TOKEN"),
+    "leaked": [k for k in ("GITHUB_TOKEN", "GH_HOST", "GH_ENTERPRISE_TOKEN") if k in os.environ],
+    "body": body,
+    "missing": [f for f in files if not os.path.exists(f)],
+}}
+with open(os.environ["FAKE_GH_LOG"], "a", encoding="utf-8") as log:
+    log.write(json.dumps(record) + "\\n")
+if os.environ.get("FAKE_GH_NOURL"):
+    sys.exit(0)
+if os.environ.get("FAKE_GH_FAIL"):
+    print("boom", file=sys.stderr)
+    sys.exit(1)
+url = os.environ["GITHUB_API_URL"] + "/repos/acme/app/issues/" + args[2] + "/comments"
+req = urllib.request.Request(url, data=json.dumps({{"body": body}}).encode(), method="POST")
+with urllib.request.urlopen(req) as resp:
+    print(json.load(resp)["html_url"])
+"""
+
+
+@dataclass
+class Attach:
+    """A run of the attach sink against the fake GitHub and a fake `gh` on PATH."""
+
+    github: FakeGitHub
+    run_dir: Path
+    bin_dir: Path
+    log: Path
+
+    def run(self, *extra: str, **env: str) -> tuple[int, str, str]:
+        args = [str(self.run_dir), "--to", TO, "--sink", "attach", "--yes", *extra]
+        out, err = io.StringIO(), io.StringIO()
+        environ = {
+            "GITHUB_API_URL": self.github.base,
+            "GITHUB_TOKEN": "t0ken",
+            "PATH": str(self.bin_dir),
+            "FAKE_GH_LOG": str(self.log),
+            **env,
+        }
+        stdin = io.StringIO()
+        code = pe.main(args, pe.Io(environ, stdin, out, err, run_gh=lambda: None))
+        return code, out.getvalue(), err.getvalue()
+
+    def calls(self) -> list[dict[str, Any]]:
+        if not self.log.exists():
+            return []
+        return [json.loads(line) for line in self.log.read_text().splitlines()]
+
+
+@pytest.fixture
+def attach(
+    github: FakeGitHub, run_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Attach:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(FAKE_GH.format(python=sys.executable), encoding="utf-8")
+    gh.chmod(0o755)
+    # The fake server is not api.github.com, so the host rule is tested on its own below.
+    monkeypatch.setattr(pe, "check_attach_host", lambda _api: None)
+    return Attach(github, run_dir, bin_dir, tmp_path / "gh.log")
+
+
+def test_attach_posts_through_gh_with_each_file(attach: Attach) -> None:
+    before = _tree_digest(attach.run_dir)
+    code, out, _ = attach.run()
+    assert code == pe.EXIT_OK
+    (call,) = attach.calls()
+    argv = call["argv"]
+    assert argv[:5] == ["pr", "comment", "7", "--repo", "github.com/acme/app"]
+    assert argv[argv.index("--body-file") + 1] == "body.md"
+    attached = [argv[i + 1] for i, a in enumerate(argv) if a == "--attach"]
+    assert attached == ["./01-after.png#failing step", "./02-video.mp4"]
+    assert call["missing"] == []
+    body = call["body"]
+    assert "![failing step](./01-after.png)" in body
+    assert "![video](./02-video.mp4)" in body
+    assert body.splitlines()[0] == "<!-- bajutsu-evidence:local -->"
+    assert "Posted:" in out
+    assert _tree_digest(attach.run_dir) == before
+
+
+def test_attach_hands_the_token_to_gh_only_through_its_environment(attach: Attach) -> None:
+    attach.run(GH_HOST="ghe.corp.example", GH_ENTERPRISE_TOKEN="x")
+    (call,) = attach.calls()
+    assert call["token"] == "t0ken"
+    assert "t0ken" not in " ".join(call["argv"])
+    assert call["leaked"] == []
+
+
+def test_attach_uses_the_issue_subcommand_for_an_issue(attach: Attach) -> None:
+    attach.github.is_pr = False
+    attach.run()
+    assert attach.calls()[0]["argv"][:2] == ["issue", "comment"]
+
+
+def test_attach_deletes_only_this_keys_older_comments_after_the_post(attach: Attach) -> None:
+    gh = attach.github
+    gh.comments += [
+        {"id": 11, "body": "<!-- bajutsu-evidence:local -->\nold", "user": {"login": "dev"}},
+        {"id": 12, "body": "<!-- bajutsu-evidence:ci -->\nci", "user": {"login": "dev"}},
+        {"id": 13, "body": "<!-- bajutsu-evidence:local -->\nsomeone", "user": {"login": "x"}},
+    ]
+    code, out, _ = attach.run()
+    assert code == pe.EXIT_OK
+    assert sorted(c["id"] for c in gh.comments if c["id"] < 1000) == [12, 13]
+    assert any(c["id"] >= 1000 for c in gh.comments)
+    assert "Deleted 1 older comment(s)." in out
+    methods = [m for m, _ in gh.writes()]
+    assert methods.count("DELETE") == 1
+    assert methods.index("POST") < methods.index("DELETE")
+
+
+def test_a_failing_gh_deletes_nothing_and_says_the_comment_may_exist(attach: Attach) -> None:
+    attach.github.comments.append(
+        {"id": 11, "body": "<!-- bajutsu-evidence:local -->\nold", "user": {"login": "dev"}}
+    )
+    code, _, err = attach.run(FAKE_GH_FAIL="1")
+    assert code == pe.EXIT_POST_FAILED
+    assert "boom" in err
+    assert "may already exist" in err
+    assert [m for m, _ in attach.github.writes()] == []
+    assert [c["id"] for c in attach.github.comments] == [11]
+
+
+def test_a_delete_that_fails_is_reported_after_the_post(attach: Attach) -> None:
+    attach.github.comments.append(
+        {"id": 11, "body": "<!-- bajutsu-evidence:local -->\nold", "user": {"login": "dev"}}
+    )
+    attach.github.fail_delete = True
+    code, _, err = attach.run()
+    assert code == pe.EXIT_POST_FAILED
+    assert "posted http" in err
+    assert "#11" in err
+
+
+def test_attach_refuses_a_missing_gh(attach: Attach) -> None:
+    (attach.bin_dir / "gh").unlink()
+    code, _, err = attach.run()
+    assert code == pe.EXIT_POST_FAILED
+    assert "not on PATH" in err
+    assert attach.github.requests == []
+
+
+def test_attach_refuses_a_gh_older_than_the_floor(attach: Attach) -> None:
+    code, _, err = attach.run(FAKE_GH_VERSION="2.98.9")
+    assert code == pe.EXIT_POST_FAILED
+    assert "too old" in err
+    assert attach.calls() == []
+
+
+def test_attach_supports_github_com_alone(github: FakeGitHub, run_dir: Path) -> None:
+    code, _, err = _run(github, [str(run_dir), "--to", TO, "--sink", "attach", "--yes"])
+    assert code == pe.EXIT_POST_FAILED
+    assert "github.com alone" in err
+    assert github.requests == []
+
+
+def test_attach_skips_files_gh_does_not_take(attach: Attach) -> None:
+    manifest = json.loads((attach.run_dir / "manifest.json").read_text())
+    shots = manifest["scenarios"][1]["steps"][1]["artifacts"]
+    shots.append({"name": "02-login/tap/after.bmp", "kind": "screenshot", "provider": "x"})
+    shots.append({"name": "../outside.png", "kind": "screenshot", "provider": "x"})
+    (attach.run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (attach.run_dir / "02-login" / "tap" / "after.bmp").write_bytes(b"BM")
+    (attach.run_dir.parent / "outside.png").write_bytes(b"secret")
+    code, _, _ = attach.run()
+    assert code == pe.EXIT_OK
+    body = attach.calls()[0]["body"]
+    assert "does not take a .bmp" in body
+    assert "leaves the run directory" in body
+    assert "secret" not in json.dumps(attach.calls()[0])
+
+
+def test_attach_caps_a_video_by_its_size_limit(attach: Attach) -> None:
+    (attach.run_dir / "02-login" / "video.mp4").write_bytes(b"V" * (2 * 1024 * 1024))
+    code, _, _ = attach.run("--attach-video-mb", "1")
+    assert code == pe.EXIT_OK
+    argv = attach.calls()[0]["argv"]
+    assert [a for a in argv if "mp4" in a] == []
+    assert "exceeds 1 MB" in attach.calls()[0]["body"]
+
+
+def test_stage_attach_stops_at_fifty_files(tmp_path: Path) -> None:
+    run = pe.RunView(
+        run_id="r",
+        ok=False,
+        passed=0,
+        failed=1,
+        failures=(pe.Failure("s", "step 1 (tap)", "x", tuple(f"{i}.png" for i in range(53)), ()),),
+        from_manifest=True,
+    )
+    for i in range(53):
+        (tmp_path / f"{i}.png").write_bytes(b"x")
+    staged, notes = pe.stage_attach(tmp_path, run, tmp_path / "out", max_failures=10, video_mb=10)
+    assert len(staged) == 50
+    assert sum("at most 50 files" in n for n in notes) == 3
+
+
+def test_attach_dry_run_prints_the_plan_and_never_posts_through_gh(attach: Attach) -> None:
+    attach.github.visibility = "public"
+    attach.github.comments.append(
+        {"id": 11, "body": "<!-- bajutsu-evidence:local -->\nold", "user": {"login": "dev"}}
+    )
+    code, out, _ = attach.run("--dry-run")
+    assert code == pe.EXIT_OK
+    assert attach.calls() == []
+    assert attach.github.writes() == []
+    assert "Command: gh pr comment 7 --repo github.com/acme/app" in out
+    assert "Comments to delete after a successful post: #11" in out
+    assert "viewable without signing in" in out
+    assert "removes the comment, not the files" in out
+    assert "![failing step](./01-after.png)" in out
+
+
+def test_a_gh_that_prints_no_url_is_a_failure_and_deletes_nothing(attach: Attach) -> None:
+    attach.github.comments.append(
+        {"id": 11, "body": "<!-- bajutsu-evidence:local -->\nold", "user": {"login": "dev"}}
+    )
+    code, _, err = attach.run(FAKE_GH_NOURL="1")
+    assert code == pe.EXIT_POST_FAILED
+    assert "gh exited 0" in err
+    assert "DELETE" not in [m for m, _ in attach.github.writes()]
+
+
+def test_attach_dry_run_without_a_token_reads_nothing(attach: Attach) -> None:
+    out, err = io.StringIO(), io.StringIO()
+    env = {"GITHUB_API_URL": attach.github.base, "PATH": str(attach.bin_dir)}
+    args = [str(attach.run_dir), "--to", TO, "--sink", "attach", "--dry-run"]
+    code = pe.main(args, pe.Io(env, io.StringIO(), out, err, run_gh=lambda: None))
+    assert code == pe.EXIT_OK
+    assert "Remote state not read" in out.getvalue()
+    assert "Command:" not in out.getvalue()
+    assert attach.github.requests == []
+
+
+def test_attach_dry_run_names_an_unusable_gh(attach: Attach) -> None:
+    (attach.bin_dir / "gh").unlink()
+    code, out, _ = attach.run("--dry-run")
+    assert code == pe.EXIT_OK
+    assert "Problem: the GitHub CLI (gh) is not on PATH" in out
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "101"])
+def test_attach_video_limit_must_sit_between_one_and_a_hundred(attach: Attach, value: str) -> None:
+    code, _, err = attach.run("--attach-video-mb", value)
+    assert code == pe.EXIT_POST_FAILED
+    assert "--attach-video-mb must be between 1 and 100" in err
+    assert attach.calls() == []
