@@ -156,7 +156,7 @@ Two scenarios come last in the list.
 
 Each case lifts its fault on the channel's own log record that it reached the layer under test. No case relies on a guessed delay.
 
-The job landed as a per-PR signal. A runner-HTTP fix had been reddening it. Once that fix landed, the job joined `E2E (iOS)`'s `needs:`, with 64 runs without a failure since.
+The job landed as a per-PR signal. A defect in the runner's HTTP server had been reddening it. Once the fix for that defect landed, the job joined `E2E (iOS)`'s `needs:`, with 64 runs without a failure since.
 
 **visual (xcuitest)** pixel-compares the Stable catalog against the committed `baselines_ios/` baseline. The command is `make -C demos/showcase e2e-visual`. It masks the status bar and the "Liquid Glass" tab bar. Its `e2e-visual` rebuilds the app itself. Like `codegen`, the job is not a `build`-artifact consumer.
 

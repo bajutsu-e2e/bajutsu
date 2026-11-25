@@ -120,22 +120,22 @@ consumer のジョブは、ビルドし直すのではなく、この成果物�
 - ピンチ / 回転の 2 本指ジェスチャ（`gestures_multitouch.yaml`、BE-0019）
 - 常駐ランナーチャネルの `/type`（`search.yaml`）と `/swipe` + `/back`（`notices.yaml`、BE-0281）
 - 提示された `UIAlertController` の各ボタンのタップ（`alert.yaml`）。`uniquelyIdentifiedElement` の重複グループの分岐に到達する唯一のシナリオで、この分岐は `swift test` ではコンパイルされません
-- 決定論的な `permissions` フィールドと、BE-0315 以降はネイティブなリアクティブ `systemAlertHandling` の通知許可（`permission.yaml`）。BE-0276 の location と BE-0315 の通知が対象で、どちらもゲート上で走る
-- プロアクティブな `handleSystemAlert` ステップ（`permission_system_alert.yaml`、BE-0316）。視覚モデルなしのアクセシビリティクエリで、SpringBoard の通知許可プロンプトの「許可」ボタンをタップする
+- 決定論的な `permissions` フィールドと、BE-0315 以降はネイティブなリアクティブ `systemAlertHandling` の通知許可（`permission.yaml`）。BE-0276 の location と BE-0315 の通知が対象で、どちらもゲート上で走ります
+- プロアクティブな `handleSystemAlert` ステップ（`permission_system_alert.yaml`、BE-0316）。視覚モデルなしのアクセシビリティクエリで、SpringBoard の通知許可プロンプトの「許可」ボタンをタップします
 
 `run` は各シナリオを個別の verdict まで実行し、どれかが失敗すればゲートを赤くします。シナリオごとの合否は、ジョブ名ではなく run のレポートに移ります。
 
 **actuation (xcuitest)** は、このレーンでゲート対象外の受け皿となるジョブです。まだ `run` に昇格していない実機の XCUITest アクチュエーション（BE-0281）を駆動します。
 
 - `back`（`navigation.yaml`）
-- デバイス制御（`setLocation` / クリップボード / `push`、`device.yaml` + `push.yaml`）。Stable の起動タブ上で実行する
+- デバイス制御（`setLocation` / クリップボード / `push`、`device.yaml` + `push.yaml`）。Stable の起動タブ上で実行します
 - 割り込みモニタが消すフォアグラウンドの通知バナー（`push_banner.yaml`、BE-0416）
 - テキスト編集の 4 つのアクチュエータ（`text_editing.yaml`）
 
 さらに、アクチュエートできる 3 つ目のバックエンドとして、シナリオ作成機能（BE-0285）も駆動します。
 
 - Log タブのライブなカウンタ値を取り込む `extract`（`extract.yaml`）
-- Stable の 5 行を反復する `forEach`（`foreach.yaml`）。ループ本体で詳細画面を push / pop して、反復のあいだにツリーを変化させる
+- Stable の 5 行を反復する `forEach`（`foreach.yaml`）。ループ本体で詳細画面を push / pop して、反復のあいだにツリーを変化させます
 - data-driven の行（`data_driven.yaml`）
 - `relaunch`（`relaunch.yaml`）
 
@@ -211,10 +211,10 @@ BajutsuKit のアプリ内 `URLProtocol` が、モックされた `POST /post` �
 
 `actuation`、`golden`、`visual`、`network` も、同じ検出ジョブでパスゲートされます。ただし `E2E (iOS)` の `needs:` には、意図的に含めていません。
 
-- 新しく配線した XCUITest のアクチュエーションは、まず参考シグナルとして着地させる。Simulator レーンにはフレーキーの実績があるため（BE-0218）、安定を確認してからゲートに昇格させる
-- 要素ツリーの `golden` は決定論的で実行環境に依存しないため、そのドリフトを参考シグナルとして出す
-- `visual` のピクセルのベースラインはホスト依存。Simulator のレンダラが Xcode / デバイス / OS で変わるため
-- `network` も実機の新しいカバレッジなので、同じくまずシグナルとして着地させる。その web 版が `E2E (web)` へ加わる前にたどったのと同じ道筋
+- 新しく配線した XCUITest のアクチュエーションは、まず参考シグナルとして着地させます。Simulator レーンにはフレーキーの実績があるため（BE-0218）、安定を確認してからゲートに昇格させます
+- 要素ツリーの `golden` は決定論的で実行環境に依存しないため、そのドリフトを参考シグナルとして出します
+- `visual` のピクセルのベースラインはホスト依存です。Simulator のレンダラが Xcode / デバイス / OS で変わるためです
+- `network` も実機の新しいカバレッジなので、同じくまずシグナルとして着地させます。その web 版が `E2E (web)` へ加わる前にたどったのと同じ道筋です
 
 `fault-injection` は、BE-0282 と同じ道筋をたどりました。まずシグナルとして着地し、レーンを赤くしていた runner の HTTP サーバの欠陥が直ったあと、失敗のない 64 回の実行を根拠に `needs:` へ入りました（BE-0305）。
 
@@ -324,9 +324,9 @@ sheet/cover のフロー（`components`、`modals`）も、このレーンに限
 
 `golden (adb)`、`visual (adb)`、`uiautomator (codegen)`、`pool (adb)` は、その `needs:` から意図的に外し、参考シグナルにとどめます。理由は次の 3 点です。
 
-- 要素ツリーの golden は、上流依存の変化で赤くなりうる
-- ピクセルのベースラインは、ホスト依存
-- codegen とエミュレータ 2 台のレーンは、BE-0282 の前例にならい、まずシグナルとして着地させる
+- 要素ツリーの golden は、上流依存の変化で赤くなりえます
+- ピクセルのベースラインは、ホスト依存です
+- codegen とエミュレータ 2 台のレーンは、BE-0282 の前例にならい、まずシグナルとして着地させます
 
 これは iOS の `E2E (iOS)` が引くのと同じ判断基準です。
 
@@ -346,10 +346,10 @@ sheet/cover のフロー（`components`、`modals`）も、このレーンに限
 
 この workflow は **AWS Device Farm へのバッチ投入**です（BE-0235）。showcase の Compose APK をビルドし、Bajutsu、config、シナリオをパッケージ化します。パッケージは [`scripts/devicefarm_submit.py`](../../scripts/devicefarm_submit.py) に渡します。このスクリプトは次の処理を行います。
 
-- `bajutsu run --backend adb` を Device Farm のホストで実行する、カスタム環境のテスト仕様をアップロードする
-- 実行をポーリングする
-- 成果物をダウンロードする
-- **Bajutsu 自身の manifest 判定**（Device Farm の分類ではありません）を表示する
+- `bajutsu run --backend adb` を Device Farm のホストで実行する、カスタム環境のテスト仕様をアップロードします
+- 実行をポーリングします
+- 成果物をダウンロードします
+- **Bajutsu 自身の manifest 判定**（Device Farm の分類ではありません）を表示します
 
 この workflow は決定的なコアの外側の CI 側のグルーなので、判定に LLM は触れません。起動は `workflow_dispatch` のみで、push / PR では動かず、必須チェックにもなりません。
 
