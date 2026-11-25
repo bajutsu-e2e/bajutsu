@@ -96,11 +96,6 @@ class _AndroidHarness(OnDeviceConformanceHarness):
     (`OnDeviceConformanceHarness`); this backend supplies only `_realize` — re-launching the
     `singleTask` activity with the identifier spec as an intent extra, which `onNewIntent` hands to
     the model so ConformanceScreen re-renders. The adb analogue of iOS's spec-file write.
-
-    No `clipboard_text` yet: `select` / `copy` have never been verified on a device (#2389), so the
-    text-selection case keeps only its not-raising check here. The fix for #2389 adds the hook,
-    reading through BajutsuAndroid's clipboard receiver (`adb.Env.get_clipboard`), in the same
-    change that makes it pass (#2390).
     """
 
     # Every emulator image ships Settings, so the `app:` contract enters it (`other_app`).
@@ -110,6 +105,12 @@ class _AndroidHarness(OnDeviceConformanceHarness):
         super().__init__("adb", driver)
         self._serial = serial
         self._component = component
+
+    def clipboard_text(self) -> str:
+        # Through BajutsuAndroid's clipboard receiver in the app, so a copy that did nothing fails as
+        # a copy, not as the paste after it (#2522).
+        package, _, _activity = self._component.partition("/")
+        return adb.Env(self._serial).get_clipboard(package)
 
     def _realize(self, ids: list[str]) -> None:
         # `am start -n <component> --es SHOWCASE_CONFORMANCE <wire>` delivers the spec to the running

@@ -1059,6 +1059,94 @@ def test_select_all_focuses_the_field_then_sends_ctrl_a() -> None:
     assert calls[-1] == ["adb", "-s", "U", "shell", "input", "keycombination", "113", "29"]
 
 
+def _select_then_copy(monkeypatch: pytest.MonkeyPatch, *, mark: float | None) -> list[str]:
+    """The reads and chords of a select-all + copy, in order, with `mark` as the device clock."""
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_impl, "time", clock)
+    events: list[str] = []
+    base_run = _root_touch_run([])
+
+    def run(args: list[str]) -> str:
+        if "keycombination" in args:
+            events.append(args[-1])
+        return base_run(args)
+
+    reads = iter([1000.0, 1000.0, 1000.0])
+
+    def fetch(_since: float | None) -> HierarchyRead:
+        events.append("read")
+        return HierarchyRead(FIXTURE, next(reads, 3000.0))
+
+    driver = AdbDriver("U", run=run, fetch_hierarchy=fetch, fetch_clock=lambda: mark)
+    monkeypatch.setattr(driver, "tap", lambda _sel: None)  # its own barrier is not under test
+    driver.query()
+    driver.select_all({"id": "f"})
+    driver.copy_selection({"id": "f"})
+    return events
+
+
+def test_copy_waits_for_the_selection_to_publish(monkeypatch: pytest.MonkeyPatch) -> None:
+    # #2522: `input` returns before the app handles Ctrl+A, and a Compose field drops a Ctrl+C that
+    # reaches it before the selection is recomposed. Copy is sent only after a read that postdates it.
+    events = _select_then_copy(monkeypatch, mark=2000.0)
+    select, copy = events.index("29"), events.index("31")
+    # Stale reads (mark 1000) do not release it; the first that postdates 2000 does.
+    assert events[select + 1 : copy] == ["read", "read", "read"]
+
+
+def test_copy_still_waits_when_the_focusing_tap_left_a_marked_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The coordinate tap arms its own marked barrier (2000). It must not disarm the chord's (4000).
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_impl, "time", clock)
+    events: list[str] = []
+    newest = 1000.0
+    base_run = _root_touch_run([])
+
+    def run(args: list[str]) -> str:
+        nonlocal newest
+        if "keycombination" in args:
+            events.append(args[-1])
+        elif "tap" in args:
+            events.append("tap")
+            newest = 3000.0  # the tap publishes; the chord does not until its second read
+        return base_run(args)
+
+    def fetch(_since: float | None) -> HierarchyRead:
+        after_chord = events.count("stale read")
+        if "29" not in events:
+            return HierarchyRead(FIXTURE, newest)
+        events.append("fresh read" if after_chord else "stale read")
+        return HierarchyRead(FIXTURE, 5000.0 if after_chord else 3000.0)
+
+    marks = iter([2000.0, 4000.0])
+    driver = AdbDriver("U", run=run, fetch_hierarchy=fetch, fetch_clock=lambda: next(marks))
+    driver.select_all({"id": "stable_refresh"})
+    driver.copy_selection({"id": "stable_refresh"})
+    assert events == ["tap", "29", "stale read", "fresh read", "31"]
+
+
+def test_copy_spends_no_barrier_without_a_device_mark(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A selection moves no frame, so with no mark nothing but the budget could close the barrier.
+    events = _select_then_copy(monkeypatch, mark=None)
+    assert events[events.index("29") :] == ["29", "31"]
+
+
+@pytest.mark.parametrize("fetch_clock", [None, lambda: None])
+def test_select_and_copy_spend_no_read_lag_budget_without_a_mark(
+    monkeypatch: pytest.MonkeyPatch, fetch_clock: Callable[[], float | None] | None
+) -> None:
+    # The focusing tap leaves a markless barrier that a focus change never closes. Neither chord may
+    # wait it out.
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_impl, "time", clock)
+    driver = AdbDriver("U", run=_root_touch_run([]), fetch_clock=fetch_clock)
+    driver.select_all({"id": "stable_refresh"})
+    driver.copy_selection({"id": "stable_refresh"})
+    assert clock.t < driver._READ_LAG_S / 2
+
+
 def test_copy_selection_is_ctrl_c_keycombination() -> None:
     # Ctrl(113)+C(31) chord — copies the active selection to the clipboard (BE-0265).
     calls: list[list[str]] = []
