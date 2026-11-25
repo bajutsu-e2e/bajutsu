@@ -1,25 +1,47 @@
-"""The services a run depends on, as written under `services:` (BE-0452, BE-0473)."""
+"""The services a run depends on, as written under `services:` (BE-0452, BE-0473, BE-0491)."""
 
 from __future__ import annotations
 
-from pydantic import Field
+from typing import Any
+
+from pydantic import model_validator
 
 from ._model import _Model
-from .launch_server import LaunchServer
 from .mailbox import Mailbox
-from .mock_server import MockServer
+
+# The two blocks BE-0491 removed, and the shape that replaces each. The loader reads neither name,
+# the rule BE-0452 applied when it renamed the target's keys, so the error is the whole migration
+# path an author gets.
+REMOVED_SERVICES: dict[str, str] = {
+    "server": (
+        "a `hooks.beforeRun` entry whose script starts the server and exits once the server "
+        "answers, plus a `hooks.afterRun` entry that stops it; the script owns the readiness check "
+        "that `readyUrl` / `readyTimeout` once named, and `dockerImage` / `dockerfile` / `port` "
+        "move to the target's `hooks.sandbox` block"
+    ),
+    "mockServer": (
+        "a `hooks.beforeRun` entry that starts the mock server like any other server; the block "
+        "never started a process, and a scenario's own `mocks` stubs its dependencies in-protocol"
+    ),
+}
 
 
 class Services(_Model):
-    """`services`: the services a run depends on, the ones it starts and the ones it reaches.
+    """`services`: the services a run depends on — today the external inbox it polls.
 
-    `server` and `mockServer` are brought up around the app; `mailbox` is an external inbox the run
-    polls and never starts (BE-0473).
-
-    `server` was the target's `launchServer`; it works on every platform once it has a readiness URL,
-    so it sits with the other servers rather than with the web app (BE-0452).
+    `mailbox` is an inbox a run reads and never starts (BE-0473). The two blocks that *did* start a
+    process left with BE-0491: a command that brings a server up is a `hooks.beforeRun` entry, which
+    runs any readiness check its own server needs instead of the one URL probe `server` could make.
     """
 
-    server: LaunchServer | None = None
-    mock_server: MockServer | None = Field(default=None, alias="mockServer")
     mailbox: Mailbox | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _removed_blocks(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        for key, replacement in REMOVED_SERVICES.items():
+            if key in data:
+                raise ValueError(f"services.{key} was removed (BE-0491); use {replacement}")
+        return data

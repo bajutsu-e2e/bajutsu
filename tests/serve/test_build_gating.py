@@ -202,11 +202,13 @@ def test_a_refused_build_fails_the_job_naming_the_mode(tmp_path: Path) -> None:
     assert not (tmp_path / "Demo.app").exists()
 
 
-def test_a_server_command_adds_its_source_requirement(tmp_path: Path) -> None:
+def test_a_hook_command_adds_its_source_requirement(tmp_path: Path) -> None:
+    # A command line the config spells out routes to a worker that runs commands from its source
+    # (BE-0491 replaced `services.server.cmd` as the governed command line).
     cfg = tmp_path / "c.yaml"
     cfg.write_text(
         "targets:\n  web:\n    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n"
-        "    services: {server: {cmd: ./start.sh}}\n  plain:\n    platform: web\n"
+        "    hooks: {beforeRun: [{cmd: ./start.sh}]}\n  plain:\n    platform: web\n"
         "    subject: {url: 'http://127.0.0.1:8/'}\n",
         encoding="utf-8",
     )
@@ -214,6 +216,25 @@ def test_a_server_command_adds_its_source_requirement(tmp_path: Path) -> None:
     assert list(_command_needs(cfg, "web", uploaded)) == ["command-execution:uploaded"]
     assert _command_needs(cfg, "plain", uploaded) == {}
     assert _command_needs(tmp_path / "missing.yaml", "web", uploaded) == {}
+
+
+def test_a_named_hook_command_routes_on_the_worker_s_own_script(tmp_path: Path) -> None:
+    # A `use:` entry needs a worker that runs named commands from this source *and* one that has
+    # installed that very script — two separate tokens (BE-0491).
+    cfg = tmp_path / "named.yaml"
+    cfg.write_text(
+        "targets:\n  web:\n    platform: web\n    subject: {url: 'http://127.0.0.1:8/'}\n"
+        "    hooks:\n"
+        "      beforeRun: [{use: seed}]\n"
+        "      afterRun: [{cmd: ./stop.sh}]\n",
+        encoding="utf-8",
+    )
+    uploaded = replace(_state(tmp_path).binding, upload=_Upload())  # type: ignore[arg-type]
+    assert sorted(_command_needs(cfg, "web", uploaded)) == [
+        "command-execution:uploaded",
+        "named-command:seed",
+        "named-execution:uploaded",
+    ]
 
 
 @pytest.mark.parametrize("source", ["uploaded", "remote"])
@@ -252,7 +273,7 @@ def test_a_build_the_worker_ran_joins_the_runs_record(tmp_path: Path) -> None:
     job.run_id = "run-1"
     run_dir = state.base_cwd / state.runs_dir / "run-1"
     run_dir.mkdir(parents=True)
-    ran = {"field": "services.server.cmd", "decision": "ran"}
+    ran = {"field": "hooks.beforeRun[server].cmd", "decision": "ran"}
     (run_dir / "manifest.json").write_text(
         json.dumps({"provenance": {"commandExecutions": [ran]}}), encoding="utf-8"
     )

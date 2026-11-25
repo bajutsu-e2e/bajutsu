@@ -18,10 +18,12 @@ from typing import Any
 import yaml
 
 from bajutsu.common.capability.command_policy import (
+    HOOKS_FIELD,
+    NAMED_COMMAND_PREFIX,
     OPERATOR,
-    SERVER_FIELD,
     ConfigSource,
     command_requirement,
+    named_requirement,
 )
 from bajutsu.common.capability.worker_capability import APPIUM
 from bajutsu.common.cloud.devicefarm import (
@@ -94,8 +96,10 @@ def _source_flag(binding: ConfigBinding) -> str:
 def _command_needs(cfg: Path, target: str, binding: ConfigBinding) -> dict[str, list[str]]:
     """The route need a job adds when its config declares a governed command line (BE-0492).
 
-    Only a command line the config spells out (`services.server.cmd`) routes, to a worker that runs
-    commands from the config's source. Whether a build runs depends on whether the worker already
+    Only a command line the config spells out (a `hooks.*` entry's `cmd`, BE-0491) routes, to a
+    worker that runs commands from the config's source. An entry that names a worker-installed
+    script with `use:` routes on the `named-command:<name>` token instead, which the worker
+    advertises per script. Whether a build runs depends on whether the worker already
     holds the binary, which `serve` cannot know, so the worker decides that at run time. A config
     that does not resolve adds nothing here; the run's own check still judges it.
     """
@@ -103,10 +107,27 @@ def _command_needs(cfg: Path, target: str, binding: ConfigBinding) -> dict[str, 
         eff = resolve(load_config_file(cfg), target)
     except (OSError, ValueError, KeyError, yaml.YAMLError):
         return {}
-    if eff.launch_server is None:
-        return {}
     source = _config_source(binding)
-    return {command_requirement(source): [f"its {source} config declares {SERVER_FIELD}"]}
+    needs: dict[str, list[str]] = {}
+    spelled = sorted(
+        name for name, entries in eff.hooks.lists.items() if any(e.cmd is not None for e in entries)
+    )
+    if spelled:
+        where = ", ".join(f"{HOOKS_FIELD}.{name}" for name in spelled)
+        needs[command_requirement(source)] = [f"its {source} config declares {where}"]
+    # A `use:` entry needs a worker that runs named commands from this source, and one that has
+    # installed that very script — two separate tokens, since a worker may run named commands and
+    # still not have the one this config asks for.
+    used = sorted({e.use for _, _, e in eff.hooks.entries() if e.use is not None})
+    if used:
+        needs[named_requirement(source)] = [
+            f"its {source} config runs the named command(s) {', '.join(used)}"
+        ]
+        for name in used:
+            needs[f"{NAMED_COMMAND_PREFIX}{name}"] = [
+                f"its {source} config runs the named command {name!r}"
+            ]
+    return needs
 
 
 def _rebuild_flag(

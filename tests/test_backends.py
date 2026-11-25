@@ -533,7 +533,6 @@ def _ios_eff(
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
         device_provider=device_provider,
@@ -589,7 +588,6 @@ def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )

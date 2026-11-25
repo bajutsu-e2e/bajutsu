@@ -88,8 +88,7 @@ bajutsu serve                                           # local web UI (Tier 1; 
 - **Code is the source of truth.** Each statement maps to the current implementation (`bajutsu/`),
   with `file.py:line` pointers at key spots.
 - **Design vs. implementation gaps are explicit.** A feature that [`DESIGN.md`](../DESIGN.md)
-  describes but the code does not yet wire up (the external `mockServer` command, superseded by
-  scenario `mocks`) is flagged on each page and in the
+  describes but the code does not yet wire up is flagged on each page and in the
   [architecture status table](architecture.md#implementation-status).
 - **Languages.** English is primary, and a Japanese translation lives under [`ja/`](ja/overview.md).
   Code comments and docstrings are in English.

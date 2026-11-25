@@ -61,6 +61,46 @@ UNCHECKED_NOTICE = (
 WORKER_ENVIRONMENT_KEY = "workerEnvironment"
 
 
+# The provenance key one run's hook records live under in `manifest.json` (BE-0491), so a finished
+# run's report can be re-rendered offline from the manifest alone (BE-0068). Read here rather than
+# in the runner, which the report's own import path must not pull in.
+HOOKS_KEY = "hooks"
+
+
+def report_hook_phases(records: object) -> list[dict[str, object]]:
+    """The report's hook blocks — one per list, in run order — read from the manifest's records.
+
+    A phase is its own block, apart from the scenario's numbered steps, the way `setup` and
+    `cleanup` already are: a reader can tell what was prepared and torn down from what was under
+    test. Anything that is not a list of records yields no block, so an older manifest renders
+    exactly as it did before.
+    """
+    if not isinstance(records, list):
+        return []
+    blocks: dict[str, dict[str, object]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        name = str(record.get("list", ""))
+        block = blocks.setdefault(name, {"list": name, "entries": [], "ok": True})
+        entries = block["entries"]
+        assert isinstance(entries, list)
+        failure = record.get("failure")
+        entries.append(
+            {
+                "entry": str(record.get("entry", "")),
+                "target": str(record.get("target", "")),
+                "log": record.get("log"),
+                "skipped": bool(record.get("skipped")),
+                "reason": record.get("reason") or failure or "",
+                "ok": failure is None,
+            }
+        )
+        if failure is not None:
+            block["ok"] = False
+    return list(blocks.values())
+
+
 def report_notices(provenance: Mapping[str, object] | None) -> list[str]:
     """The run-level notices a report shows for its manifest *provenance* (BE-0467, BE-0484, BE-0492)."""
     provenance = provenance or {}

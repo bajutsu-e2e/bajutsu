@@ -29,6 +29,7 @@ from bajutsu.analysis.audit import (
 from bajutsu.cli import app
 from bajutsu.common.assertions import AssertionResult
 from bajutsu.common.orchestrator import RunResult, StepOutcome
+from bajutsu.common.runner.hook_commands import HookPhaseResult
 from bajutsu.common.scenario import load_expanded_scenarios, load_scenarios
 
 runner = CliRunner()
@@ -508,8 +509,18 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
 
         return object(), shutdown
 
-    def fake_start_launch_server_or_exit(eff: object, on_error: object) -> object:
-        return lambda: stopped.append(True)
+    class _FakeHooks:
+        """Stands in for the run's hook session: `after_run` is the teardown audit must still run.
+
+        It returns a real phase result, since `audit` reads it to report a teardown that failed.
+        """
+
+        def after_run(self, verdict: str) -> HookPhaseResult:
+            stopped.append(True)
+            return HookPhaseResult()
+
+    def fake_start_hooks_or_exit(eff: object, **_kw: object) -> object:
+        return _FakeHooks()
 
     monkeypatch.setattr(
         audit_command,
@@ -518,16 +529,14 @@ def test_repeat_audit_still_stops_the_server_when_shutdown_raises(
     )
     monkeypatch.setattr(audit_command, "environment_for", lambda actuator, udid: _FakeEnv())
     monkeypatch.setattr(audit_command, "device_pool", fake_device_pool)
-    monkeypatch.setattr(
-        audit_command, "_start_launch_server_or_exit", fake_start_launch_server_or_exit
-    )
+    monkeypatch.setattr(audit_command, "_start_hooks_or_exit", fake_start_hooks_or_exit)
     monkeypatch.setattr(audit_command, "run_all", lambda *a, **k: [])
     monkeypatch.setattr(analysis_audit, "repeat_diff", lambda runs: object())
 
     with pytest.raises(AttributeError, match="no close on this driver"):
         audit_command._repeat_audit(scenarios, 2, "demo", "", "booted", str(cfg), False)
 
-    assert stopped == [True]  # stop_server still ran despite shutdown() raising
+    assert stopped == [True]  # the afterRun teardown still ran despite shutdown() raising
 
 
 # --- remaining usage-error branches + _read_manifests (BE-0117) ---
@@ -784,3 +793,38 @@ def test_referenced_ids_uses_only_the_primary_candidate() -> None:
         "  expect:\n    - count: { sel: { idMatches: [stable.row.*, stable_row_*] }, atLeast: 1 }\n"
     )
     assert referenced_ids(scenarios[0]) == {"stable.refresh", "stable.row.*"}
+
+
+def test_a_failed_after_run_of_a_repeat_audit_is_reported_and_exits_2(tmp_path: Path) -> None:
+    # A teardown that did not hold exits 2, as it does for `run` (BE-0491); `audit` reporting it and
+    # exiting 0 would leave whatever a `beforeRun` hook started undone with nobody told.
+    scn = tmp_path / "s.yaml"
+    scn.write_text("- name: x\n  steps: []\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        "targets:\n"
+        "  demo:\n"
+        "    platform: ios\n"
+        "    subject: {id: com.example.demo}\n"
+        "    hooks:\n"
+        "      beforeRun: [{name: seed, cmd: 'true'}]\n"
+        "      afterRun: [{name: teardown, cmd: 'false'}]\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "audit",
+            str(scn),
+            "--repeat",
+            "2",
+            "--target",
+            "demo",
+            "--backend",
+            "fake",
+            "--config",
+            str(cfg),
+        ],
+    )
+    assert result.exit_code == 2, result.output
+    assert "afterRun failed" in result.output and "teardown" in result.output

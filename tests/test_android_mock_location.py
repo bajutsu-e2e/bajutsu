@@ -41,7 +41,6 @@ def _eff(package: str = _PKG, app_path: str | None = None) -> Effective:
         launch_args=[],
         id_namespaces=[],
         reserved_namespaces=[],
-        mock_server=None,
         capture=[],
         redact=Redact(),
     )
