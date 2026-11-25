@@ -88,8 +88,7 @@ the first time.
 
 Then branch on its `Status` (the metadata field, not a directory — the layout is flat):
 
-- **`Approved`** — the normal case. It was already accepted at its review-gated merge (two
-  approvals, or one under the `single-approver proposal` waiver), so note that implementing it
+- **`Approved`** — the normal case. It was already accepted at its review-gated merge, so note that implementing it
   *starts* it: this PR moves it off `Approved` — to `Implemented` when your change completes the
   whole work breakdown, to `In progress` when units remain (step 8). Say so.
 - **`In progress`** — part of it has already shipped, so the `Progress` checklist, not the metadata

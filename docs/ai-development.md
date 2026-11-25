@@ -446,7 +446,6 @@ string:
 
 - `check` (`ci.yml`)
 - `E2E (iOS)` (`ios-e2e.yml`)
-- `require two approvals for BE proposals` (`roadmap-proposal-approvals.yml`)
 
 Renaming one of those job names without editing the ruleset's `required_status_checks` in the same
 instant strands every open PR on a check that no longer reports, silently blocking merges. Ruleset

@@ -103,7 +103,7 @@ turn an existing proposal into shipped code. The proposal's **Detailed design** 
 deterministic gate (`make check`) is the judge, never an LLM.
 
 1. **Resolve the item** and read **both** language files. An `Approved` item was already accepted
-   at its review-gated merge (two approvals, or one under the `single-approver proposal` waiver).
+   at its review-gated merge.
    Implementing it *starts* it, and this PR flips it to `Implemented`. The skill says so up front.
    For an already-`Implemented`, `Deferred`, or `Rejected` item, the skill stops and confirms what
    you want. For a `Rejected` item, it confirms that a human has explicitly overturned the decision.

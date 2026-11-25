@@ -416,7 +416,6 @@ Actions タブや PR の checks 一覧でレビュアーの目に入るのは、
 
 - `check`（`ci.yml`）
 - `E2E (iOS)`（`ios-e2e.yml`）
-- `require two approvals for BE proposals`（`roadmap-proposal-approvals.yml`）
 
 これらのジョブ名を、ルールセットの `required_status_checks` を同時に更新せずにリネームするとどうなるでしょうか。
 開かれているすべての PR が、二度と報告されないチェックを待ち続けて、マージできなくなります。
