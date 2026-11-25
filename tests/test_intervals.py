@@ -114,6 +114,8 @@ def test_device_log_cmd_with_and_without_predicate() -> None:
     base = intervals.device_log_cmd("UDID")
     assert base[:6] == ["xcrun", "simctl", "spawn", "UDID", "log", "stream"]
     assert "--predicate" not in base
+    # Info, not debug: a debug stream loads the whole Simulator, and the default would drop info too.
+    assert base[base.index("--level") + 1] == "info"
     withp = intervals.device_log_cmd("UDID", 'subsystem == "com.x"')
     assert "--predicate" in withp and 'subsystem == "com.x"' in withp
 

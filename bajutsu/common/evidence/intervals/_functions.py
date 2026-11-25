@@ -113,7 +113,13 @@ def record_video_cmd(udid: str, path: str) -> list[str]:
 
 
 def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
-    """Build the simctl command that streams the device log, optionally filtered by `predicate`."""
+    """Build the simctl command that streams the device log, optionally filtered by `predicate`.
+
+    At `--level info`, not `--level debug`: a debug stream makes every process in the Simulator emit
+    its debug messages, which on a loaded CI host ran to thousands of lines a second and starved the
+    runner it was meant to diagnose. Info is kept, since the stream's own default would drop an app's
+    `Logger.info` lines too.
+    """
     cmd = [
         "xcrun",
         "simctl",
@@ -122,7 +128,7 @@ def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
         "log",
         "stream",
         "--level",
-        "debug",
+        "info",
         "--style",
         "compact",
     ]

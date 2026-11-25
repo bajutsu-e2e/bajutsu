@@ -190,15 +190,19 @@ def test_the_process_baseline_is_not_retaken_by_a_second_start(tmp_path: Path) -
     assert (tmp_path / "runs/diagnostics/ps-baseline.txt").read_text() == first
 
 
-def test_the_sampler_ranks_processes_by_memory_not_cpu(tmp_path: Path) -> None:
+def test_the_sampler_ranks_by_cpu_only_over_an_interval(tmp_path: Path) -> None:
     # `top -l 1` differences nothing, so every process reports 0.0% CPU and `-o cpu` sorts on a
     # constant. Measured: across a whole failing job's telemetry, the rows it kept included the 1.2 GB
-    # app zero times. Asserted against the emitted script because the sampler runs detached, so its own
-    # output is not this step's to observe.
+    # app zero times. So the single sample ranks by memory, and only the two-sample `top`, which has an
+    # interval to difference, ranks by CPU. Asserted against the emitted script because the sampler
+    # runs detached, so its own output is not this step's to observe.
     _run("start", tmp_path, hangs=False)
     sampler = (tmp_path / "bajutsu-host-telemetry.sh").read_text()
-    assert "-o mem" in sampler, sampler
-    assert "-o cpu" not in sampler, sampler
+    assert "top -l 1 -n 15 -o mem" in sampler, sampler
+    assert "top -l 2 -n 15 -o cpu -s 1" in sampler, sampler
+    assert "-l 1 -n 15 -o cpu" not in sampler, sampler
+    # The heredoc keeps awk's field reference instead of expanding it in the step's own shell.
+    assert 'print "Interval " $0' in sampler, sampler
 
 
 def test_the_render_probe_is_not_retaken_by_a_second_start(tmp_path: Path) -> None:

@@ -55,6 +55,12 @@ runs:
         HOMEBREW_NO_INSTALL_CLEANUP: "1"
       run: brew install xcodegen
 
+    # The runner image leaves Spotlight indexing on, and its `mds_stores` competed for the three-core
+    # host with the Simulator through whole jobs. Nothing a job runs searches the index.
+    - name: Turn off Spotlight indexing
+      shell: bash
+      run: sudo -n mdutil -a -i off || echo "::warning::could not turn off Spotlight indexing"
+
     # Start the boot before the caller's build step so a fresh boot's ~80s overlaps with it.
     # `wait: false` returns once the boot is initiated; the caller blocks on "booted" itself
     # right before installing/actuating. Skipped when `boot: 'false'` (the build-only job builds the
