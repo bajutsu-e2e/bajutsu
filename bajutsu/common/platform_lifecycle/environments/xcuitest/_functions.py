@@ -17,6 +17,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
+from xml.parsers.expat import ExpatError
 
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.capability import command_gate
@@ -404,6 +405,33 @@ def _bundle_executable(app_path: str) -> str | None:
         return None
     name = parsed.get("CFBundleExecutable")
     return str(name) if isinstance(name, str) and name else None
+
+
+def _declared_url_schemes(app_path: str, bundle_id: str) -> frozenset[str] | None:
+    """The URL schemes the bundle at *app_path* declares, lowercased, or None when unknown (BE-0487).
+
+    None covers a bundle that cannot be read, one whose `CFBundleIdentifier` is not *bundle_id*, and a
+    `CFBundleURLTypes` of an unexpected shape: an `openUrl` is refused only on positive evidence. A
+    readable bundle with no `CFBundleURLTypes` is such evidence, and reads as the empty set.
+    """
+    try:
+        with (Path(app_path) / "Info.plist").open("rb") as handle:
+            parsed = plistlib.load(handle)
+    # `plistlib` raises an `ExpatError`, not a `ValueError`, on malformed XML.
+    except (OSError, ValueError, ExpatError):
+        return None
+    if not isinstance(parsed, dict) or parsed.get("CFBundleIdentifier") != bundle_id:
+        return None
+    url_types = parsed.get("CFBundleURLTypes", [])
+    if not isinstance(url_types, list):
+        return None
+    schemes: set[str] = set()
+    for url_type in url_types:
+        declared = url_type.get("CFBundleURLSchemes", []) if isinstance(url_type, dict) else None
+        if not isinstance(declared, list):
+            return None
+        schemes.update(str(scheme).lower() for scheme in declared)
+    return frozenset(schemes)
 
 
 def _run_ended_probe(log_path: Path | None) -> Callable[[], str | None]:

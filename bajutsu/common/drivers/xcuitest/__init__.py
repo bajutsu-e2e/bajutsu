@@ -57,7 +57,7 @@ from ._health_wait import _HealthWait as _HealthWait
 from ._reply import _Reply as _Reply
 from ._shared import _OK as _OK
 from ._shared import _TIPKIT_DISMISS_REGION as _TIPKIT_DISMISS_REGION
-from ._shared import TransportFn
+from ._shared import TransportFn, UrlSchemeSource
 from ._transport_failure import _TransportFailure as _TransportFailure
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
@@ -74,6 +74,7 @@ from .xcuitest_runner_crash_error import XcuitestRunnerCrashError
 __all__ = [
     "RunnerTarget",
     "TransportFn",
+    "UrlSchemeSource",
     "XcuitestChannelError",
     "XcuitestDriver",
     "XcuitestRunnerCrashError",

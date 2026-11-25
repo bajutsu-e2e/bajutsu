@@ -617,6 +617,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - URL を受け取るのは、driver がその時点で操作しているアプリ（テスト対象のアプリか、囲んでいる `app:` ブロックが指定したアプリ）です。ステップはその後、`app:` ブロックと同じ上限で、そのアプリが前面に来るまで待ちます。
   - 新設の `Driver.open_url(url)` メソッドに乗り、`openUrl` capability でゲートされています。これを宣言するのは XCUITest と adb のバックエンドなので、`app:` ブロックの中の `openUrl` を含め、web バックエンドでは preflight で拒否します。
   - iOS では、ランナーの `POST /app/openUrl` が `XCUIApplication.open(_:)`（iOS 16.4 以降）を呼びます。例外や XCTest の失敗の記録は、そのメッセージを理由にした `not-opened` として返します。
+  - iOS の `open(_:)` は、アプリが宣言したスキームにかかわらず URL を渡します。そのため driver は、ビルドを読める環境では、渡す前にスキームをアプリの `CFBundleURLTypes` と照合します。
   - Android では、adb driver がパッケージを指定した `VIEW` intent を `am start -W --activity-single-top` で送ります。コマンドは `shlex` でクォートした 1 行のシェルコマンドです。判定は `am start` の終了ステータスではなく出力から読みます。終了ステータスは、解決できなかった intent も成功として報告するためです。起動時のディープリンクも同じ出力を読むので、開かなかったディープリンクは起動の失敗になります。
 - DSL の `attribute` アサーション（BE-0466、web 限定）は、1 つの要素の HTML 属性（`href`、`alt`、状態を表す `data-*` や `aria-*`）を、`equals` / `contains` / `matches` か `absent: true` で検証します。
   - runner は、ブロックを評価するクエリの直後に、`Driver.read_attributes(reads)` で属性をそのつど読み取ります。ブロック全体を 1 回の呼び出しで読むので、ブロック内のアサーションは同じ時点の値で判定されます。

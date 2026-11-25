@@ -785,6 +785,21 @@ def test_start_reuses_a_healthy_runner_across_leases(
     assert len(popen_argvs) == 1  # the runner was spawned once and reused (BE-0291)
 
 
+def test_every_driver_a_start_builds_gets_the_scheme_source(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The cold spawn and the warm resume each build a driver; either losing the source would leave
+    # `openUrl` passing on an undeclared scheme again (BE-0487).
+    _, _, run = _fake_toolchain(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+    env.start(eff, ResolvedPreconditions())
+    env.start(eff, ResolvedPreconditions())
+    assert len(DRIVER_KWARGS) >= 2
+    assert all(kw["url_schemes"] == env._url_schemes for kw in DRIVER_KWARGS)
+    assert env._own_app is not None
+
+
 # --- pinning the Simulator's own system language (BE-0320) --- #
 #
 # SpringBoard owns the permission prompts `handleSystemAlert` taps by label, and no app launch
