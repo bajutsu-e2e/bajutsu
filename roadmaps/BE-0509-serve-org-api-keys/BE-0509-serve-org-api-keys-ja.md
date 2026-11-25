@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0509") |
+| 実装 PR | [#2558](https://github.com/bajutsu-e2e/bajutsu/pull/2558) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity-ja.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac-ja.md) |
 <!-- /BE-METADATA -->
@@ -100,7 +101,7 @@ bearer の値をキーとして扱うのは、キーの形に合い、しかも�
 
 ログ：
 
-- 6つの単位を1つの変更で実装しました。失効したキーの行は残します。識別子が認識され続けるので、
+- [#2558](https://github.com/bajutsu-e2e/bajutsu/pull/2558)：6つの単位を1つの変更で実装しました。失効したキーの行は残します。識別子が認識され続けるので、
   共有トークンの検査へ落ちずに `401` を返します。キーの利用は、ルートを許可したかどうかを問わず
   監査に記録します。発行と失効のエントリは、ほかの `/api/orgs/…` の操作と同じく操作した管理者の組織に
   置き、キーの組織は detail に記録します。`docs/cli.md` には HTTP ルートを説明する節がないので、
