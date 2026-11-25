@@ -322,7 +322,7 @@ def _failure_block(
 def _header(runs: list[RunView], cfg: RenderConfig) -> list[str]:
     scenarios = [s for r in runs for s in r.scenarios]
     failed = sum(1 for s in scenarios if not s.ok)
-    incomplete = any(r.manifest is None for r in runs)
+    incomplete = not runs or any(r.manifest is None for r in runs)
     verdict = "incomplete" if incomplete else ("failed" if failed else "passed")
     sha = cfg.sha[:7]
     head = f"### Bajutsu run {verdict}: {len(scenarios) - failed} passed, {failed} failed"
@@ -332,6 +332,11 @@ def _header(runs: list[RunView], cfg: RenderConfig) -> list[str]:
 
 def _notices(runs: list[RunView], cfg: RenderConfig) -> list[str]:
     notes = []
+    if not runs:
+        notes.append(
+            "> **No results found.** The run directory holds no `manifest.json` or "
+            f"`<sid>/result.json`; see {_link('the workflow run', cfg.run_url)}."
+        )
     for run in runs:
         if run.manifest is None:
             where = run.rel or run.key
@@ -505,7 +510,8 @@ def _zip_status(upload: bool, state: dict[str, Any]) -> str:
         return "external"
     if state.get("skipZip"):
         return "skipped-size"
-    return "ok" if _env("ZIP_OUTCOME") == "success" else "failed"
+    outcome = _env("ZIP_OUTCOME")
+    return "ok" if outcome == "success" else ("none" if outcome == "skipped" else "failed")
 
 
 def cmd_publish() -> int:

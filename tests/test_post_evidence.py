@@ -347,3 +347,8 @@ def test_stage_with_upload_false_stages_nothing(
 
 def test_usage_error() -> None:
     assert pe.main(["x"]) == 2
+
+
+def test_empty_run_dir_is_reported_not_passed(tmp_path: Path) -> None:
+    body = pe.render(pe.load_runs(tmp_path), _cfg(zip_status="none"))
+    assert "incomplete" in body and "No results found" in body and "run passed" not in body
