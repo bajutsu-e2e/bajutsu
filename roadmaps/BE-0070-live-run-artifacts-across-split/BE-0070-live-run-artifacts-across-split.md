@@ -14,126 +14,73 @@
 
 ## Introduction
 
-The hosted `bajutsu serve` is a **two-instance** system: a control plane (the web UI + API, on
-Linux) and a separate **worker** that actually runs the test (idb / Playwright, on a Mac), wired
-together over Redis and an object store
+The hosted `bajutsu serve` runs as **two instances**. A control plane (the web UI and API, on Linux) serves the browser. A separate **worker** (idb or Playwright, on a Mac) runs the test. Redis and an object store connect the two
 ([BE-0015](../BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md),
-[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). During a
-run the browser shows three live surfaces: the **console log**, the **final result / report**, and —
-for [`crawl`](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) —
-the **exploration graph** that grows as the crawl explores. Two of the three already cross the
-instance split; one does not.
+[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)).
 
-This proposal closes that one gap: make a run's **in-progress (live) artifacts** visible across the
-control-plane/worker split, with the **live crawl graph** as the first consumer. It deliberately does
-**not** re-propose the two surfaces that already cross the split, so the scope stays sharp:
+During a run, the browser shows three live surfaces:
 
-- **Console log — already crosses.** Live run output travels over the **LogBus seam**: the worker
-  publishes each stdout line to Redis (`RedisLogBus`) and the control plane relays it to the browser
-  over SSE (server-sent events). Not this.
-- **Final result / report — already crosses.** Terminal state persists: the worker uploads the
-  `runs/<id>/` tree to the object store and writes a run record, and the UI reads it after the run.
-  Not this.
+- the **console log**
+- the **final result and report**
+- the **exploration graph** that grows as a
+  [`crawl`](../BE-0038-autonomous-crawl-exploration/BE-0038-autonomous-crawl-exploration.md) explores
 
-The missing piece is the **live crawl graph**, which today relies on a shared-filesystem assumption
-that the worker split breaks.
+Two of the three already cross the instance split. The exploration graph does not.
+
+This proposal closes that gap. It makes a run's **in-progress (live) artifacts** visible across the control-plane/worker split, with the **live crawl graph** as the first consumer. To keep the scope sharp, it deliberately does not re-propose the two surfaces that already cross the split:
+
+- **Console log (already crosses).** Live run output travels over the **LogBus seam**. The worker publishes each stdout line to Redis (`RedisLogBus`). The control plane relays the line to the browser over server-sent events (SSE). This proposal leaves it alone.
+- **Final result and report (already crosses).** Terminal state persists. The worker uploads the `runs/<id>/` tree to the object store and writes a run record. The UI reads both after the run. This proposal leaves it alone.
+
+The missing piece is the **live crawl graph**. It relies on a shared filesystem, and the worker split breaks that assumption.
 
 ## Motivation
 
-**The gap, concretely.** A crawl writes `runs/<id>/screenmap.json` *incrementally* — the engine fires
-an `on_event` callback after every discovery, which rewrites the file (`bajutsu/cli/commands/crawl.py`).
-The browser polls `GET /runs/<id>/screenmap.json` on each SSE log line and redraws
-(`bajutsu/templates/serve.js`, `loadGraph`). In **local** mode this works because the process that
-writes the file and the server that serves it share one filesystem.
+**The gap, concretely.** A crawl writes `runs/<id>/screenmap.json` *incrementally*. The engine fires an `on_event` callback after every discovery, and the callback rewrites the file (`bajutsu/cli/commands/crawl.py`). The browser polls `GET /runs/<id>/screenmap.json` on each SSE log line and redraws (`bajutsu/templates/serve.js`, `loadGraph`). In **local** mode this works, because the process that writes the file and the server that serves it share one filesystem.
 
-In **server** mode it breaks. The worker writes `screenmap.json` to *its own* disk, but artifacts are
-uploaded to the object store **only at job end** — `_upload_runs` runs after `run_job` returns, i.e.
-after the crawl subprocess has already exited (`bajutsu/serve/server/worker_job.py`). While the crawl
-is in progress, the control plane's `ObjectStorageArtifactStore.get` finds no key and returns **404**,
-so the browser's poll fails and the graph stays empty **until the crawl finishes**.
+In **server** mode it breaks. The worker writes `screenmap.json` to *its own* disk, but artifacts reach the object store at job end. `_upload_runs` runs after `run_job` returns, which means after the crawl subprocess has already exited (`bajutsu/serve/server/worker_job.py`). While the crawl runs, the control plane's `ObjectStorageArtifactStore.get` finds no key and returns **404**. The browser's poll fails, and the graph stays empty **until the crawl finishes**.
 
-**Root cause.** Logs were given a transport that crosses the split (the LogBus); in-progress
-artifacts were not. The artifact store is *terminal-upload, read-per-request* — exactly right for a
-report, but wrong for a file that is meant to be **read while it is still changing**. The crawl graph
-is the first "live artifact", and nothing carries it across the split.
+**Root cause.** Logs have a transport that crosses the split (the LogBus). In-progress artifacts have none. The artifact store uploads at the end and reads per request. That design suits a report, but it does not suit a file that the UI **reads while the file is still changing**. The crawl graph is the first such "live artifact", and nothing carries it across the split.
 
-**Why it matters.** A crawl is long-running, and the growing graph is its primary UX — you watch
-coverage build, screens appear, and the frontier shrink. On the hosted topology (the one teams
-actually deploy, [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md))
-that UX silently degrades to "watch the log scroll, then see the whole graph at the end". The feature
-looks finished in local dogfooding and quietly regresses in production.
+**Why it matters.** A crawl runs for a long time, and the growing graph is its primary user experience (UX). A user watches coverage build, screens appear, and the frontier shrink. The hosted topology is the one teams actually deploy ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)). On that topology the UX silently degrades to "watch the log scroll, then see the whole graph at the end". The feature looks finished in local dogfooding and quietly regresses in production.
 
 ## Detailed design
 
-### Scope: live artifacts
+### Scope of live artifacts
 
-A **live artifact** is a file a run updates *during* execution and the UI reads *mid-run* — as opposed
-to terminal artifacts (the report, evidence) read only after the run. Today there is exactly one:
-`screenmap.json`. The design names a small, explicit **allowlist of live-artifact paths** so the
-mechanism is general (a future live progress file reuses it) without turning every artifact into a
-streamed one.
+A **live artifact** is a file that a run updates *during* execution and that the UI reads *mid-run*. A terminal artifact (the report, evidence) differs: the UI reads it after the run. Exactly one live artifact exists today: `screenmap.json`.
 
-### Primary design — incremental upload of live artifacts
+The design names a small, explicit **allowlist of live-artifact paths**. The allowlist keeps the mechanism general, so a future live progress file can reuse it. It also avoids turning every artifact into a streamed one.
 
-The worker already has the right boundary: the `on_event` callback that rewrites `screenmap.json` on
-the worker's disk after each discovery. Hook the **same** boundary to also `put` the artifact to the
-object store, so the control plane's `ObjectStorageArtifactStore.get` finds it mid-run. The browser
-keeps polling the **same** `/runs/<id>/...` route; only *where the bytes come from* changes, so:
+### Primary design: incremental upload of live artifacts
 
-- **No UI change and no GET-route change.** Local mode is unaffected (it still serves the live file
-  from disk); server mode now finds the same file in the object store. One code path, both modes.
-- **Throttled, not per-event.** A chatty crawl fires many events; coalesce uploads to at most once per
-  short interval (≈1–2 s, matching the browser's poll cadence) **plus** a final authoritative write at
-  job end. This bounds object-store PUTs with no perceptible UX loss — the graph already updates about
-  once per second.
-- **Consistency is not a worry.** S3 / R2 overwrites are strongly read-after-write consistent, so a
-  poll issued after an upload returns the fresh snapshot; there is no stale-read window to design
-  around.
-- **Terminal upload still wins.** The end-of-job `_upload_runs` remains the authority for the complete
-  `runs/<id>/` tree; incremental upload only makes the *live* artifact visible earlier.
+The worker already has the right boundary: the `on_event` callback that rewrites `screenmap.json` on the worker's disk after each discovery. The design hooks the **same** boundary to also `put` the artifact to the object store. The control plane's `ObjectStorageArtifactStore.get` then finds the artifact mid-run. The browser keeps polling the **same** `/runs/<id>/...` route. Only *where the bytes come from* changes, which has four consequences:
 
-### The contract — machine-checkable invariants
+- **No UI change and no GET-route change.** Local mode is unaffected and still serves the live file from disk. Server mode finds the same file in the object store. One code path serves both modes.
+- **Throttled, not per-event.** A chatty crawl fires many events. The worker coalesces uploads to at most one per short interval (about 1–2 s, matching the browser's poll cadence). It adds a final authoritative write at job end. This bounds object-store PUTs without a perceptible UX loss, because the graph already updates about once per second.
+- **Consistency is not a worry.** S3 and R2 overwrites are strongly read-after-write consistent. A poll issued after an upload returns the fresh snapshot, so no stale-read window needs a design.
+- **Terminal upload still wins.** The end-of-job `_upload_runs` remains the authority for the complete `runs/<id>/` tree. Incremental upload makes the *live* artifact visible earlier and changes nothing else.
 
-Verified on the Linux gate with the in-memory / fake object store (no Mac, no Simulator):
+### The contract: machine-checkable invariants
 
-1. **Mid-run visibility (the regression).** Given a fake worker that emits N screen-map snapshots
-   before finishing, the control plane's artifact `get` returns the k-th snapshot **before** the job is
-   marked done — the case that returns 404 today.
-2. **Terminal authority.** After the job completes, the stored `screenmap.json` equals the last
-   on-disk snapshot (the bulk terminal upload is consistent with the incremental writes).
-3. **Bounded uploads.** M discoveries over a duration produce at most `ceil(duration / interval) + 1`
-   uploads — PUTs scale with wall-clock time, not with event count.
-4. **Local-mode parity.** In local mode the live graph still serves from disk, unchanged — no
-   regression to the path that already works.
-5. **Gate-clean.** No LLM call and no new heavy dependency on the default path; the deterministic core
-   is untouched.
+The Linux gate verifies these invariants with an in-memory (fake) object store. No Mac and no Simulator is involved.
+
+1. **Mid-run visibility (the regression).** A fake worker emits N screen-map snapshots before it finishes. The control plane's artifact `get` returns the k-th snapshot **before** the job is marked done. Today that case returns 404.
+2. **Terminal authority.** After the job completes, the stored `screenmap.json` equals the last on-disk snapshot. The bulk terminal upload agrees with the incremental writes.
+3. **Bounded uploads.** M discoveries over a duration produce at most `ceil(duration / interval) + 1` uploads. PUTs scale with wall-clock time, not with event count.
+4. **Local-mode parity.** In local mode the live graph still serves from disk, unchanged. The path that already works does not regress.
+5. **Gate-clean.** The default path makes no large language model (LLM) call and adds no heavy dependency. The deterministic core is untouched.
 
 ### Prime-directive fit
 
-This is **Tier-1 `crawl` + serve plumbing only**. No LLM enters the `run` / CI gate
-([DESIGN §2](../../DESIGN.md)). Determinism is preserved because the change alters only *when bytes
-become visible*, never *what the crawl explores* — a crawl's traversal stays a pure function of the
-element tree. The mechanism is app-agnostic (it moves a file, regardless of the target app).
+This change is **Tier-1 `crawl` and serve plumbing** alone. No LLM enters the `run` / CI gate ([DESIGN §2](../../DESIGN.md)). Determinism holds, because the change alters *when bytes become visible* and never *what the crawl explores*. A crawl's traversal stays a pure function of the element tree. The mechanism is app-agnostic: it moves a file, whatever the target app.
 
 ## Alternatives considered
 
-- **Push graph events on the bus (deltas over SSE) instead of polling a file** — the more general
-  "progress channel": the worker emits each new node/edge as a structured event the control plane
-  relays over SSE alongside log lines, and the browser updates from the payload with no polling.
-  Attractive because it unifies on the transport that already crosses the split (the LogBus) and a
-  delta is far smaller than re-fetching the whole map. **Deferred**, not rejected: it is a larger
-  change (a new event type, the UI's data path moves from polling to events, and both local and server
-  modes must be handled), whereas incremental upload preserves the existing seam and the existing UI.
-  A future progress channel can subsume the polling once it earns its keep.
-- **Worker → control-plane artifact proxy** (the control plane reads in-progress files from the worker
-  over HTTP) — **rejected**: workers are **pull-based**, leasing jobs from Redis; they are not
-  addressable servers. Making the worker serve files inverts the lease model and adds network and
-  security surface for no gain over uploading.
-- **Accept a terminal-only graph in server mode** (do nothing) — **rejected**: the live graph is
-  crawl's primary UX, and the hosted topology is the one users deploy. A feature that works only in
-  local dogfooding is a silent production regression.
-- **Upload on every event (no throttle)** — **rejected**: unbounded PUTs for a chatty crawl, with no
-  UX benefit over coalescing at the poll cadence.
+- **Push graph events on the bus (deltas over SSE) instead of polling a file.** This is the more general "progress channel". The worker emits each new node or edge as a structured event. The control plane relays the event over SSE alongside the log lines, and the browser updates from the payload without polling. The option is attractive because it unifies on the transport that already crosses the split (the LogBus), and a delta is far smaller than re-fetching the whole map. **Deferred**, not rejected: it is a larger change. It needs a new event type, moves the UI's data path from polling to events, and must handle both local and server modes. Incremental upload preserves the existing seam and the existing UI. A future progress channel can subsume the polling once it earns its keep.
+- **Worker → control-plane artifact proxy.** The control plane would read in-progress files from the worker over HTTP. **Rejected**: workers are **pull-based** and lease jobs from Redis, so they are not addressable servers. Making the worker serve files inverts the lease model. It adds network and security surface for no gain over uploading.
+- **Accept a terminal-only graph in server mode (do nothing).** **Rejected**: the live graph is the primary UX of crawl, and the hosted topology is the one users deploy. A feature that works in local dogfooding alone is a silent production regression.
+- **Upload on every event (no throttle).** **Rejected**: a chatty crawl would produce unbounded PUTs. Coalescing at the poll cadence gives the same UX.
 
 ## Progress
 
