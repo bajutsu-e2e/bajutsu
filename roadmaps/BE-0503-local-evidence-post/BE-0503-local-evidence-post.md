@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0503](BE-0503-local-evidence-post.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0503") |
 | Topic | Integration with external services |
 | Related | [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
@@ -17,7 +17,7 @@
 
 This item adds a helper script, `scripts/post_evidence.py`, that takes a finished run from a developer's own machine and posts it to a pull request or an issue. The comment names each failed scenario, the failing step, and the reason, and it links to the run's evidence. Running the script again updates the same comment instead of adding a new one. The script uses the developer's own GitHub credentials, and it runs after the verdict, so it never changes what the run decided.
 
-The script is not a Bajutsu feature. It is one file that uses the standard library alone and imports nothing from `bajutsu`. It adds no subcommand and no entry in `[project.scripts]`, and the installed package does not ship it. The portable `post-evidence` GitHub Action, which a sibling proposal defines, today carries its own copy of the renderer under the Action's directory. Reconciling it onto this one file is a work item below, and until it lands the two copies must be kept identical by hand. Once reconciled, a reviewer reads one comment format, whether a runner or a laptop produced the run.
+The script is not a Bajutsu feature. It is one file that uses the standard library alone and imports nothing from `bajutsu`. It adds no subcommand and no entry in `[project.scripts]`, and the installed package does not ship it. The portable `post-evidence` GitHub Action, which the sibling proposal [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) defines, renders through this same file. A reviewer therefore reads one comment format, whether a runner or a laptop produced the run.
 
 ## Motivation
 
@@ -60,7 +60,7 @@ GitHub has no documented endpoint that uploads an image or a video into a commen
 
 The default is `none` because an upload is outward-facing and the script should not make one unless the developer asked. A developer who already ran `bajutsu run --evidence-store` ([BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) passes the public base URL of the store's prefix (a public bucket path, or a CDN in front of it) as `--evidence-base-url`, and a screenshot then appears inline in the comment. The renderer percent-encodes each path segment before it joins the base, so a run id or a file name holding a space, a `#`, or a `?` still produces a link that resolves. A presigned URL signs one object, so it cannot serve as a base URL. The script does not call the uploader of BE-0110, so it needs no `s3` or `gcs` extra.
 
-A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Each release uses the tag `bajutsu-evidence-<number>` and is created with `prerelease: true` and `make_latest: "false"`, so it never becomes the repository's latest release. Publishing creates that tag and fires any workflow that listens for a published release. The script finds an existing release by listing releases and matching the tag name exactly, because the tag endpoint does not return drafts. The plan states whether the reused release is a draft or published. When `--publish` would publish an existing draft, the plan also lists the assets already on it, since they become public too. Whether a browser displays or downloads each asset type is unverified, and the first work item is a spike that records it.
+A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Each release uses the tag `bajutsu-evidence-<number>` and is created with `prerelease: true` and `make_latest: "false"`, so it never becomes the repository's latest release. Publishing creates that tag and fires any workflow that listens for a published release. The script finds an existing release by listing releases and matching the tag name exactly, because the tag endpoint does not return drafts. The plan states whether the reused release is a draft or published. When `--publish` would publish an existing draft, the plan also lists the assets already on it, since they become public too. A spike on a draft release (unit 1) measured three things. An anonymous request to a draft asset's `browser_download_url` returns 404. A request that carries a token returns 404 too. The asset API, called with a token, serves a PNG, an MP4, and a zip with `Content-Disposition: attachment`, so an asset opened that way downloads and does not display. Two questions stay open, because the spike ran on a draft alone. A signed-in browser may or may not display an image inline from a published release. A published release's links may or may not open anonymously.
 
 ### What the comment holds
 
@@ -84,13 +84,13 @@ A developer ran the script to post, so a failure to post exits non-zero with the
 
 ### Placement, tests, and gate coverage
 
-The script lives in `scripts/`, the repository's home for helper scripts, so `make typecheck` (`mypy bajutsu demos scripts`) and `ruff` check it without a change. A test file imports it as `tests/test_devicefarm_submit.py` imports the Device Farm submitter. The tests run against a fake GitHub HTTP server, so the gate needs no network. The script deliberately does not import `scripts/gh_cli.py`, the shared wrapper through which the roadmap scripts invoke `gh`. That wrapper drives the `gh` CLI, whereas this file must stay copyable alone into a repository with no Bajutsu checkout, and it talks to the REST API with the standard library. Its only `gh` call is `gh auth token`, as a fallback for the token.
+The script lives in `scripts/`, the repository's home for helper scripts, so `make typecheck` (`mypy bajutsu demos scripts`) and `ruff` check it without a change. A test file loads it by path with `importlib`, as `tests/test_roadmap_query.py` loads the roadmap query script. The tests run against a fake GitHub HTTP server, so the gate needs no network. The script deliberately does not import `scripts/gh_cli.py`, the shared wrapper through which the roadmap scripts invoke `gh`. That wrapper drives the `gh` CLI, whereas this file must stay copyable alone into a repository with no Bajutsu checkout, and it talks to the REST API with the standard library. Its only `gh` call is `gh auth token`, as a fallback for the token.
 
 The coverage ratchet measures `bajutsu/` alone, so it does not hold this script. Keeping the script outside the package is the point of the item, and the tests carry the cost. [BE-0336](../BE-0336-serve-device-farm-bounded-fan-out/BE-0336-serve-device-farm-bounded-fan-out.md) moved the Device Farm core into `bajutsu/` to gain that measurement, and a later item can do the same here if the script grows.
 
 ### One script for two entry points
 
-The Action item currently places its script in the Action's directory. The two items reconcile on one file. This item proposes `scripts/post_evidence.py`, which the Action loads from the checkout of its own repository, and the work breakdown names that step.
+The two items share one file, `scripts/post_evidence.py`. [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) names it as the Action's renderer. The runner downloads this repository at the Action's `<ref>` to run the Action, so the Action loads the script from that copy through `${{ github.action_path }}`, and the calling job needs no checkout of Bajutsu.
 
 ### Documentation
 
@@ -111,13 +111,13 @@ The Action item currently places its script in the Action's directory. The two i
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: upload a screenshot, a video, and a zip as assets of a draft and a published release, and record who can open each and whether it displays or downloads.
-- [ ] Shared renderer: one script that both this item and the Action run, with the Action item's script location reconciled to `scripts/post_evidence.py`.
-- [ ] GitHub client: token resolution, `GET /user`, the find-or-update sticky comment with paging, the `--key` check, and `--author`.
-- [ ] Sinks: `none` with `--evidence-base-url`, and `release` with `--publish`, the tag scheme, `make_latest: false`, the lookup by tag name, and the draft-or-published state in the plan.
-- [ ] Staging and guards: the temporary staging copy, log truncation, the `--size-warn-mb` guard, the confirmation, `--dry-run`, `--yes`, and the exit status.
-- [ ] Tests: a fake GitHub HTTP server that the gate runs offline, covering the sticky comment, the CRLF marker match, the `--key` rejection, the no-manifest case, and a run directory left unchanged.
-- [ ] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
+- [ ] Spike: upload a screenshot, a video, and a zip as assets of a draft and a published release, and record who can open each and whether it displays or downloads. The draft half is done: see the *Where the evidence goes* section. The published half is open.
+- [x] Shared renderer: one script that both this item and the Action run, with the Action item's script location reconciled to `scripts/post_evidence.py`.
+- [x] GitHub client: token resolution, `GET /user`, the find-or-update sticky comment with paging, the `--key` check, and `--author`.
+- [x] Sinks: `none` with `--evidence-base-url`, and `release` with `--publish`, the tag scheme, `make_latest: false`, the lookup by tag name, and the draft-or-published state in the plan.
+- [x] Staging and guards: the temporary staging copy, log truncation, the `--size-warn-mb` guard, the confirmation, `--dry-run`, `--yes`, and the exit status.
+- [x] Tests: a fake GitHub HTTP server that the gate runs offline, covering the sticky comment, the CRLF marker match, the `--key` rejection, the no-manifest case, and a run directory left unchanged.
+- [x] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
 
 ## References
 

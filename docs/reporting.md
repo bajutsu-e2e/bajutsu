@@ -581,3 +581,97 @@ render model (outcomes from `manifest.json`, the scenario plan from `scenario.ya
 from that model. Re-rendering only re-presents recorded outcomes. It never re-runs an assertion or
 changes a verdict. An older run renders with any newer-only section shown as "not captured"
 rather than invented.
+
+## Posting a local run to a pull request or issue
+
+A run on a developer's own machine leaves its evidence in `runs/<runId>/`. The helper script
+`scripts/post_evidence.py`
+([BE-0503](../roadmaps/BE-0503-local-evidence-post/BE-0503-local-evidence-post.md)) posts that run
+to a pull request or an issue as one comment. The comment gives the verdict and the counts. It names
+each failing scenario, its first failing step, and the reason. It also links the evidence. Running
+the script again edits the same comment instead of adding a new one.
+
+The script is a convenience outside the `bajutsu` command. It uses the Python standard library
+alone and imports nothing from `bajutsu`. A team can copy the file into a repository with no
+Bajutsu checkout. The script posts after the run has decided its verdict, and never changes it.
+
+### Before you post
+
+- Python 3.13 runs the script, with nothing to install.
+- The script reads a GitHub token from `GITHUB_TOKEN` or `GH_TOKEN`. With neither variable present,
+  it asks the GitHub CLI (`gh auth token`). It never writes the token to disk or to a log.
+- The script talks to `https://api.github.com`, or to the API URL in `GITHUB_API_URL`. For GitHub
+  Enterprise Server, use `https://<host>/api/v3`. A `--to` URL must name that same instance, or
+  the script refuses it before any request.
+- A comment needs write access to pull requests or to issues. The `release` sink below also needs
+  write access to repository contents.
+
+### Check the comment with a dry run
+
+Pass the run directory, or a run id under `runs/`. Name the target as `owner/repo#NUMBER`, or as
+the URL of the pull request or issue. In a fork workflow, `origin` is the fork. A guessed
+repository could post screenshots to the wrong thread, so the script refuses a bare `#123`.
+
+```bash
+python3 scripts/post_evidence.py runs/20261125-101530 --to acme/app#42 --dry-run
+```
+
+The dry run prints the plan and the Markdown it would post, and writes nothing. The Markdown opens
+with a hidden marker such as `<!-- bajutsu-evidence:local -->`. A later run finds the comment by
+that marker.
+
+### Post the comment
+
+Run the same command without `--dry-run`. The script prints the plan again. It then asks for
+confirmation before any write.
+
+```bash
+python3 scripts/post_evidence.py runs/20261125-101530 --to acme/app#42
+```
+
+On success the script prints `Posted:` and the comment's URL. Pass `--yes` to skip the question in
+a script. Without `--yes`, the script refuses to post when standard input is not a terminal.
+
+### Choose where the evidence links go
+
+GitHub offers no documented endpoint that puts an image into a comment. The comment holds text and
+links instead, and `--sink` decides what the links point to.
+
+| Sink | What it uploads | Who can open the links |
+|---|---|---|
+| `none` (default) | Nothing. The comment names each file by its path in the run directory. With `--evidence-base-url`, each path becomes a link to a copy the developer serves. | Whoever can open the base URL. |
+| `release` | The failing screenshots, the failing scenarios' videos, and a zip of the run, as assets of the release `bajutsu-evidence #<number>`. | A draft release opens for people with write access alone. `--publish` opens it to everyone who can see the repository. |
+
+The `none` sink pairs with a run that `bajutsu run --evidence-store` uploaded
+([evidence](evidence.md)). Pass the public base URL of the store's prefix as `--evidence-base-url`.
+Each failing screenshot then shows inline. A presigned URL signs one object, so it cannot serve as
+the base.
+
+The `release` sink creates a draft prerelease that never becomes the repository's latest release.
+A rerun reuses that release and uploads the assets it lacks. The script never deletes a release, so
+removing one stays a manual step. Publishing creates the tag `bajutsu-evidence-<number>`. The plan
+lists each workflow in the target repository whose triggers mention a release or a tag.
+
+### What the script guards
+
+- **The run directory stays unchanged.** The script uploads from copies in a temporary directory.
+- **Device logs stay bounded.** The uploaded zip keeps the last `--log-tail-kb` kilobytes of each
+  `device.log` (default 256).
+- **Uploads stay bounded.** Past `--size-warn-mb` (default 100), the script skips the zip first.
+  It then skips any single file still above the limit.
+- **The plan and the comment state every truncation and skip.**
+- **Pixels stay unmasked.** A run masks secrets in its text files, but not in a screenshot or a
+  video. The confirmation lets a developer check the files before they leave the machine.
+
+### Other options
+
+- `--key` (default `local`) keeps two comments apart on one thread, such as a local one and a CI
+  one. It accepts the characters `[A-Za-z0-9._-]`. Any other key exits before a network call.
+- `--author` names the comment's author for a token with no user, such as a GitHub App's.
+- `--max-failures` (default 10) caps the failing-scenario blocks, and the comment counts the rest.
+
+### Exit status
+
+The script exits 0 when the post succeeds, even for a run that did not pass. It exits 1 with the
+reason when the post does not go through, and 2 for a usage error. A missing or malformed `--to` is one, and so is a `--key` outside the
+allowed characters.

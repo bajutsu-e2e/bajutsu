@@ -10,7 +10,7 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
 | トピック | Integration with external services |
-| 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
+| 関連 | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
@@ -33,7 +33,7 @@ Bajutsu のチェックが赤くなったプルリクエストで、レビュア
 
 ### Action の置き場所と前提
 
-Action は、このリポジトリの `.github/actions/post-evidence/` に置きます。ほかのリポジトリは `bajutsu-e2e/bajutsu/.github/actions/post-evidence@<ref>` として使います。描画処理は、標準ライブラリだけを使う Python スクリプト1本です。Action は `actions/setup-python` でリポジトリの Python（3.13）を固定し、`update-environment: false` を指定して、ステップの出力 `python-path` からスクリプトを起動します。ランナーのシステム Python は使わず、呼び出し側のジョブの Python も変えません。そのため、`uv sync` も Bajutsu のチェックアウトも要りません。
+Action は、このリポジトリの `.github/actions/post-evidence/` に置きます。ほかのリポジトリは `bajutsu-e2e/bajutsu/.github/actions/post-evidence@<ref>` として使います。描画処理には、[BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md) の `scripts/post_evidence.py` を使います。標準ライブラリだけを使うこのスクリプトは、ローカルの実行の投稿にも使います。ランナーとノート PC のどちらで実行しても、コメントの形式は1つになります。ランナーは Action を動かすために、このリポジトリを `<ref>` の時点で取得します。Action はその写しから `${{ github.action_path }}` を通してスクリプトを読み込みます。Action は `actions/setup-python` でリポジトリの Python（3.13）を固定し、`update-environment: false` を指定して、ステップの出力 `python-path` からスクリプトを起動します。ランナーのシステム Python は使わず、呼び出し側のジョブの Python も変えません。そのため、`uv sync` は要らず、呼び出し側のジョブも Bajutsu をチェックアウトする必要がありません。
 
 呼び出すジョブには、プルリクエストなら `pull-requests: write`、Issue なら `issues: write` を与えます。この Action は `pull_request_target` を必要としません。このトリガーは書き込み権限つきのトークンをジョブに与えますが、フォークのシナリオを実行するにはフォークのコードをチェックアウトして動かすことになります。そのため、ドキュメントでは非対応と明記します。すべての入力は、インラインの `${{ }}` ではなく `env:` を通して、シェルのステップとスクリプトに渡します（[BE-0123](../BE-0123-composite-action-input-indirection/BE-0123-composite-action-input-indirection-ja.md)）。
 
@@ -129,17 +129,18 @@ artifact のリンクは、サインインを必要とする URL なので、コ
 > ともに記録します。
 
 - [ ] スパイク：スクリーンショットと動画を `archive: false` でアップロードし、サインイン済みの読み手に表示されるかダウンロードになるかを記録する。あわせて、ジョブを再実行したとき、前回の試行の artifact 名と衝突するかを記録し、衝突するなら `overwrite` の入力を足す。
-- [ ] 描画処理：`manifest.json` から Markdown を作る。エスケープ、切り詰め、`<sid>/result.json` を読むマニフェストがない場合を含み、標準ライブラリのスクリプトと、`make test` で動く単体テストにする。フィクスチャーは Bajutsu 自身のマニフェストの書き出し処理で生成し、スキーマの変更が、それを行う PR のテストを壊すようにする。
+- [ ] 描画処理：`manifest.json` から Markdown を作る。エスケープ、切り詰め、`<sid>/result.json` を読むマニフェストがない場合を含み、共有の `scripts/post_evidence.py` と、`make test` で動く単体テストにする。フィクスチャーは Bajutsu 自身のマニフェストの書き出し処理で生成し、スキーマの変更が、それを行う PR のテストを壊すようにする。
 - [ ] コメントのクライアント：ページをたどる固定コメントの検索と更新、ジョブサマリーへの書き込み、警告を出して終了コード0で終わる経路。
 - [ ] サイズの制御：ログを切り詰めるステージ済みのコピー、`size-warn-mb` の保護、`retention-days`、`compression-level`。切り詰め、保護、マニフェストなしでの切り詰めの単体テストを含む。
 - [ ] 既存 Action の出力：`bajutsu-e2e` に、`actions/upload-artifact` 自身の `artifact-url` を転送する出力を足す。ジョブがそれを、`upload: false` の `post-evidence` へ渡せるようにする。
 - [ ] composite action：`env:` を通す入力の配線、実行全体の zip のアップロード、zip にしない6つのアップロードのスロット、`upload` と `artifact-url` の入力、任意の `evidence-base-url`。
-- [ ] ゲートの対象化：スクリプトが `make check` の `ruff` と `mypy --strict` を通ること。`make typecheck` の対象に `.github/actions/post-evidence` を加え、単体テストがそのパスからスクリプトを読み込み、`make test` が（`--cov` で）それを計測します。BE-0385 のファイル単位の下限を `coverage-floors.json` で適用し、`bajutsu/` と同じ水準に保ちます。
+- [ ] ゲートの対象化：`scripts/post_evidence.py` は、すでに `make check` の `ruff` と `mypy --strict` を通っています。この項目では、`make test` がスクリプトを（`--cov` で）計測するようにします。BE-0385 のファイル単位の下限を `coverage-floors.json` で適用し、`bajutsu/` と同じ水準に保ちます。
 - [ ] ドキュメント：`docs/reporting.md` の節と、`docs/ja/` のミラー。
 - [ ] 導入：このリポジトリの web E2E ワークフローから Action を呼ぶこと。
 
 ## 参考
 
+- [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md)：この Action と共有する描画処理 `scripts/post_evidence.py` で、ローカルの実行の証跡を投稿します。
 - [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check-ja.md)：証跡を含まない、run-set グループの GitHub check run としての公開。
 - [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export-ja.md)：実行の CTRF 出力。
 - [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)：実行の証跡をオブジェクトストレージへアップロードします。
