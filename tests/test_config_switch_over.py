@@ -818,15 +818,24 @@ def test_a_family_is_matched_on_a_real_device_but_not_on_a_remote_one() -> None:
     assert "runsOn.ios.family" in problem
 
 
-def test_a_hookless_target_starts_no_hook_session(tmp_path: Path) -> None:
+def test_a_hookless_target_starts_no_hook_session_and_writes_no_run_directory(
+    tmp_path: Path,
+) -> None:
     # A target that declares no hook command does no hook work at all: the helper returns None, so
-    # every call site can tell at a glance (BE-0491).
+    # every call site can tell at a glance (BE-0491). It must also leave no run directory behind —
+    # constructing the artifact writer creates one, and `record` / `crawl` / `repl` run this on
+    # every invocation, hookless target or not.
+    runs = tmp_path / "runs"
     assert (
         _shared._start_hooks_or_exit(
-            replace(_eff(_IOS), base_dir=tmp_path), run_id="r1", runs_dir=tmp_path / "runs"
+            replace(_eff(_IOS), base_dir=tmp_path),
+            run_id="r1",
+            runs_dir=runs,
+            run_dir=runs / "r1",
         )
         is None
     )
+    assert not runs.exists()
 
 
 def test_the_teardown_can_be_registered_at_exit(

@@ -1019,8 +1019,13 @@ def _start_hooks_or_exit(
         The session, or None when neither the target nor a scenario declares a hook command.
     """
     from bajutsu.common.evidence.sink import RunArtifactWriter
-    from bajutsu.common.runner.hook_session import run_tags, start_session
+    from bajutsu.common.runner.hook_session import phases_of, run_tags, start_session
 
+    # Nothing at all for a target that declares no hook command — not even a writer. Constructing
+    # one creates its run directory, so building it before this check left every `record`, `crawl`
+    # and `repl` invocation with an empty `runs/<id>/` it never wrote to.
+    if not phases_of({eff.target: eff}, scenario_targets):
+        return None
     # A writer even for a command that keeps no report: without one each command's log would be
     # written to the raw area and deleted unread by the teardown, so a failed hook's own error
     # message would never reach anyone. It also makes `mask: true` mean something here.
