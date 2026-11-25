@@ -27,7 +27,7 @@ The CI-side Action cannot help here, because it needs a workflow run and a runne
 
 A script suits this need better than a product command, for two reasons. A `bajutsu` subcommand would become a documented CLI contract that the project versions and supports, for a convenience that depends on GitHub's web behavior, which Bajutsu does not control. A single script also travels: a team copies the file, or fetches it by URL, into a repository that has no Bajutsu checkout.
 
-The observable difference is a single command. After `python3 scripts/post_evidence.py runs/<runId> --to owner/repo#123`, the pull request holds one comment that states which scenarios passed or failed and why. Running it again after a fix edits that comment in place. A developer no longer opens a browser to drag files into a comment.
+The observable difference is a single command. After `python3 scripts/post_evidence.py runs/<runId> --to owner/repo#123`, the pull request holds one comment that states how many scenarios passed and failed, and names each failure with its reason. Running it again after a fix edits that comment in place. A developer no longer opens a browser to drag files into a comment.
 
 ## Detailed design
 
@@ -58,9 +58,9 @@ GitHub has no documented endpoint that uploads an image or a video into a commen
 | `none` (default) | Uploads nothing. The comment names each file by its path inside the run directory, and `--evidence-base-url` turns those paths into links to a copy that the developer hosts. | Whoever can open the base URL. |
 | `release` | Uploads the failing screenshots, the videos, and a zip of the run as assets of one release per target, named `bajutsu-evidence #<number>`. The comment links each asset. | A draft release is visible only to people with write access to the repository. `--publish` makes the release public to everyone who can see the repository. |
 
-The default is `none` because an upload is outward-facing and the script should not make one unless the developer asked. A developer who already ran `bajutsu run --evidence-store` ([BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) passes the store's public or signed URL as `--evidence-base-url`, and a screenshot then appears inline in the comment. The script does not call the uploader of BE-0110, so it needs no `s3` or `gcs` extra.
+The default is `none` because an upload is outward-facing and the script should not make one unless the developer asked. A developer who already ran `bajutsu run --evidence-store` ([BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) passes the public base URL of the store's prefix (a public bucket path, or a CDN in front of it) as `--evidence-base-url`, and a screenshot then appears inline in the comment. A presigned URL signs one object, so it cannot serve as a base URL. The script does not call the uploader of BE-0110, so it needs no `s3` or `gcs` extra.
 
-A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Whether a browser displays or downloads each asset type is unverified, and the first work item is a spike that records it.
+A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Each release uses the tag `bajutsu-evidence-<number>` and is created with `prerelease: true` and `make_latest: "false"`, so it never becomes the repository's latest release. Publishing creates that tag and fires any workflow that listens for a published release. The script finds an existing release by listing releases and matching the tag name exactly, because the tag endpoint does not return drafts. The plan states whether the reused release is a draft or published. When `--publish` would publish an existing draft, the plan also lists the assets already on it, since they become public too. Whether a browser displays or downloads each asset type is unverified, and the first work item is a spike that records it.
 
 ### What the comment holds
 
@@ -114,7 +114,7 @@ The Action item currently places its script in the Action's directory. The two i
 - [ ] Spike: upload a screenshot, a video, and a zip as assets of a draft and a published release, and record who can open each and whether it displays or downloads.
 - [ ] Shared renderer: one script that both this item and the Action run, with the Action item's script location reconciled to `scripts/post_evidence.py`.
 - [ ] GitHub client: token resolution, `GET /user`, the find-or-update sticky comment with paging, the `--key` check, and `--author`.
-- [ ] Sinks: `none` with `--evidence-base-url`, and `release` with `--publish`, the reuse rule, and the plan listing.
+- [ ] Sinks: `none` with `--evidence-base-url`, and `release` with `--publish`, the tag scheme, `make_latest: false`, the lookup by tag name, and the draft-or-published state in the plan.
 - [ ] Staging and guards: the temporary staging copy, log truncation, the `--size-warn-mb` guard, the confirmation, `--dry-run`, `--yes`, and the exit status.
 - [ ] Tests: a fake GitHub HTTP server that the gate runs offline, covering the sticky comment, the CRLF marker match, the `--key` rejection, the no-manifest case, and a run directory left unchanged.
 - [ ] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
