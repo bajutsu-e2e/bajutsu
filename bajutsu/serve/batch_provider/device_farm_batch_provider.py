@@ -35,7 +35,7 @@ from bajutsu.common.cloud.devicefarm import (
 from bajutsu.common.config.schema._merge import merge_defaults
 from bajutsu.common.config.schema._templates import expand_extends
 from bajutsu.common.config.schema.platform import PLATFORM_SCHEMAS
-from bajutsu.common.config.schema.platform._shared import destination_problems
+from bajutsu.common.config.schema.platform._shared import IGNORED_SETTINGS, destination_problems
 from bajutsu.common.devices.runs import unpack_conditions
 
 from ._package_layout import _PackageLayout
@@ -139,7 +139,9 @@ def _check_no_conditions(config_path: Path, target: str, *, root: Path | None = 
     schema = PLATFORM_SCHEMAS.get(platform) if isinstance(platform, str) else None
     if schema is not None and (moved := destination_problems(schema.runs_on, declared)):
         raise ValueError(f"target {target!r}: {'; '.join(moved)}")
-    found = [f"target {target!r} runsOn.{name}" for name in unpack_conditions(declared)]
+    # `ignoredSettings` maps setting keys to reasons, not a destination block of conditions.
+    blocks = {k: v for k, v in declared.items() if k != IGNORED_SETTINGS}
+    found = [f"target {target!r} runsOn.{name}" for name in unpack_conditions(blocks)]
     if found:
         raise ValueError(
             f"{', '.join(found)}: a Device Farm device has no pool to match a runsOn condition "
