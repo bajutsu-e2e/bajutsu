@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0506") |
+| Implementing PR | [#2559](https://github.com/bajutsu-e2e/bajutsu/pull/2559) |
 | Topic | Verification & coverage |
 <!-- /BE-METADATA -->
 
@@ -175,7 +176,7 @@ The manifest would claim one build identity. The verdict also depended on anothe
 
 Log:
 
-- 2026-11-26 — All six units landed together. These points go beyond the design above.
+- 2026-11-26 — [#2559](https://github.com/bajutsu-e2e/bajutsu/pull/2559): all six units landed together. These points go beyond the design above.
   - The target key is `subject.sourceRoot`, beside `subject.path`. The group `app` carries the name
     `subject` since BE-0470.
   - A target whose app arrives some other way records no `app` group. A device provider and a real

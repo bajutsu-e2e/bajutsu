@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0506") |
+| 実装 PR | [#2559](https://github.com/bajutsu-e2e/bajutsu/pull/2559) |
 | トピック | 検証とカバレッジ |
 <!-- /BE-METADATA -->
 
@@ -178,7 +179,7 @@ manifest は 1 つのビルドの識別情報を主張します。判定は、�
 
 ログは次のとおりです。
 
-- 2026-11-26 — 6 つの単位をまとめて実装
+- 2026-11-26 — [#2559](https://github.com/bajutsu-e2e/bajutsu/pull/2559) で 6 つの単位をまとめて実装
 
 上の設計から踏み込んだ点は次の表のとおりです。
 
