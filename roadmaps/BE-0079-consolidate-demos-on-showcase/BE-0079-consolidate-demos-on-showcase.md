@@ -17,20 +17,25 @@
 
 ## Introduction
 
-[BE-0045](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) shipped
-the **showcase** suite — the same app in UIKit and SwiftUI, each in an accessibility-on / -off
-variant (four products from two codebases) — as Bajutsu's next-generation dogfood target. But it
-deliberately scoped the migration *out*: its own design note says the older `sample` fixture
-"stays until the showcase covers its on-device CI and Web UI tours; superseding it is a follow-up,
-not part of this item."
+This item makes the showcase the **single** iOS fixture. It proceeds in three moves:
 
-This item is that follow-up. It makes the showcase the **single** iOS fixture: it brings the
-showcase to feature parity with the three legacy apps, re-points every demo and on-device CI job at
-it, and then **retires** `demo` ([`demos/app`](../../demos/app)), `sample`
-([`demos/features/app`](../../demos/features/app)), and `sample2`
-([`demos/record/app`](../../demos/record/app)). The web fixture
-([`demos/web`](../../demos/web), the Playwright backend) is a different platform and out of
-scope — it stays.
+1. Bring the showcase to feature parity with the three legacy apps.
+2. Re-point every demo and on-device CI job at the showcase.
+3. **Retire** `demo` ([`demos/app`](../../demos/app)), `sample`
+   ([`demos/features/app`](../../demos/features/app)), and `sample2`
+   ([`demos/record/app`](../../demos/record/app)).
+
+[BE-0045](../BE-0045-dogfood-showcase-apps/BE-0045-dogfood-showcase-apps.md) shipped
+the **showcase** suite as Bajutsu's next-generation dogfood target. The suite is the same app in
+UIKit and SwiftUI, each in an accessibility-on and an accessibility-off variant (four products from
+two codebases).
+
+BE-0045 scoped the migration *out* on purpose. Its design note says the older `sample` fixture
+"stays until the showcase covers its on-device CI and Web UI tours; superseding it is a follow-up,
+not part of this item." This item is that follow-up.
+
+The web fixture ([`demos/web`](../../demos/web), the Playwright backend) is a different platform
+and out of scope. It stays.
 
 ## Motivation
 
@@ -44,30 +49,31 @@ on-device verification spread across four codebases:
 | `sample2` | [`demos/record/app`](../../demos/record/app) | `com.bajutsu.sample2` | the `record` demo |
 | `showcase` (4 products) | [`demos/showcase`](../../demos/showcase) | four `targets.<name>` | `run` / `doctor` / `record`, and the future `crawl` |
 
-Each is a separate Xcode project to keep building, keep accessible, and keep aligned with DESIGN
-and the conventions; every new feature demo must pick one; and a contributor has to learn "which
-app proves what." A single fixture removes that tax.
+Each fixture is a separate Xcode project to keep building, keep accessible, and keep aligned with
+DESIGN and the conventions. Every new feature demo must pick one fixture, and a contributor has to
+learn "which app proves what." A single fixture removes that tax.
 
-**2. The showcase is strictly the richer successor, and the docs already say so.** It packs the
-full interaction surface (five tabs, navigation pushes, all four modal styles, text entry, async
-loading, live + mockable networking, an OS-alert screen) *plus* the two axes no single-variant app
-can show — the **toolkit** axis (UIKit vs SwiftUI element-tree differences) and the
-**accessibility** axis (`-a11y` ↔ `-noax`, the controlled experiment for selector stability,
-[DESIGN §5](../../DESIGN.md)). The showcase README and `SPEC.md` already describe it as
-superseding `sample`. Meanwhile [DESIGN §1.1](../../DESIGN.md) still names `demos/features/app`
-(`com.bajutsu.sample`) as "the first dogfood target" — a statement this item makes true again by
-pointing it at the showcase.
+**2. The showcase is strictly the richer successor, and the docs already say so.** The showcase
+packs the full interaction surface: five tabs, navigation pushes, all four modal styles, text
+entry, async loading, live and mockable networking, and an OS-alert screen. It adds two axes that
+no single-variant app can show. The **toolkit** axis covers the element-tree differences between
+UIKit and SwiftUI. The **accessibility** axis (`-a11y` ↔ `-noax`) is the controlled experiment for
+selector stability ([DESIGN §5](../../DESIGN.md)).
 
-**3. One fixture is one contract to practise against.** Because per-app differences live entirely
-in config ([DESIGN §8](../../DESIGN.md)), a single suite gives every future capability —
-visual-regression baselines, data-driven runs, the crawl screen-map, `doctor`'s whole-app coverage
-— one ready, representative subject instead of a throwaway app each time (BE-0045 motivation #4,
-now realised by removing the alternatives).
+The showcase README and `SPEC.md` already describe the showcase as superseding `sample`. Meanwhile
+[DESIGN §1.1](../../DESIGN.md) still names `demos/features/app` (`com.bajutsu.sample`) as "the first
+dogfood target". Pointing that sentence at the showcase makes it true again.
 
-**4. It respects every prime directive** ([CLAUDE.md](../../CLAUDE.md)). The change is purely
-test *subjects* + config + scenarios + CI wiring + docs: it adds **no** LLM call to any gate, and
-keeps the tool / drivers / runner unchanged — the showcase is onboarded entirely through
-`targets.<name>` entries, exactly as [DESIGN §7.1](../../DESIGN.md) prescribes.
+**3. One fixture is one contract to practise against.** Per-app differences live entirely in
+config ([DESIGN §8](../../DESIGN.md)). A single suite gives every future capability one ready,
+representative subject instead of a throwaway app each time. Those capabilities include
+visual-regression baselines, data-driven runs, the crawl screen-map, and `doctor`'s whole-app
+coverage. BE-0045 motivation #4 asked for this, and removing the alternatives realises it.
+
+**4. The change respects every prime directive** ([CLAUDE.md](../../CLAUDE.md)). It touches only
+test *subjects*, config, scenarios, CI wiring, and docs. It adds **no** LLM call to any gate and
+leaves the tool, drivers, and runner unchanged. Entries under `targets.<name>` onboard the showcase
+entirely, as [DESIGN §7.1](../../DESIGN.md) prescribes.
 
 ## Detailed design
 
@@ -81,14 +87,20 @@ platform / subject and are **not** touched.
 ### A. What the showcase already covers (the honest baseline)
 
 The showcase is already close, so the work is *filling specific gaps*, not rebuilding. Per
-[`SPEC.md` §5](../../demos/showcase/SPEC.md) it exposes today: five tabs with push navigation;
-all four modal styles (detented sheet, full-screen cover, action sheet, transient toast); text
-entry (`log.note`, `search.field`), a stepper (`log.count`) and toggles (`log.intense`,
-`horse.favorite` with a mirrored `selected` state); async loading (the Stable catalog); a
-scroll-to-element long list (Notices); live + mockable networking through the **same** BajutsuKit
-integration as `sample`, including a deliberate secret header/body for redaction; and the OS-alert
-screen (Permissions). Its `scenarios/` already drive tabs, navigation, modals, search, the network
-mock, notices, permission, and a smoke path.
+[`SPEC.md` §5](../../demos/showcase/SPEC.md), the showcase exposes today:
+
+- five tabs with push navigation
+- all four modal styles (detented sheet, full-screen cover, action sheet, transient toast)
+- text entry (`log.note`, `search.field`), a stepper (`log.count`), and toggles (`log.intense`,
+  `horse.favorite` with a mirrored `selected` state)
+- async loading (the Stable catalog)
+- a scroll-to-element long list (Notices)
+- live and mockable networking through the **same** BajutsuKit integration as `sample`, including a
+  deliberate secret header and body for redaction
+- the OS-alert screen (Permissions)
+
+The showcase `scenarios/` already drive tabs, navigation, modals, search, the network mock,
+notices, permission, and a smoke path.
 
 ### B. What gets implemented (the gaps to close before any deletion)
 
@@ -121,12 +133,12 @@ mock, notices, permission, and a smoke path.
    regression, system-alert handling — onto the showcase, and make sure the showcase `scenarios/` +
    `capturePolicy` actually fire each one (adding the `evidence` / `network` / `relaunch` /
    `controls` / `gestures` / `system` / `text` / `async` scenario equivalents where the surface now
-   exists; `sample`-only screens such as `settings`/`reindex` are re-expressed over a showcase flow,
-   e.g. `stable.refresh` or `log.submit`).
+   exists). Screens that exist only in `sample`, such as `settings` and `reindex`, are re-expressed
+   over a showcase flow, for example `stable.refresh` or `log.submit`.
 5. **A focused first-look slice.** `demo` / `sample2` are deliberately minimal
    (onboarding → login → counter) so `tour` and `record` read cleanly at a glance. The showcase has
-   no login/counter, so that minimal *narrative* is preserved as a **focused scenario / goal** over
-   an existing showcase flow (e.g. open a horse and toggle `horse.favorite`, or step `log.count` and
+   no login or counter, so the minimal *narrative* is preserved as a **focused scenario or goal**
+   over an existing showcase flow (e.g. open a horse and toggle `horse.favorite`, or step `log.count` and
    assert the mirrored value — a clean "modify it and watch the assertion break" target) — the same
    run → modify → triage and record → self-heal lifecycle, on a slice of the one app rather than a
    second binary. (`record` already targets the showcase via `make -C demos/showcase record` +
@@ -180,8 +192,8 @@ Only after B/C land and the on-device path is green on the showcase:
 
 ### E. Phasing (one item, phased PRs)
 
-To keep each PR reviewable and CI green throughout — the migration crosses `.github/` and the
-on-device path the local gate cannot run:
+The migration crosses `.github/` and the on-device path that the local gate cannot run. Three
+phases keep each PR reviewable and CI green throughout:
 
 1. **Parity.** Implement B on the showcase (UITests/codegen target, visual regression, the missing
    interaction targets, the evidence tour) and add showcase CI jobs *alongside* the existing

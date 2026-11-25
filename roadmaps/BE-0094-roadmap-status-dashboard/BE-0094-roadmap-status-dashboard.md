@@ -15,60 +15,62 @@
 
 ## Introduction
 
-A roadmap dashboard page, published to GitHub Pages alongside the existing API reference, that
-renders every BE item as cards grouped by lifecycle bucket (Implemented / In progress / Proposals /
-Deferred) and by Topic. The page is generated from each item's own metadata on every docs build, so
-it always reflects the committed roadmap and can never go stale.
+This item adds a roadmap dashboard page, published to GitHub Pages alongside the existing API
+reference. The page renders every BE item as a card grouped by lifecycle bucket (Implemented / In
+progress / Proposals / Deferred) and by Topic. Every docs build generates the page from each item's
+own metadata, so the page always reflects the committed roadmap and can never go stale.
 
 ## Motivation
 
-The roadmap already has a single source of truth — the metadata block in each
-`roadmaps/<category>/BE-NNNN-<slug>/` item — and a generated text index
+The roadmap already has a single source of truth: the metadata block in each
+`roadmaps/<category>/BE-NNNN-<slug>/` item. It also has a generated text index
 ([BE-0043](../BE-0043-conflict-resistant-file-flow/BE-0043-conflict-resistant-file-flow.md) regenerates
-the `roadmaps/README.md` tables from it. That index is exhaustive but dense: a flat set of tables you
-read top to bottom. Two questions it answers slowly are the ones contributors ask most — *what is in
-flight right now?* and *how is work distributed across topics?* Answering them today means scanning
-several tables and counting by hand.
+the `roadmaps/README.md` tables from that metadata). The index is exhaustive but dense: a flat set of
+tables read top to bottom. It answers two questions slowly, and contributors ask them most: *what is
+in flight right now?* and *how is work distributed across topics?* Answering either today means
+scanning several tables and counting by hand.
 
 A dashboard answers both at a glance: counts per bucket up top, then cards grouped by lifecycle and
-topic, each linking to its full proposal. It is the visual front end to the same data the index
-already governs — no new source of truth, just a second rendering of the existing one, tuned for
-"see the shape of the roadmap" rather than "look up one row."
+topic, each linking to its full proposal. The dashboard is the visual front end to the data the
+index already governs. It adds no new source of truth, only a second rendering of the existing one,
+tuned for "see the shape of the roadmap" rather than "look up one row."
 
-The constraint that makes this safe is the same one the index lives under: **the page is derived,
-never authored.** A hand-maintained status board drifts the moment an item ships and nobody updates
+The constraint that makes the dashboard safe is the one the index lives under: **the page is
+derived, never authored.** A hand-maintained status board drifts the moment an item ships and nobody updates
 the board. Deriving the page from the item metadata on every build removes that failure mode
-entirely — the only way to change the dashboard is to change an item's metadata, which is exactly
+entirely. The only way to change the dashboard is to change an item's metadata, which is exactly
 where the change belongs.
 
 ## Detailed design
 
 **Source of truth.** The generator reuses the index generator's loader
 (`scripts/build_roadmap_index.py`'s `load_items` / `BUCKETS` / `TOPICS`), so the dashboard and the
-index parse the roadmap identically and can never disagree about an item's bucket or topic. An item's
-lifecycle bucket is derived from its `Status`
+index parse the roadmap identically and can never disagree about an item's bucket or topic. The
+lifecycle bucket of an item is derived from its `Status`
 ([BE-0078](../BE-0078-roadmap-status-folders/BE-0078-roadmap-status-folders.md)),
 never a hand-set field.
 
 **Build artifact, never committed.** `scripts/build_roadmap_dashboard.py` writes
-`docs/api/roadmap.md` — a self-contained HTML page (inline styles, all data inlined) — which is
-gitignored, exactly like the generated API reference `site/`. This is the load-bearing choice:
+`docs/api/roadmap.md`, a self-contained HTML page (inline styles, all data inlined). The page is
+gitignored, exactly like the generated API reference `site/`. This is the load-bearing choice, for
+two reasons:
 
-- It **cannot drift.** `make docs` / `make docs-serve` regenerate it first, and the `docs` workflow
-  regenerates it before publishing, so the published page always matches the committed roadmap.
-- It is **decoupled from BE-id allocation.** Placeholder items carry the literal `BE-0094` id until
+- The page **cannot drift.** `make docs` / `make docs-serve` regenerate the page first, and the
+  `docs` workflow regenerates it before publishing, so the published page always matches the
+  committed roadmap.
+- The page is **decoupled from BE-id allocation.** Placeholder items carry the literal `BE-0094` id until
   CI assigns the real number on a PR ([BE-0061](../BE-0061-be-id-allocation-hardening/BE-0061-be-id-allocation-hardening.md)).
   The directory regex (`^BE-\d{4}-`) skips `BE-0094`, so the placeholder is excluded from the
-  dashboard just as it is from the index — and because the page is never committed, nothing has to be
+  dashboard just as it is from the index. Because the page is never committed, nothing has to be
   re-rendered when allocation later rewrites `BE-0094` to `BE-NNNN`.
 
 **Rendering.** Cards are grouped category-major (by Topic, in the index's topic order). Each card
 carries its own status as a colour and a badge (Implemented / In progress / Proposal / Deferred) and
 an `Origin` note where the metadata carries one, and links to the item's English file on GitHub. Each
-category heading shows a progress figure and a stacked bar of its status composition (see below). A
-category whose items are *all* Implemented is moved to a separate **Completed** group below the rest,
-so the main view is the work still in flight. The page is added to the MkDocs `nav`, so it sits in
-the existing Pages site rather than standing up new hosting.
+category heading shows a progress figure and a stacked bar of the category's status composition (see
+below). A category whose items are *all* Implemented moves to a separate **Completed** group below the
+rest, so the main view shows the work still in flight. The page is added to the MkDocs `nav`, so the
+page sits in the existing Pages site rather than standing up new hosting.
 
 **Per-category progress.** Each category shows the share of its items that are Implemented — the
 count of `Implemented` items over the category's total — as a percentage, beside a stacked bar whose
@@ -77,15 +79,15 @@ and it is derived **purely from the `Status` field** the roadmap already governs
 of truth: it is a fact about the item set, not an estimate. The breakdown (`N/M implemented`) is shown
 next to the percentage so the number is transparent.
 
-**Interactivity (progressive enhancement).** A single tiny inline script — the only JavaScript on the
-page — adds the interaction. On load it collapses every category to a compact overview (just the
+**Interactivity (progressive enhancement).** A single tiny inline script, the only JavaScript on the
+page, adds the interaction. On load it collapses every category to a compact overview (just the
 heading and its progress bar), so the landing view is the shape of the whole roadmap at a glance.
 From there: clicking a heading expands that category's cards; the summary counts double as **status
 checkboxes**, each an independent on/off control (all checked by default). Unchecking one removes that
 status's cards everywhere and hides any category or group left empty; re-checking every status
-returns to the collapsed overview. The collapsed state is applied *by the script*, never baked into
-the markup — so with scripting off every status is on, every category stays open, every card is
-visible, and the page is fully readable without it. Nothing fetches or computes; it only shows and
+returns to the collapsed overview. The script applies the collapsed state; the markup never bakes it
+in. With scripting off, therefore, every status is on, every category stays open, every card is
+visible, and the page is fully readable. The script fetches and computes nothing; it only shows and
 hides already-rendered markup.
 
 **Honesty of the data.** Only facts the metadata carries are shown — status, Topic, Origin, title,
@@ -102,9 +104,9 @@ metadata.
 
 ### Enabling Pages
 
-The `docs` workflow already builds the site on every `main` push and deploys on a manual run; GitHub
-Pages must be enabled once (Settings → Pages → source "GitHub Actions") for the dashboard — and the
-API reference — to be served. That one-time repository setting is outside this change.
+The `docs` workflow already builds the site on every `main` push and deploys on a manual run. GitHub
+Pages must be enabled once (Settings → Pages → source "GitHub Actions") for the dashboard and the
+API reference to be served. That one-time repository setting is outside this change.
 
 ## Alternatives considered
 

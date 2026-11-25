@@ -56,13 +56,13 @@ Sentinel）そのものが運用チェックリストから消えます。
 
 ## 詳細設計
 
-ローカルとサーバのホスティングを分岐させる 4 つの差し替え可能なシームは、すでにあります
-（`RunExecutor`、`LogBus`、`SessionStore`、そして system of record の `Repository`）。本設計は、
+ローカルとサーバのホスティングを分岐させる差し替え可能なシームが、すでに 4 つあります。
+`RunExecutor`、`LogBus`、`SessionStore`、そして system of record の `Repository` です。本設計は、
 **Redis に手を伸ばしている 3 つのサーバ側シーム実装を**、Postgres と HTTP を土台にしたものへ
 **置き換えます**。**ローカル実装はそのまま**にします。ノート PC の `bajutsu serve` が使うのは
 `LocalExecutor`、`InMemoryLogBus`、`InMemorySessionStore` であり、本変更がこれらの読み込みを
-変えることはありません。すでにデプロイに含まれ、すでに `Repository` シームの土台でもある Postgres が、
-サーババックエンドの必要とする唯一のステートフルな依存になります。
+変えることはありません。Postgres はすでにデプロイに含まれ、`Repository` シームの土台でもあるので、
+サーババックエンドが必要とする唯一のステートフルな依存になります。
 
 ### 1. ジョブ分配：HTTP で lease する Postgres の jobs テーブル
 
@@ -153,8 +153,7 @@ Postgres も Mac も要らない機械チェック可能なユニットテスト
 2. **ジョブ分配＋結果収集＋完了後ログ。** 結合した中核です。`jobs` テーブルとマイグレーション、
    `Repository.enqueue_job`/`lease_job`/`complete_job`、`DbQueueExecutor`、`/api/worker/lease` と
    `/api/worker/result` エンドポイント、`bajutsu worker` の HTTP ループ、worker の `console.log`
-   アップロード、`PostCompletionLogBus`。worker と制御プレーンの経路から Redis を完全に外せるように
-   するスライスです。
+   アップロード、`PostCompletionLogBus`。このスライスで、worker と制御プレーンの経路から Redis を完全に外せます。
 3. **デプロイとドキュメントの片付け。** `deploy/self-host` と `worker` extra から `redis` を落とし、
    サーババックエンドに `BAJUTSU_DATABASE_URL` を必須化し、`docs/self-hosting.md`（＋ `docs/ja/`）を
    更新し、BE-0015/BE-0016 の Redis 節（「見直し中」の注記を外して）を Redis なしのアーキテクチャへ
