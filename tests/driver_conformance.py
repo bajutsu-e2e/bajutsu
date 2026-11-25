@@ -729,10 +729,11 @@ class DriverConformanceContract:
         driver.type_text("wxyz")
         # Wait for the whole text: a read that caught only part of it would set a bar the deletion
         # cannot get under.
-        _field_becomes(driver, lambda value: len(value) >= before + len("wxyz"))
+        grew = _field_becomes(driver, lambda value: len(value) >= before + len("wxyz"))
         typed = len(field_value(driver))
         if typed <= before:
             pytest.skip("backend does not surface the field value; delete effect not observable")
+        assert grew, f"the typing never published in full: the field is at {field_value(driver)!r}"
         driver.delete_text(2)
         assert _field_becomes(driver, lambda value: len(value) < typed), (
             f"the deletion left the field at {field_value(driver)!r}, not shorter than {typed}"

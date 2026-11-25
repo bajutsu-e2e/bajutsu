@@ -1094,6 +1094,39 @@ def test_copy_waits_for_the_selection_to_publish(monkeypatch: pytest.MonkeyPatch
     assert events[select + 1 : copy] == ["read", "read", "read"]
 
 
+def test_copy_still_waits_when_the_focusing_tap_left_a_marked_barrier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The coordinate tap arms its own marked barrier (2000). It must not disarm the chord's (4000).
+    clock = _Clock()
+    monkeypatch.setattr(adb_driver_impl, "time", clock)
+    events: list[str] = []
+    newest = 1000.0
+    base_run = _root_touch_run([])
+
+    def run(args: list[str]) -> str:
+        nonlocal newest
+        if "keycombination" in args:
+            events.append(args[-1])
+        elif "tap" in args:
+            events.append("tap")
+            newest = 3000.0  # the tap publishes; the chord does not until its second read
+        return base_run(args)
+
+    def fetch(_since: float | None) -> HierarchyRead:
+        after_chord = events.count("stale read")
+        if "29" not in events:
+            return HierarchyRead(FIXTURE, newest)
+        events.append("fresh read" if after_chord else "stale read")
+        return HierarchyRead(FIXTURE, 5000.0 if after_chord else 3000.0)
+
+    marks = iter([2000.0, 4000.0])
+    driver = AdbDriver("U", run=run, fetch_hierarchy=fetch, fetch_clock=lambda: next(marks))
+    driver.select_all({"id": "stable_refresh"})
+    driver.copy_selection({"id": "stable_refresh"})
+    assert events == ["tap", "29", "stale read", "fresh read", "31"]
+
+
 def test_copy_spends_no_barrier_without_a_device_mark(monkeypatch: pytest.MonkeyPatch) -> None:
     # A selection moves no frame, so with no mark nothing but the budget could close the barrier.
     events = _select_then_copy(monkeypatch, mark=None)

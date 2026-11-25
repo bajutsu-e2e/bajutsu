@@ -60,7 +60,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `textSelection` | ✅ | ✅ | Android 12 以降が必要です。振る舞いの差の表を参照してください。 |
 | `webView` | per-run | per-run | iOS では、アプリが BajutsuKit の WebView ブリッジを組み込んでいるときに付与されます。Android では、デバッグ可能なビルドが `Bajutsu.enableWebViewDebugging` を呼んでいるときに付与されます。run はそのページに Chrome DevTools Protocol で到達します（[BE-0482](../../roadmaps/BE-0482-android-webview-cdp/BE-0482-android-webview-cdp-ja.md)）。振る舞いの表も参照してください。 |
 | `selectOption` | n/a | n/a | web ページの `<select>` 要素を設定する能力で、web バックエンドだけが持ちます。 |
-| `urlNavigation` | n/a | n/a | シナリオの途中でブラウザに web アドレスを開かせる能力です。モバイルの2つのバックエンドは、代わりに `openUrl` でシナリオの任意の時点に Uniform Resource Locator (URL) を OS へ渡します。 |
+| `urlNavigation` | n/a | n/a | シナリオの途中でブラウザに web アドレスを開かせる能力です。モバイルの2つのバックエンドは、代わりに `openUrl` でシナリオの任意の時点に Uniform Resource Locator（URL） を OS へ渡します。 |
 | `openUrl` | ✅ | ✅ | その時点でシナリオが操作しているアプリに向けて、URL を OS へ渡す能力です（[BE-0487](../../roadmaps/BE-0487-mobile-open-url-step/BE-0487-mobile-open-url-step-ja.md)）。iOS は 16.4 以降が必要です。web バックエンドは代わりに `navigate` でページを開きます。 |
 | `elementAttribute` | n/a | n/a | web ページの要素の属性を読む能力で、web バックエンドだけが持ちます。 |
 | `handleSystemAlert` | ✅ | n/a | Android のシステムダイアログは取得した要素ツリーに現れるので、通常の `tap` で操作できます。 |
@@ -101,7 +101,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | `erase` | ✅ | ✅ | Android にはデバイス全体を初期化する手段がありません。`erase` はアプリをアンインストールし、`pm clear` でデータを消します。 |
 | `install` | ✅ | ✅ | |
 | `seedPhotos` | ✅ | ✅ | Android では、共有ストレージにある Bajutsu 専用のディレクトリを空にしてから画像を置き、再スキャンします（[BE-0479](../../roadmaps/BE-0479-android-seed-photos/BE-0479-android-seed-photos-ja.md)）。 |
-| `locale` | ✅ | ✅ | Android は `runsOn.android.locale` をアプリごとの言語設定として適用します。Android 13（Application Programming Interface (API) レベル 33）以降が対象です（BE-0478）。システムダイアログはエミュレーターの言語のままです。 |
+| `locale` | ✅ | ✅ | Android は `runsOn.android.locale` をアプリごとの言語設定として適用します。Android 13、すなわち Application Programming Interface（API）レベル 33 以降が対象です（BE-0478）。システムダイアログはエミュレーターの言語のままです。 |
 | `launchEnv` | ✅ | ✅ | Android では、変数を intent の extra としてアプリに渡します。 |
 | `launchArgs` | ✅ | n/a | `am start` は起動引数を受け取りません。アプリへ値を渡すには `launchEnv` を使います。 |
 | `deeplink` | ✅ | ✅ | |
@@ -114,7 +114,7 @@ iOS の実機では、`simctl` が提供する能力がなくなります。こ�
 | 振る舞い | iOS | Android | 現時点での影響 |
 |---|---|---|---|
 | 入力欄の文字 | 要素の `value` に文字が入ります。 | `value` にも文字が入ります（#2388）。ただし差が 2 つ残ります。`uiautomator dump` によるフォールバックのダンプには `hint` 属性がないので、空の入力欄のヒントを値として読みます。また、どのダンプにも `isShowingHintText` がないので、ヒントと同じ文字は値なしとして読みます。 | フォールバックの経路では、空の入力欄に対する `value` アサーションがヒントを読みます。ヒントと同じ文字が入った入力欄では、`clear` ステップが何もしません。詳しくは [drivers](drivers.md) を参照してください。 |
-| `select` と `copy` | XCUITest は、フィールドに出した編集メニューの「Select All」項目をタップします。`copy` は、その項目に代わって現れる「Copy」項目をタップします。`paste` と同じく、ドライバーは UIKit のラベルをどの言語でも受け付けます。 | adb は `input keycombination` で Ctrl+A と Ctrl+C を送ります。Android 12 以降が必要です。Compose のフィールドは、選択が反映される前に届いたコピーを捨てます。そのため、常駐 UI Automator サーバーが動いているとき、`copy` は Ctrl+A の後のアクセシビリティイベントを待ってから Ctrl+C を送ります。 | iOS では Cmd+A と Cmd+C を使いません。iOS Simulator では、アプリ以外のプロセスが pasteboard に書き込むと（`setClipboard` で入れた場合など）、SpringBoard が再起動するまで両方とも効かなくなるためです（[BE-0493](../../roadmaps/BE-0493-ios-edit-menu-text-selection/BE-0493-ios-edit-menu-text-selection-ja.md)）。Android の end-to-end（E2E）レーンが、Compose と Views の両方でこの2つを実行します。コピーした文字列はクリップボードから読み戻して確かめます。 |
+| `select` と `copy` | XCUITest は、フィールドに出した編集メニューの「Select All」項目をタップします。`copy` は、その項目に代わって現れる「Copy」項目をタップします。`paste` と同じく、ドライバーは UIKit のラベルをどの言語でも受け付けます。 | adb は `input keycombination` で Ctrl+A と Ctrl+C を送ります。Android 12 以降が必要です。Compose のフィールドは、選択が反映される前に届いたコピーを捨てます。そのため、常駐 UI Automator サーバーから端末の時計を読めるとき、`copy` は Ctrl+A の後のアクセシビリティイベントを待ってから Ctrl+C を送ります。 | iOS では Cmd+A と Cmd+C を使いません。iOS Simulator では、アプリ以外のプロセスが pasteboard に書き込むと（`setClipboard` で入れた場合など）、SpringBoard が再起動するまで両方とも効かなくなるためです（[BE-0493](../../roadmaps/BE-0493-ios-edit-menu-text-selection/BE-0493-ios-edit-menu-text-selection-ja.md)）。Android の end-to-end（E2E）レーンが、Compose と Views の両方でこの2つを実行します。コピーした文字列はクリップボードから読み戻して確かめます。 |
 | `paste` | XCUITest は、フィールドの長押しで出る編集メニューの「Paste」項目をタップします。メニューはアプリのローカライズに従うので、ドライバーは UIKit の Paste ラベルをどの言語でも受け付けます。 | adb は `input keycombination` で Ctrl+V を送ります。Android 12 以降が必要です。 | iOS では Cmd+V を使いません。`setClipboard` で入れた内容のように、別のプロセスが書いたクリップボードを Cmd+V では貼り付けられないためです。Simulator のビルドによっては編集メニューからの貼り付けで同意ダイアログが出るので、`paste` のシステムアラートの指定で応答します。iOS のレーンは `paste.yaml` を `text_editing.yaml` より前に実行します。`paste.yaml` の `setClipboard` のあとでも `select` と `copy` が動くことを、これで確かめます。 |
 | `setLocation` | シミュレータ上で `simctl` が設定します。 | ローカルのエミュレータではコンソールが設定します。それ以外では、adb が mock location の app-op を許可したあと、アプリ内のレシーバが `gps` と `network` の provider を mock します（[BE-0481](../../roadmaps/BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md)）。 | iOS はまだ実機で位置を設定できず、[BE-0475](../../roadmaps/BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) が扱います。Android の実機では、BajutsuAndroid を組み込んでいないアプリはこのステップで失敗します。 |
 | `web:` ブロック | ブリッジが `within` の最初の id で `WKWebView` を探します。タップはスクリプトによるクリックです。 | `within` が解決したフレームを矩形に含むページを、run が選びます。タップは信頼されたタッチで、ページにクリックが届いた時点で終わります。 | 同じ `web:` ブロックが両方で動きます。Android では、重なり合う 2 つの WebView はあいまいとしてステップを失敗させます。リリースビルドはデバッグ用ソケットを開きません。[シナリオ](scenarios.md#webwebview-の-dom-コンテキストに入る)を参照してください。 |
