@@ -44,7 +44,8 @@ fails**.
 
 The cause is transport fragility, not a determinism defect in the scenario or the code under test.
 A single dropped or slow channel response should not sink a run, just as a single dropped TCP
-segment does not. Today it does, because `_http_transport` gives each call exactly one attempt. The
+segment does not sink a connection. Today such a response does sink the run, because
+`_http_transport` gives each call exactly one attempt. The
 cost is a flaky gate: contributors re-run jobs by hand, and a red E2E check carries no signal about
 whether anything is actually wrong.
 

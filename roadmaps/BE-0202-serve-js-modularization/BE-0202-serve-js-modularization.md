@@ -44,7 +44,7 @@ call site.
 
 1. Split `serve.js` into section files (2–4: e.g. core helpers + shared state, panel handlers,
    the crawl graph), each rendered as its own asset by the existing template mechanism in
-   `serve/handler.py`. There is no bundler and there are no imports. Global-scope semantics
+   `serve/handler.py`. The split adds no bundler and no imports. Global-scope semantics
    stay as today, and the template fixes the load order.
 2. Add a `startJob(…)` helper and migrate the run / record / crawl start handlers onto it.
 3. Extend `eslint.config.mjs`'s `files` list to the new file set (same rules).

@@ -81,8 +81,8 @@ extra" error that `object_store_from_uri` already raises for evidence storage.
 ### 3. No changes needed downstream of the factory
 
 The consumers already depend on the `ObjectStore` protocol, not on `S3ObjectStore`.
-`ObjectStorageArtifactStore`, `ObjectScenarioStorage`, and `ObjectBaselineStore` call
-merely `exists` / `get_bytes` / `put_bytes` / `presigned_url` / `list_keys`, all of which are
+`ObjectStorageArtifactStore`, `ObjectScenarioStorage`, and `ObjectBaselineStore` call nothing
+beyond `exists` / `get_bytes` / `put_bytes` / `presigned_url` / `list_keys`, all of which are
 backend-agnostic. The key-prefix helpers (`artifact_prefix`, `scenario_prefix`, `baseline_prefix`,
 `org_prefix`) are pure string functions with no storage dependency at all. Swapping the factory in
 `object_store_from_env()` is the entire functional change, and nothing else needs to know which

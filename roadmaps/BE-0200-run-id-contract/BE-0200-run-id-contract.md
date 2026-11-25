@@ -25,7 +25,7 @@ at the helper.
 
 ## Motivation
 
-The timestamp format is a cross-surface contract with several independent consumers.
+The timestamp format is a cross-surface contract with several independent consumers:
 
 - `serve/jobs.py:47` regex-parses run ids back out of CLI output (a safe-segment pattern, not a
   timestamp-shape one);
