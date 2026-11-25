@@ -57,27 +57,27 @@ worker の environment を `local` と直接比べる既存の検査が 2 つあ
 
 | 層 | 変更 |
 |---|---|
-| `bajutsu/common/runner/device_provider/` | 新規の `_leased_provider.py`。`_ensure_builtins` で `leased` として登録する |
-| 同じパッケージ | プラットフォーム付きの `--udid` 一覧を分けるヘルパーを新設する。`_LeasedProvider` と `_reject_unshareable_groups` が呼ぶ |
-| `DeviceLease`（`device_lease.py`） | 新しい `env` フィールド。run の端末ツールに見せる環境変数の対応表 |
-| `bajutsu/common/config/schema/device_provider.py` | `DeviceProvider` に、リースコマンドと取得タイムアウトのフィールドを足す |
-| `bajutsu/common/capability/worker_capability.py` | `lease` ブロックと `platforms` の一覧を持つ新しい environment `leased` |
-| 同じファイル | `device_provider_for` は、`platforms` に挙げたプラットフォームには、それらのフィールドを持つ `leased` provider を返す。ほかのプラットフォーム（web を含む）には None（local）を返す |
-| 同じファイル | `is_local` が `leased` でも真になり、local worker と同じ 1 job の上限が掛かる |
-| `bajutsu/serve/cli/worker.py` | capability の token、route の token、`--machine-id` が `leased` を `local` と同じに扱う |
-| `bajutsu/serve/cli/worker.py`（`_register_environment_or_exit`） | `leased` は `local` と同じく、batch provider を登録しない |
-| `bajutsu/serve/server/one_shot.py`（`environment_refusal`） | `leased` は `local` と同じく、通常の run spec を受け、batch を拒否する |
-| `bajutsu/serve/cli/worker.py` | `_device_reader` は `leased` を飛ばす。実機はブローカーのものだからである |
-| 同じファイル | claim の後に job の端末を借り、子プロセスを動かし、`finally` で返す |
-| `bajutsu/serve/server/worker_job.py` | `leased` worker では、spec が持ち込んだ `--udid` を取り除き、spec の `udids` を起動しない |
-| `bajutsu/serve/cli/worker.py` と `bajutsu/run/cli.py` が共に import する新規モジュール | `_pool_demand` をここへ移す。worker と run が 1 つの関数で端末を数える |
-| `bajutsu/run/cli.py`（`_acquire_targets`） | target の端末を解決する前に、各リースの `env` をプロセスの環境変数に適用する |
-| `bajutsu/run/cli.py`（`_reject_unshareable_groups`） | プラットフォーム付きの `--udid` から、target のプラットフォームのエントリーを読む |
-| `bajutsu/cli/_shared.py`（`_device_udid_or_exit`）と `bajutsu/mcp/tools.py`（`_probe_device`） | `env` を適用し、コマンドが終わるとき、またはツールの呼び出しが返るときにリースを返す |
-| serve の route とデータベース | 新規の `POST /api/worker/decline`。job ごとに、辞退の回数、最初の辞退時刻、最後の理由、`not_before` の時刻を保存する |
-| `bajutsu/serve/server/db/sql_repository.py`（`_lease_candidates`） | リースの走査は、`not_before` を過ぎるまで、queue の job を飛ばす |
-| server の設定 | 新規の `BAJUTSU_DECLINE_WINDOW_SECONDS`。デフォルトは 1 時間 |
-| `bajutsu/serve/jobs.py`（`_run_job`） | pipe 経由の経路で起動する `run` job に、`_run_inherited` が one-shot の呼び出し元に渡すのと同じ親 pipe を渡す |
+| `bajutsu/common/runner/device_provider/` | 新規の `_leased_provider.py` を追加し、`_ensure_builtins` で `leased` として登録します |
+| 同じパッケージ | プラットフォーム付きの `--udid` 一覧を分けるヘルパーを新設します。`_LeasedProvider` と `_reject_unshareable_groups` が呼びます |
+| `DeviceLease`（`device_lease.py`） | 新しい `env` フィールドを足します。run の端末ツールに見せる環境変数の対応表です |
+| `bajutsu/common/config/schema/device_provider.py` | `DeviceProvider` に、リースコマンド、取得タイムアウト、返却タイムアウトのフィールドを足します |
+| `bajutsu/common/capability/worker_capability.py` | `lease` ブロックと `platforms` の一覧を持つ新しい environment `leased` を足します |
+| 同じファイル | `device_provider_for` は、`platforms` に挙げたプラットフォームには、それらのフィールドを持つ `leased` provider を返します。ほかのプラットフォーム（web を含む）には None（local）を返します |
+| 同じファイル | `is_local` が `leased` でも真になり、local worker と同じ 1 job の上限が掛かります |
+| `bajutsu/serve/cli/worker.py` | capability の token、route の token、`--machine-id` が `leased` を `local` と同じに扱います |
+| `bajutsu/serve/cli/worker.py`（`_register_environment_or_exit`） | `leased` は `local` と同じく、batch provider を登録しません |
+| `bajutsu/serve/server/one_shot.py`（`environment_refusal`） | `leased` は `local` と同じく、通常の run spec を受け、batch を拒否します |
+| `bajutsu/serve/cli/worker.py` | `_device_reader` は `leased` を飛ばします。実機はブローカーのものだからです |
+| `bajutsu/serve/cli/worker.py`（`_run_with_heartbeat`） | `claim_check` が通り、bundle の取得が終わった後に、Heartbeat を送る run のスレッドで job の端末を借ります。`lost` が立っていれば run を始めずに戻ります。借りる時間の合計には、job リースのタイムアウトより短い予算で上限を掛けます。端末は `finally` で返します |
+| `bajutsu/serve/server/worker_job.py` | `leased` worker では、spec が持ち込んだ `--udid` を取り除き、spec の `udids` を起動しません |
+| `bajutsu/serve/cli/worker.py` と `bajutsu/run/cli.py` が共に import する新規モジュール | `_pool_demand` をここへ移します。worker と run が 1 つの関数で端末を数えます |
+| `bajutsu/run/cli.py`（`_acquire_targets`） | target の端末を解決する前に、各リースの `env` をプロセスの環境変数に適用します |
+| `bajutsu/run/cli.py`（`_reject_unshareable_groups`） | プラットフォーム付きの `--udid` から、target のプラットフォームのエントリーを読みます |
+| `bajutsu/cli/_shared.py`（`_device_udid_or_exit`）と `bajutsu/mcp/tools.py`（`_probe_device`） | `env` を適用し、コマンドが終わるとき、またはツールの呼び出しが返るときにリースを返します |
+| serve の route とデータベース | 新規の `POST /api/worker/decline` を足します。job ごとに、辞退の回数、最初の辞退時刻、最後の理由、`not_before` の時刻、辞退した worker の environment を保存します。リースのリクエストは worker の environment を名指しします |
+| `bajutsu/serve/server/db/sql_repository.py`（`_lease_candidates`） | リースの走査は、`not_before` を過ぎるまで、辞退した environment の worker に対してだけ、queue の job を飛ばします |
+| server の設定 | 新規の `BAJUTSU_DECLINE_WINDOW_SECONDS` を足します。デフォルトは 1 時間です |
+| `bajutsu/serve/jobs.py`（`_run_job`） | pipe 経由の経路で起動する `run` job に、`_run_inherited` が one-shot の呼び出し元に渡すのと同じ親 pipe を渡します |
 
 ### operator が宣言するもの
 
@@ -89,11 +89,12 @@ platforms: [ios, android]
 lease:
   command: ["broker-cli", "lease", "--platform", "{platform}", "--device", "{device}"]
   acquireTimeout: 60s
+  releaseTimeout: 10s
 ```
 
-`command` はシェル文字列ではなく引数のリストです。値がシェルを通ることはありません。worker は `{platform}` を、借りる端末のプラットフォーム（`ios`、`android`）に置き換えます。`{device}` は、job の `runsOn` が名指しする端末モデルに置き換えます。job が端末を名指ししないときは、`{device}` の要素と、その直前の要素を取り除きます。
+`command` はシェル文字列ではなく引数のリストです。値がシェルを通ることはありません。worker は `{platform}` を、借りる端末のプラットフォーム（`ios`、`android`）に置き換えます。`{device}` は、job の `runsOn` が名指しする端末モデルに置き換えます。worker は、`-` で始まるモデルを、argv を組む前に拒否します。`runsOn.ios.model` と `runsOn.android.avd` は自由な文字列で、job と共に届きます。フラグの形をした値は、端末名ではなくオプションとして operator のコマンドに届いてしまいます。job が端末を名指ししないときは、`{device}` の要素と、その直前の要素を取り除きます。
 
-`acquireTimeout` は、応答を待つ長さの上限です。`platforms` は、ブローカーが扱うプラットフォームの一覧です。スキーマが `platforms` に受け付けるのは `ios` と `android` だけです。
+`acquireTimeout` は、応答を待つ長さの上限です。`releaseTimeout` は、終了シグナルの後にコマンドの終了を待つ長さの上限です。`platforms` は、ブローカーが扱うプラットフォームの一覧です。スキーマが `platforms` に受け付けるのは `ios` と `android` だけです。
 
 空の `command` や未知のプレースホルダーは、`worker.yaml` を読み込む時点でスキーマが拒否します。`{device}` をより長い要素の中に置くことも拒否します。`{device}` を最初の要素にすることも、別のプレースホルダーの後に置くことも拒否します。`{device}` は、フラグの直後に来る要素全体でなければなりません。
 
@@ -103,9 +104,9 @@ lease:
 
 リポジトリは特定のブローカーを名指ししません。契約はリースコマンドの振る舞いであり、この振る舞いをするブローカーなら何でも使えます。
 
-**1 点目。** 端末を借りている間、コマンドは**動き続けます**。プロセスを終えるとリースが終わります。Bajutsu は、プロセスに終了シグナルを送り、終了を待って端末を返します。
+**1 点目。** 端末を借りている間、コマンドは**動き続けます**。プロセスを終えるとリースが終わります。Bajutsu は、プロセスに終了シグナルを送ります。プロセスが終了するまで、最長で `releaseTimeout` だけ待ちます。その後も生きているコマンドは強制的に終えます。1 つの固まったコマンドが、job の `finally` を開いたままにすることはありません。
 
-**2 点目。** `acquireTimeout` 以内に、コマンドは標準出力へ **1 行**だけ出力します。その行にはデータオブジェクトが 1 つあり、ほかには何も出しません。
+**2 点目。** `acquireTimeout` 以内に、コマンドは標準出力へ **1 行**だけ出力します。その行にはデータオブジェクトが 1 つあります。worker はその行を読み、後から標準出力に書かれるものは捨てます。答えの後もログを書くブローカーは、いっぱいになった pipe で止まりません。
 
 ```json
 {"device": {"address": "emulator-5588"}, "environment": {"ANDROID_ADB_SERVER_PORT": "5038"}}
@@ -123,13 +124,17 @@ provider は端末の中身を調べません。読むのは 2 つのフィー�
 
 ### 1 つの job の端末
 
-1 つの job が、複数の端末を必要とすることがあります。`bajutsu run` は target ごとに `acquire_device` を呼びます。`--workers` は複数のレーンを求め、レーンごとに専用の端末が要ります。同じプラットフォームの target は 1 つの端末プールを共有し、シナリオはその target ごとに端末を 1 台持ちます。
+1 つの job が、複数の端末を必要とすることがあります。`bajutsu run` は target ごとに `acquire_device` を呼びます。同じプラットフォームの target は 1 つの端末プールを共有し、シナリオはその target ごとに端末を 1 台持ちます。
 
-worker は、job の target が使うプラットフォームのプールごとに借ります。web の target はブラウザーのコンテキストを操作し、端末を要しないので、worker は web のために借りません。プールの台数は、job の `--workers` の値に、1 つのシナリオが宣言するそのプラットフォームの target の最大数を掛けた数です。
+worker は、job の target が使うプラットフォームのプールごとに借ります。web の target はブラウザーのコンテキストを操作し、端末を要しないので、worker は web のために借りません。
 
-デバイスグループは 1 台と数えます。worker は、run が使う関数 `_pool_demand` で数えます。この関数は、worker と run が共に import するモジュールへ移します。関数が受け取るのは、`_TargetSetup` ではなく、target ごとの actuator です。そのため worker は、端末が 1 台もない時点でも呼べます。run も開始前に同じ需要を計算するので、run がプール不足に出会うことはありません。
+需要は 2 つに分かれます。**必須の需要**は、プールごとに、1 つのシナリオが宣言する target の最大数です。これより少ない端末では、1 つのシナリオも動きません。
 
-借りるたびに、ブローカーへ端末を 1 台求めます。`{platform}` はプールのプラットフォームです。`{device}` は、プールの `runsOn` が名指しするモデルです。iOS では `runsOn.ios.model`、Android では `runsOn.android.avd` を使います。`model` の一覧は run を掛け算し（[BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）、各 run はプールから自分のモデルの端末を取ります。そこで worker は、一覧のモデルごとにプールの台数を借り、モデルを順に当てはめます。`family` の一覧は run のときに family を選び、モデルを名指ししないので、worker は `{device}` の組を取り除きます。
+**追加のレーン**は `--workers` から来ます。`--workers` は複数のレーンを求め、レーンごとに専用の端末が要ります。run は `--workers` を、スループットを上げるための値として扱います。`_resolve_multi_target_workers` は、端末が許すレーン数まで値を切り詰めます。完走できるだけの端末がある run を、拒否することはありません。
+
+デバイスグループは 1 台と数えます。worker は、必須の需要を run が使う関数 `_pool_demand` で数えます。この関数は、worker と run が共に import するモジュールへ移します。関数が受け取るのは、`_TargetSetup` ではなく、target ごとの actuator です。そのため worker は、端末が 1 台もない時点でも呼べます。run も開始前に同じ需要を計算するので、run がプール不足に出会うことはありません。
+
+借りるたびに、ブローカーへ端末を 1 台求めます。worker は、必須の需要を先に借り、追加のレーンを後で借ります。`{platform}` はプールのプラットフォームです。`{device}` は、プールの `runsOn` が名指しするモデルです。iOS では `runsOn.ios.model`、Android では `runsOn.android.avd` を使います。`model` の一覧は run を掛け算し（[BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md)）、各 run はプールから自分のモデルの端末を取ります。そこで worker は、一覧のモデルごとにプールの台数を借り、モデルを順に当てはめます。`family` の一覧は run のときに family を選び、モデルを名指ししないので、worker は `{device}` の組を取り除きます。
 
 worker は、借りたアドレスを 1 つの `--udid` の一覧にして渡します。run はすでに `--udid` をカンマ区切りの一覧として読みます。各エントリーは、プールのプラットフォームを接頭辞（`ios=` または `android=`）として持ちます。
 
@@ -149,7 +154,21 @@ worker は、借りたアドレスを 1 つの `--udid` の一覧にして渡し
 
 すべての端末リースの `environment` は、子プロセス用の 1 つの対応表にまとめます。同じキーに別の値を返す 2 つのリースは、1 つのプロセスの環境変数を共有できません。例は、エミュレーターごとに違う adb サーバーの port です。その場合、worker は持っているリースをすべて返し、キー名を挙げたインフラ起因の理由で job をすぐ失敗させます。辞退はしません。再試行しても同じ衝突になるからです。
 
-借りる処理は all-or-nothing です。どれか 1 つの取得が辞退したら、worker は借りた分を返してから、job を辞退します。job は、必要な端末をすべて持つか、1 台も持ちません。
+必須の需要の借り方は all-or-nothing です。どれか 1 つの取得が辞退したら、worker は借りた分を返してから、job を辞退します。job は、必須の需要をすべて持つか、1 台も持ちません。
+
+追加のレーンは、借りられる範囲で借ります。`--workers` の倍数を上限に、レーンを 1 つずつ借ります。レーンごとの借り方は、プールをまたいで all-or-nothing です。ブローカーが貸さないレーンに当たったら、追加の借り入れを終えます。worker は持っている分を保ちます。足りなくても job は辞退しません。
+
+worker は `--workers` をそのまま渡します。run は、受け取った端末の数までレーンを切り詰めます。端末が少ない local worker と同じです。
+
+借りる処理は、`_run_with_heartbeat` が Heartbeat を送るスレッドで動きます。`claim_check` が通り、bundle の取得が終わってから始めます。それより早く借りると、ダウンロードの間も端末を握ることになります。
+
+Heartbeat が始まる前に借りると、借りている最中に server が job を取り戻します。2 つの worker が同時に run を動かすことになり、bundle の取得がすでに踏んだ不具合と同じです。
+
+worker は、借りる合間に `lost` を確かめます。フラグが立っていたら、持っている端末を返し、取得のときと同じく、run を始めずに戻ります。
+
+借りる時間の合計にも上限を掛けます。端末 3 台の job は、そのままでは `acquireTimeout` の 3 倍を待ちえます。これは job リースのタイムアウト（`DEFAULT_LEASE_TIMEOUT_SECONDS`、デフォルトは 120 秒）を超えます。
+
+worker は、job 全体で 90 秒の借りる予算を持ちます。各取得は、`acquireTimeout` と残りの予算のうち短いほうだけ待ちます。予算が尽きたとき、必須の需要が満たされていなければ job を辞退します。そうでなければ、追加の借り入れを終えます。
 
 ### run が端末を使う流れ
 
@@ -193,9 +212,13 @@ worker は、ブローカーに端末があるかを知る前に、server から
 
 辞退した job は、元の `created_at` を保ちます。リースの走査 `_lease_candidates` は、古い順に job を並べます。何もしなければ、すべての `leased` worker が poll のたびにその job を claim し直します。若い job はすべて、その後ろで待たされます。
 
-そこで、辞退の route は、job の `not_before` へ時刻を書き込みます。リースの走査は、`not_before` を過ぎるまで、queue の job を飛ばします。遅延は 2 秒から始まります。2 秒は、デフォルトの poll 間隔です。辞退が重なるごとに 2 倍へ増え、60 秒で止まります。
+そこで、辞退の route は、job の `not_before` へ時刻を書き込みます。あわせて、リクエストが名指しする、辞退した worker の environment を記録します。
 
-辞退した job が待つ間、若い job は動きます。端末のない worker が、claim と辞退を高速で繰り返すことはありません。ウィンドウいっぱい辞退され続けた job は、約 65 回の claim を費やします。2 秒の固定間隔で再試行すれば約 1,800 回です。claim のたびに、リースコマンドを 1 回動かします。
+リースの走査は、`not_before` を過ぎるまで、queue の job を飛ばします。飛ばす相手は、記録した environment の worker だけです。走査は、いまの広告 token と同じく、リースのリクエストからこの environment を読みます。空いている `local` worker は、すぐにその job を取れます。
+
+遅延は 2 秒から始まります。2 秒は、デフォルトの poll 間隔です。辞退が重なるごとに 2 倍へ増え、60 秒で止まります。
+
+辞退した job が待つ間も、若い job は動きます。端末のない worker が、claim と辞退を高速で繰り返すことはありません。ウィンドウいっぱい辞退され続けた job は、約 65 回の claim を費やします。2 秒の固定間隔で再試行すれば約 1,800 回です。claim のたびに、リースコマンドを 1 回動かします。
 
 ### 広告する内容
 
@@ -219,7 +242,7 @@ worker は、プラットフォームを `--platform` ではなくファイル�
 
 **作業単位 1：** **`worker.yaml` の leased environment。** `leased` environment、`lease` ブロック、`platforms` の一覧、その検証を追加します。
 
-`DeviceProvider` のスキーマに、リースコマンドと取得タイムアウトを足します。`device_provider_for` を更新し、`is_local` を `leased` でも真にします。
+`DeviceProvider` のスキーマに、リースコマンド、`acquireTimeout`、`releaseTimeout` を足します。`device_provider_for` を更新し、`is_local` を `leased` でも真にします。
 
 worker の capability token、route token、`_device_reader` を、上の routing に合わせます。`--machine-id` の検査と `--platform` の拒否も加えます。
 
@@ -231,19 +254,23 @@ worker の capability token、route token、`_device_reader` を、上の routin
 
 `_acquire_targets`、`_device_udid_or_exit`、`_probe_device` が、リースの `env` を適用するようにします。後の 2 つは、コマンドが終わるとき、またはツールの呼び出しが返るときに、リースを返します。スタブのリースコマンドでテストします。
 
-**作業単位 3：** **辞退 route。** `POST /api/worker/decline` と、job ごとに保存する 4 つの値を追加します。
+**作業単位 3：** **辞退 route。** `POST /api/worker/decline` と、job ごとに保存する 5 つの値を追加します。
 
-4 つの値は、辞退の回数、最初の辞退時刻、最後の理由、`not_before` です。辞退ウィンドウの設定も追加します。
+値は、辞退の回数、最初の辞退時刻、最後の理由です。残る 2 つは、`not_before` と、辞退した worker の environment です。辞退ウィンドウの設定も追加します。
 
-`_lease_candidates` が、`not_before` の前の job を飛ばすようにします。ウィンドウを過ぎたときのインフラ起因の失敗も追加します。
+リースのリクエストが worker の environment を名指しするようにします。`_lease_candidates` が、`not_before` の前の job を、記録した environment の worker に対して飛ばすようにします。ウィンドウを過ぎたときのインフラ起因の失敗も追加します。
 
 **作業単位 4：** **worker への組み込み。** run が使うのと同じ関数で、job が必要とする端末を数えます。
 
 `_pool_demand` を、worker と run が共に import するモジュールへ移します。2 つ目の複製は作りません。
 
-プラットフォームのプールごとに、端末を all-or-nothing で借ります。環境変数をまとめ、接頭辞つきのアドレスを `--udid` に結合します。`finally` で返します。spec が持ち込んだ `--udid` と `udids` を取り除きます。
+プラットフォームのプールごとに、必須の需要を all-or-nothing で借ります。続けて、`--workers` の追加のレーンを借りられる範囲で借り、`--workers` はそのまま渡します。
 
-取得が辞退したときは、job を辞退します。環境変数が衝突したときは、job をすぐ失敗させます。
+借りる処理は Heartbeat を送るスレッドで動かし、借りる合間に `lost` を確かめ、合計を借りる予算の内に収めます。
+
+環境変数をまとめ、接頭辞つきのアドレスを `--udid` に結合します。`finally` で返します。spec が持ち込んだ `--udid` と `udids` を取り除きます。
+
+必須の取得が辞退したときは、job を辞退します。環境変数が衝突したときは、job をすぐ失敗させます。
 
 **作業単位 5：** **孤児になった run の停止。** `_run_job` の pipe 経由の経路で起動する `run` job へ、`_run_inherited` の親 pipe を渡します。
 
@@ -261,13 +288,15 @@ worker の capability token、route token、`_device_reader` を、上の routin
 | 辞退 route を作らず、job リースを失効させる | 新しい route は要りません。ただし、辞退のたびに job がタイムアウト（デフォルトは 120 秒）を待ちます。job リースの失効のたびに、job の試行回数（3 回）も 1 回消費します。 |
 | 辞退した job の queue 先頭の位置を、遅延なしで保つ | すべての `leased` worker が、poll のたびにその job を claim し直します。まだどの worker も扱えない job の後ろで、若い job が待たされます。 |
 | 辞退した worker にだけ、その job の遅延を掛ける | ほかの `leased` worker は、poll のたびにその job を claim します。job は、それらの worker にとって queue の先頭に居座ります。job ごとの `not_before` なら、worker ごとの状態は要りません。 |
+| `not_before` を、種類を問わずすべての worker に掛ける | environment を持たない job は、`local` worker にも `leased` worker にも届きます。混んだブローカー 1 つが、空いている local worker なら始められる job を、辞退のたびに最長 60 秒止めます。走査に件数の上限を設けないのは、取れる若い job を隠さないためです（BE-0166）。辞退した environment を記録すれば、辞退しうる worker にだけ job を隠せます。 |
 | 2 つのプラットフォームを要する job を辞退する | 両方の端末を持つ local worker なら、その job を動かせます。辞退はブローカー側の都合による見かけの制限です。`--udid` の接頭辞つきエントリーで、この制限をなくせます。 |
 | 2 つのリースが同じ環境変数のキーに別の値を返したとき、job を辞退する | 再試行しても同じ衝突になります。job はウィンドウいっぱい待つだけで、何も変わりません。キー名を挙げてすぐ失敗させるほうが、早い答えです。 |
 | worker が止まったとき、契約の 4 点目だけに任せる | run の子プロセスは worker から切り離されて起動されるので、worker を生き延びます。ブローカーは、孤児がまだ操作している端末を貸し出します。親 pipe が子プロセスを止めます。 |
 | worker の隣に、孤児を止める別の見張りプロセスを置く | 自分で止まりうるプロセスが 1 つ増えます。pipe は、worker が止まれば理由を問わず閉じるので、追加のプロセスは要りません。 |
 | ブローカーの Web インタフェースと直接やり取りする | ブローカーごとに、クライアント、認証情報、スキーマが要り、コードに製品名が入ります。コマンドの契約なら、1 行を出して動き続けられるブローカーなら何でも使えます。認証情報もブローカー自身のコマンドの中に残ります。Web のインタフェースは、2 つ目の provider kind として後から追加できます。 |
 | 子プロセスの run の中で、`run` 自身の provider 呼び出しだけで借りる | worker は、始められない job の claim を持ったまま、claim を返す手段を持ちません。辞退を受けて動けるのは worker なので、借りる処理は worker が辞退に対処できる場所に置きます。 |
-| 端末ごとに別々に辞退できる手順で借りる | job が端末の一部を持ったまま、残りを待つことになります。2 つの job が、互いの必要分の半分ずつを握り合うこともあります。all-or-nothing なら、このデッドロックを防げます。 |
+| 必須の端末ごとに別々に辞退できる手順で借りる | job が端末の一部を持ったまま、残りを待つことになります。2 つの job が、互いの必要分の半分ずつを握り合うこともあります。必須の需要を all-or-nothing で借りれば、このデッドロックを防げます。追加のレーンは、なくても job が動くので、この対象に入りません。 |
+| `--workers` の倍数を all-or-nothing の需要に含める | スループットのための値が、必須の条件に変わります。混んだブローカーでは、`--workers 8` の job が辞退ウィンドウいっぱい辞退され、最後に失敗します。端末 2 台を持つ worker なら、2 レーンで動かせた job です。run はすでに `--workers` を手元の端末数に切り詰め、拒否はしません（`_resolve_multi_target_workers`）。 |
 | `local` provider に、任意のリースコマンドを足す | 1 つの kind が 2 つの振る舞いを持ち、`local` が「このホストに接続された端末」を意味しなくなります。kind を分ければ、登録簿の「1 つの kind に 1 つの振る舞い」という規則を保てます。 |
 
 ## 進捗

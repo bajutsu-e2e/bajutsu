@@ -68,7 +68,7 @@ Two existing checks compare the worker's environment to `local` directly. They a
 | `bajutsu/common/runner/device_provider/` | New `_leased_provider.py`, registered as `leased` in `_ensure_builtins` |
 | Same package | New helper that splits a platform-tagged `--udid` list. `_LeasedProvider` and `_reject_unshareable_groups` both call it |
 | `DeviceLease` (`device_lease.py`) | New field `env` for the variables the run's device tools must see |
-| `bajutsu/common/config/schema/device_provider.py` | `DeviceProvider` gains fields for the lease command and the acquire timeout |
+| `bajutsu/common/config/schema/device_provider.py` | `DeviceProvider` gains fields for the lease command, the acquire timeout, and the release timeout |
 | `bajutsu/common/capability/worker_capability.py` | New environment `leased` with a `lease` block and a `platforms` list |
 | Same file | `device_provider_for` returns the `leased` provider with those fields for a platform listed in `platforms`, and None (local) for any other, web included |
 | Same file | `is_local` is true for `leased`, so the one-job cap of a local worker applies |
@@ -76,14 +76,14 @@ Two existing checks compare the worker's environment to `local` directly. They a
 | `bajutsu/serve/cli/worker.py` (`_register_environment_or_exit`) | `leased` registers no batch provider, like `local` |
 | `bajutsu/serve/server/one_shot.py` (`environment_refusal`) | `leased` takes a plain run spec and refuses a batch, like `local` |
 | `bajutsu/serve/cli/worker.py` | `_device_reader` skips `leased`, whose real devices belong to the broker |
-| Same file | After a claim, the worker borrows the job's devices, runs the child, and releases them in a `finally` |
+| `bajutsu/serve/cli/worker.py` (`_run_with_heartbeat`) | After `claim_check` passes and the bundle fetch finishes, the worker borrows the job's devices on the heart-beaten run thread. It returns before the run starts when `lost` is set. A total borrow budget below the job-lease timeout bounds the borrow. The worker releases the devices in a `finally` |
 | `bajutsu/serve/server/worker_job.py` | On a `leased` worker, drops a spec-supplied `--udid` and boots no spec `udids` |
 | New module that `bajutsu/serve/cli/worker.py` and `bajutsu/run/cli.py` both import | `_pool_demand` moves there, so the worker and the run count devices with one function |
 | `bajutsu/run/cli.py` (`_acquire_targets`) | Applies each lease's `env` to the process environment before it resolves the target's devices |
 | `bajutsu/run/cli.py` (`_reject_unshareable_groups`) | Reads the entries of the target's platform from a tagged `--udid` |
 | `bajutsu/cli/_shared.py` (`_device_udid_or_exit`) and `bajutsu/mcp/tools.py` (`_probe_device`) | Apply `env`, and release the lease when the command ends or the tool call returns |
-| Serve routes and database | New `POST /api/worker/decline`. Each job stores a decline count, its first decline time, its last reason, and a `not_before` time |
-| `bajutsu/serve/server/db/sql_repository.py` (`_lease_candidates`) | The lease scan skips a queued job until its `not_before` has passed |
+| Serve routes and database | New `POST /api/worker/decline`. Each job stores a decline count, its first decline time, its last reason, a `not_before` time, and the environment of the worker that declined. The lease request names the worker's environment |
+| `bajutsu/serve/server/db/sql_repository.py` (`_lease_candidates`) | The lease scan skips a queued job until its `not_before` has passed, only for a worker of the environment that declined it |
 | Server settings | New `BAJUTSU_DECLINE_WINDOW_SECONDS`, one hour by default |
 | `bajutsu/serve/jobs.py` (`_run_job`) | A `run` job spawned on the piped path gets the same parent pipe that `_run_inherited` already gives a one-shot caller |
 
@@ -97,13 +97,14 @@ platforms: [ios, android]
 lease:
   command: ["broker-cli", "lease", "--platform", "{platform}", "--device", "{device}"]
   acquireTimeout: 60s
+  releaseTimeout: 10s
 ```
 
 The `command` key is an argument list, not a shell string, so no value reaches a shell. The worker replaces `{platform}` with the platform of the device it borrows (`ios` or `android`).
 
-It replaces `{device}` with the device model the job's `runsOn` names. When the job names no device, the worker drops the `{device}` element and the element before it.
+It replaces `{device}` with the device model the job's `runsOn` names. The worker refuses a model that begins with `-` before it builds the argv. The strings `runsOn.ios.model` and `runsOn.android.avd` are free-form and travel with the job. A flag-shaped value would reach the operator's command as an option, not a device name. When the job names no device, the worker drops the `{device}` element and the element before it.
 
-The `acquireTimeout` key bounds how long the worker waits for an answer. The `platforms` key lists the platforms the broker serves. The schema accepts `ios` and `android` in `platforms`, and nothing else.
+The `acquireTimeout` key bounds how long the worker waits for an answer. The `releaseTimeout` key bounds the wait for the command to exit after the termination signal. The `platforms` key lists the platforms the broker serves. The schema accepts `ios` and `android` there.
 
 The schema refuses an empty `command` and an unknown placeholder when `worker.yaml` loads. It also refuses `{device}` inside a longer element. It refuses `{device}` as the first element or after another placeholder. `{device}` must be a whole element that follows its flag.
 
@@ -113,8 +114,8 @@ It also refuses a `platforms` key under any other environment. A typo then stops
 
 The repository names no broker. The contract is the behavior of the lease command. Any broker that behaves this way works.
 
-1. The command **stays running** while the worker holds the device. Ending the process ends the lease. Bajutsu releases the device by sending the process a termination signal and waiting for it to exit.
-2. Within `acquireTimeout`, the command prints **one line** to standard output. The line holds one data object and nothing else:
+1. The command **stays running** while the worker holds the device. Ending the process ends the lease. Bajutsu releases the device by sending the process a termination signal. It waits up to `releaseTimeout` for the process to exit. It then force-ends a command that is still alive. One wedged command cannot hold the job's `finally` open.
+2. Within `acquireTimeout`, the command prints **one line** to standard output. The line holds one data object. The worker reads that line and discards any later standard output. A broker that logs past its answer then never blocks on a full pipe:
 
    ```json
    {"device": {"address": "emulator-5588"}, "environment": {"ANDROID_ADB_SERVER_PORT": "5038"}}
@@ -136,15 +137,17 @@ Point 4 ends a lease when its worker stops. It does not stop a run that still dr
 
 One job can need more than one device. The `bajutsu run` command calls `acquire_device` once for each target.
 
-The `--workers` option asks for parallel lanes, and each lane needs its own device. Targets of one platform share one device pool. A scenario holds one device for each such target.
+Targets of one platform share one device pool. A scenario holds one device for each such target.
 
-The worker borrows for each platform pool that the job's targets use.
+The worker borrows for each platform pool that the job's targets use. A web target drives a browser context and needs no device, so the worker never borrows for it.
 
-A web target drives a browser context and needs no device, so the worker never borrows for it. The count for a pool is the `--workers` value times the largest per-scenario target count.
+The demand has two parts. The **mandatory demand** is the largest per-scenario target count of each pool. One scenario cannot run with fewer devices.
 
-A device group counts once. The worker counts through `_pool_demand`, the function the run uses. It moves to a module that both import. The function takes the actuator of each target, not a `_TargetSetup`. The worker can then call it before any device exists. The run computes the same demand before it starts, so it never finds its pool short.
+The **extra lanes** come from `--workers`, which asks for parallel lanes. Each lane needs its own devices. The run treats `--workers` as a throughput knob. `_resolve_multi_target_workers` caps it to the lanes the devices allow. It never refuses a run that has enough devices to finish.
 
-Each borrow asks the broker for one device. The placeholder `{platform}` is the pool's platform. The placeholder `{device}` is the model that the pool's `runsOn` names. The iOS value is `runsOn.ios.model`. The Android value is `runsOn.android.avd`.
+A device group counts once. The worker counts the mandatory demand through `_pool_demand`, the function the run uses. It moves to a module that both import. The function takes the actuator of each target, not a `_TargetSetup`. The worker can then call it before any device exists. The run computes the same demand before it starts, so it never finds its pool short.
+
+Each borrow asks the broker for one device. The worker borrows the mandatory demand first, then the extra lanes. The placeholder `{platform}` is the pool's platform. The placeholder `{device}` is the model that the pool's `runsOn` names. The iOS value is `runsOn.ios.model`. The Android value is `runsOn.android.avd`.
 
 A list of models multiplies runs ([BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md)). Each run takes devices of its own model from the pool. The worker borrows the pool's count once for each listed model, with each model in turn. A `family` list picks a family at run time and names no model. The worker drops the `{device}` pair for it.
 
@@ -166,7 +169,21 @@ One limit stays. The `leased` provider alone reads the prefix. A target with ano
 
 The `environment` maps of all the leases merge into one map for the child. Two leases that return different values for one key cannot share a process environment. One example is a different adb server port for each emulator. The worker then releases every lease it holds. It fails the job at once with an infrastructure reason that names the key. It does not decline, because a retry gets the same conflict.
 
-Borrowing is all-or-nothing. When any borrow declines, the worker releases the devices it already holds. It then declines the job. A job holds every device it needs, or none.
+Borrowing the mandatory demand is all-or-nothing. When any of those borrows declines, the worker releases the devices it already holds. It then declines the job. A job holds its whole mandatory demand, or nothing.
+
+The worker takes the extra lanes opportunistically. It borrows one more lane at a time, up to the `--workers` multiplier. Each lane is all-or-nothing across the pools. The first lane the broker will not lend ends the extras, and the worker keeps what it holds. A shortfall never declines the job.
+
+The worker passes `--workers` through unchanged. The run caps its lanes to the devices it receives, as it does for a local worker with fewer devices.
+
+The borrow runs on the thread that `_run_with_heartbeat` heart-beats. It starts once `claim_check` passes and the bundle fetch finishes. An earlier borrow would hold devices during the download.
+
+A borrow before the Heartbeat starts would let the server reclaim the job mid-borrow. Two workers would then run it at once, a fault the bundle fetch already hit.
+
+The worker checks `lost` between borrows. When the flag is up, it releases what it holds and returns before the run starts, as the fetch does.
+
+The worker also bounds the total borrow time. A job of three devices could otherwise wait three times `acquireTimeout`. That passes the job-lease timeout (`DEFAULT_LEASE_TIMEOUT_SECONDS`, 120 seconds by default).
+
+The worker keeps a borrow budget of 90 seconds for the whole job. Each borrow waits the lesser of `acquireTimeout` and the budget left. A spent budget declines the job when the mandatory demand is unmet. Otherwise it ends the extras.
 
 ### How the run uses the device
 
@@ -214,7 +231,11 @@ A busy broker never turns a job red inside the window. Past the window, the job 
 
 A declined job keeps its old `created_at`. The lease scan, `_lease_candidates`, orders jobs oldest first. Left alone, every `leased` worker would claim the declined job at each poll. Every younger job would wait behind it.
 
-The decline route sets a `not_before` time on the job. The lease scan skips a queued job until its `not_before` has passed. The delay grows with each decline. It starts at 2 seconds, the default poll interval, and doubles each time. It stops growing at 60 seconds.
+The decline route sets a `not_before` time on the job. It also records the environment of the declining worker, which the request names.
+
+The lease scan skips a queued job until its `not_before` has passed. It skips the job for a worker of the recorded environment alone. The scan reads that environment from the lease request, as it reads the advertised tokens today. A free `local` worker still takes the job at once.
+
+The delay grows with each decline. It starts at 2 seconds, the default poll interval, and doubles each time. It stops growing at 60 seconds.
 
 Younger jobs run while the declined job waits. A worker with no device does not claim and decline in a tight loop. A job declined for the whole window costs about 65 claims. A flat 2-second retry would cost about 1,800. Each claim runs the lease command once.
 
@@ -241,7 +262,7 @@ The worker takes its platforms from the file and not from `--platform`. A `lease
 
 1. **Lease environment.** Add the `leased` environment, the `lease` block, and the `platforms` list.
 
-   Add the lease command and the timeout to the `DeviceProvider` schema. Update `device_provider_for`. Make `is_local` true for `leased`.
+   Add the lease command, `acquireTimeout`, and `releaseTimeout` to the `DeviceProvider` schema. Update `device_provider_for`. Make `is_local` true for `leased`.
 
    Make the capability tokens, route tokens, and `_device_reader` follow the routing above. Apply the `--machine-id` check and the `--platform` refusal.
 
@@ -251,20 +272,24 @@ The worker takes its platforms from the file and not from `--platform`. A `lease
    Add the helper that splits a platform-tagged `--udid` list. Call it from the provider and from `_reject_unshareable_groups`.
 
    Make `_acquire_targets`, `_device_udid_or_exit`, and `_probe_device` apply the lease's `env`. Make the last two release the lease when the command ends or the tool call returns. Test against a stub lease command.
-3. **Decline route.** Add the route and four stored values per job.
+3. **Decline route.** Add the route and five stored values per job.
 
-   They are the decline count, the first decline time, the last reason, and `not_before`.
+   They are the decline count, the first decline time, and the last reason. The other two are `not_before` and the declining worker's environment.
 
    Add the window setting.
 
-   Make `_lease_candidates` skip a job before its `not_before`. Add the infrastructure error past the window.
+   Make the lease request name the worker's environment. Make `_lease_candidates` skip a job before its `not_before` for a worker of the recorded environment. Add the infrastructure error past the window.
 4. **Worker integration.** Count the devices through the same function the run uses.
 
    Extract `_pool_demand` to a module both import, not a second copy.
 
-   Borrow the count all-or-nothing for each platform pool. Merge the environments, and join the tagged addresses into `--udid`. Release them in the `finally`. Drop a spec-supplied `--udid` and its `udids`.
+   Borrow the mandatory demand all-or-nothing for each platform pool. Then borrow the extra lanes of `--workers` opportunistically, and pass `--workers` through.
 
-   Decline when a borrow declines. Fail the job at once when two environments conflict.
+   Run the borrow on the heart-beaten thread. Check `lost` between borrows. Keep the total under the borrow budget.
+
+   Merge the environments, and join the tagged addresses into `--udid`. Release them in the `finally`. Drop a spec-supplied `--udid` and its `udids`.
+
+   Decline when a mandatory borrow declines. Fail the job at once when two environments conflict.
 5. **Orphaned run stop.** Give a `run` job on the piped path of `_run_job` the parent pipe of `_run_inherited`.
 
    Test that the child cancels itself when the write end closes. Test that the run still writes its manifest.
@@ -280,13 +305,15 @@ The worker takes its platforms from the file and not from `--platform`. A `lease
 | Let the job lease lapse instead of adding a decline route | It needs no new route. The job waits out the lease timeout (120 seconds by default) on every refusal. Each lapse also consumes one of the job's three lease attempts. |
 | Keep the declined job's place at the head with no delay | Every `leased` worker claims it again at each poll. Younger jobs wait behind a job that no worker can serve yet. |
 | Delay the job only for the worker that declined it | Every other `leased` worker still claims it at each poll. The job stays at the head of the queue for them. A per-job `not_before` needs no per-worker state. |
+| Apply `not_before` to the whole fleet, whatever the worker | A plain job reaches `local` and `leased` workers alike. One busy broker would then stall a job that a free local worker could start, for up to 60 seconds per decline. The scan stays unbounded so that a fixed window never hides a servable younger job (BE-0166). Recording the declining environment hides the job only from workers that would decline. |
 | Decline a job that needs two platforms | A local worker with both runs the job, so the refusal is an artifact of the broker. Tagged entries in `--udid` remove it. |
 | Decline when two leases return different values for one environment key | A retry gets the same conflict, so the job would wait out the whole window for nothing. A job that fails at once with the key named is the faster answer. |
 | Rely on contract point 4 alone when a worker stops | The worker spawns the run's child apart from itself, so the child survives the worker. The broker would lend a device that the orphan still drives. The parent pipe stops the child. |
 | Stop the orphan with a separate watcher process beside the worker | It adds a process that can stop on its own. The pipe closes when the worker stops, for any reason, with no extra process. |
 | Talk to the broker over a web interface | It needs a client, credentials, and a schema per broker. It also names a product in the code. A command contract works with any broker that can print one line and stay alive. It keeps credentials in the broker's own command. A second provider kind can add a broker interface later. |
 | Borrow inside the child run, in the run's own provider call | The worker would still hold a claim for a job it cannot start. It would have no way to return the claim. The worker needs the decision, so the borrowing happens where the worker can act on a decline. |
-| Borrow each device as its own decline-able step | A job could then hold some of its devices while it waits for the rest. Two such jobs could each hold half of what both need. All-or-nothing borrowing rules out that deadlock. |
+| Borrow each mandatory device as its own decline-able step | A job could then hold some of its devices while it waits for the rest. Two such jobs could each hold half of what both need. All-or-nothing borrowing of the mandatory demand rules out that deadlock. The extra lanes are not part of it, because a job runs without them. |
+| Fold the `--workers` multiplier into the all-or-nothing demand | It turns a throughput knob into a hard requirement. A `--workers 8` job on a busy broker would decline for the whole window and then fail, where a worker holding two devices would run it on two lanes. The run already caps `--workers` to its devices and never refuses (`_resolve_multi_target_workers`). |
 | Extend the `local` provider with an optional lease command | One kind would carry two behaviors. Then `local` would no longer mean a device attached to this machine. A separate kind keeps the registry's rule of one kind and one behavior. |
 
 ## Progress
