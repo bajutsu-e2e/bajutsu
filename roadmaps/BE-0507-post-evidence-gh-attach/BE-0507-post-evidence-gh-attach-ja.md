@@ -1,14 +1,14 @@
-[English](BE-XXXX-post-evidence-gh-attach.md) · **日本語**
+[English](BE-0507-post-evidence-gh-attach.md) · **日本語**
 
-# BE-XXXX — 実行のスクリーンショットと動画を、gh でプルリクエストや Issue のコメントに添付する
+# BE-0507 — 実行のスクリーンショットと動画を、gh でプルリクエストや Issue のコメントに添付する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-post-evidence-gh-attach-ja.md) |
+| 提案 | [BE-0507](BE-0507-post-evidence-gh-attach-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **却下** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0507") |
 | トピック | Integration with external services |
 | 関連 | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action-ja.md) |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-post-evidence-gh-attach-ja.md)
+**English** · [日本語](BE-0507-post-evidence-gh-attach-ja.md)
 
-# BE-XXXX — Attach a run's screenshots and videos to a pull request or issue comment through gh
+# BE-0507 — Attach a run's screenshots and videos to a pull request or issue comment through gh
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-post-evidence-gh-attach.md) |
+| Proposal | [BE-0507](BE-0507-post-evidence-gh-attach.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Rejected** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0507") |
 | Topic | Integration with external services |
 | Related | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) |
 <!-- /BE-METADATA -->
