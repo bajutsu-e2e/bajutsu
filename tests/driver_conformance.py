@@ -158,13 +158,20 @@ def field_value(driver: base.Driver) -> str:
     return base.resolve_unique(driver.query(), {"id": FIELD_ID})["value"] or ""
 
 
-def _field_shows(driver: base.Driver, text: str, timeout: float = 5.0) -> bool:
-    """Whether the conformance field's value comes to contain `text` within `timeout`.
+def _field_becomes(
+    driver: base.Driver, condition: Callable[[str], bool], timeout: float = 5.0
+) -> bool:
+    """Whether the conformance field's value comes to satisfy `condition` within `timeout`.
 
-    A condition wait, as a scenario's `wait` would do: on a slow emulator a single read straight after
-    a paste can land before the field publishes it.
+    A condition wait, as a scenario's `wait` would do: on a slow device a single read straight after
+    an edit can land before the field publishes it.
     """
-    return any(text in field_value(driver) for _ in base.deadline_ticks(timeout, 0.1, 0.5))
+    return any(condition(field_value(driver)) for _ in base.deadline_ticks(timeout, 0.1, 0.5))
+
+
+def _field_shows(driver: base.Driver, text: str, timeout: float = 5.0) -> bool:
+    """Whether the conformance field's value comes to contain `text` within `timeout`."""
+    return _field_becomes(driver, lambda value: text in value, timeout)
 
 
 def _clipboard_shows(read: Callable[[], str], text: str, timeout: float = 15.0) -> bool:
@@ -720,11 +727,16 @@ class DriverConformanceContract:
         driver.tap({"id": FIELD_ID})
         before = len(field_value(driver))
         driver.type_text("wxyz")
+        # Wait for the whole text: a read that caught only part of it would set a bar the deletion
+        # cannot get under.
+        _field_becomes(driver, lambda value: len(value) >= before + len("wxyz"))
         typed = len(field_value(driver))
         if typed <= before:
             pytest.skip("backend does not surface the field value; delete effect not observable")
         driver.delete_text(2)
-        assert len(field_value(driver)) < typed
+        assert _field_becomes(driver, lambda value: len(value) < typed), (
+            f"the deletion left the field at {field_value(driver)!r}, not shorter than {typed}"
+        )
 
     def test_tap_point_focuses_the_field_like_a_semantic_tap(
         self, harness: ConformanceHarness
