@@ -583,6 +583,7 @@ class Plan:
     workflows_error: str = ""
     remote_checked: bool = False
     attach_dir: Path | None = None
+    run_zip: Staged | None = None
     is_pull_request: bool | None = None
     gh_path: str | None = None
     gh_problem: str = ""
@@ -659,6 +660,24 @@ def stage(
     return _apply_size_guard(files, size_warn_mb * 1024 * 1024, run.run_id, notes)
 
 
+def stage_run_zip(
+    run_dir: Path, run: RunView, staging: Path, *, log_tail_kb: int, size_warn_mb: int
+) -> tuple[Staged | None, list[str]]:
+    """Zip the whole run into `staging`, or skip it, with a note, above `size_warn_mb`.
+
+    The unit the script uploads is the run, so the zip is the one file that stands for all of it.
+    """
+    notes: list[str] = []
+    zipped = staging / (asset_name("", run.run_id) + ".zip")
+    zipped.parent.mkdir(parents=True, exist_ok=True)
+    _zip_run(run_dir, zipped, max(log_tail_kb, 1) * 1024, notes)
+    size = zipped.stat().st_size
+    if size > size_warn_mb * 1024 * 1024:
+        notes.append(f"{literal(zipped.name)} skipped: {_mb(size)} exceeds {size_warn_mb} MB.")
+        return None, notes
+    return Staged(f"{run.run_id}.zip", zipped, size), notes
+
+
 def _zip_run(run_dir: Path, dest: Path, tail_bytes: int, notes: list[str]) -> None:
     with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
         for src in sorted(p for p in run_dir.rglob("*") if p.is_file() and not p.is_symlink()):
@@ -730,9 +749,9 @@ def tag_workflows(gh: GitHub, target: Target) -> tuple[list[str], str]:
 
 
 def upload_assets(
-    gh: GitHub, target: Target, plan: Plan, run_id: str, publish: bool
+    gh: GitHub, target: Target, plan: Plan, run_id: str, publish: bool, files: Sequence[Staged]
 ) -> dict[str, str]:
-    """Create or reuse the release, upload the staged files, and return each file's link."""
+    """Create or reuse the release, upload `files`, and return each file's link."""
     release = plan.release
     if release is None:
         release = gh.request(
@@ -760,7 +779,7 @@ def upload_assets(
     if not upload_base:
         raise PostError(f"release {release.get('id')} has no upload_url")
     links: dict[str, str] = {}
-    for f in plan.files:
+    for f in files:
         name = asset_name(run_id, f.path)
         asset = existing.get(name)
         if asset is not None and asset.get("state", "uploaded") != "uploaded":
@@ -971,7 +990,7 @@ def format_plan(plan: Plan, *, publish: bool, base_url: str | None) -> str:
             f"Evidence links: {base_url}" if base_url else "Evidence links: none (paths only)"
         )
     elif plan.sink == "attach":
-        lines += _attach_plan_lines(plan)
+        lines += _attach_plan_lines(plan, publish=publish)
     else:
         lines += _release_plan_lines(plan, publish=publish)
         lines.append("Files:")
@@ -981,7 +1000,7 @@ def format_plan(plan: Plan, *, publish: bool, base_url: str | None) -> str:
     return "\n".join(lines)
 
 
-def _attach_plan_lines(plan: Plan) -> list[str]:
+def _attach_plan_lines(plan: Plan, *, publish: bool) -> list[str]:
     lines = [f"gh: {plan.gh_path or 'not found'}"]
     if plan.gh_problem:
         lines.append(f"  Problem: {plan.gh_problem}")
@@ -996,6 +1015,9 @@ def _attach_plan_lines(plan: Plan) -> list[str]:
     lines.append("Attach:")
     lines += [f"  {f.path}  {_mb(f.size)}" for f in plan.files]
     lines.append(f"Total: {_mb(sum(f.size for f in plan.files))}")
+    if plan.run_zip is not None:
+        lines.append(f"Run zip, as a release asset: {plan.run_zip.path}  {_mb(plan.run_zip.size)}")
+        lines += _release_plan_lines(plan, publish=publish)
     if plan.visibility == "public":
         lines.append("  Files attached through gh --attach are viewable without signing in.")
     lines.append("  Deleting a comment removes the comment, not the files it uploaded.")
@@ -1123,6 +1145,14 @@ def _stage_sink(
                 max_failures=args.max_failures,
                 video_mb=args.attach_video_mb,
             )
+            plan.run_zip, zip_notes = stage_run_zip(
+                run_dir,
+                run,
+                staging / "zip",
+                log_tail_kb=args.log_tail_kb,
+                size_warn_mb=args.size_warn_mb,
+            )
+            plan.notes += zip_notes
     except OSError as e:
         raise PostError(f"cannot stage evidence from {run_dir}: {e}") from e
     if args.sink == "attach":
@@ -1159,6 +1189,7 @@ def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
             links=links,
             max_failures=args.max_failures,
             notes=plan.notes,
+            run_link="<the run zip's release asset URL>" if plan.run_zip else None,
         )
         print("\n--- comment (dry run: nothing was written) ---\n" + body, file=io.out)
         return None
@@ -1169,7 +1200,7 @@ def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
     author = args.author or gh.login()
     run_link = None
     if args.sink == "release":
-        links = upload_assets(gh, target, plan, run.run_id, args.publish)
+        links = upload_assets(gh, target, plan, run.run_id, args.publish, plan.files)
         run_link = links.pop(f"{run.run_id}.zip", None)
     body = render(
         run,
@@ -1195,6 +1226,10 @@ def _read_remote_state(
         if publish:
             plan.workflows, plan.workflows_error = tag_workflows(gh, plan.target)
     if plan.sink == "attach":
+        if plan.run_zip is not None:
+            plan.release = find_release(gh, plan.target)
+            if publish:
+                plan.workflows, plan.workflows_error = tag_workflows(gh, plan.target)
         t = plan.target
         thread = gh.request("GET", f"/repos/{t.slug}/issues/{t.number}")
         plan.is_pull_request = isinstance(thread, dict) and "pull_request" in thread
@@ -1223,12 +1258,18 @@ def _post_with_gh(
     without evidence. A delete that fails afterwards is reported loudly, never swallowed.
     """
     assert plan.attach_dir is not None
+    run_link = None
+    if plan.run_zip is not None:
+        # The zip goes up first: a failed upload posts nothing, and the comment can then link it.
+        uploaded = upload_assets(gh, plan.target, plan, run.run_id, args.publish, [plan.run_zip])
+        run_link = uploaded[plan.run_zip.path]
     body = render(
         run,
         key=key,
         links=links,
         max_failures=args.max_failures,
         notes=plan.notes,
+        run_link=run_link,
     )
     body_path = plan.attach_dir / "body.md"
     body_path.write_text(body, encoding="utf-8")

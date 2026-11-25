@@ -18,6 +18,11 @@
 
 This item adds a helper script, `scripts/post_evidence.py`, that takes a finished run from a developer's own machine and posts it to a pull request or an issue. The comment names each failed scenario, the failing step, and the reason, and it links to the run's evidence. Running the script again updates the same comment instead of adding a new one. The script uses the developer's own GitHub credentials, and it runs after the verdict, so it never changes what the run decided.
 
+The script uploads a run, never a standalone file. The command line names a run directory or a run
+id, and every file that leaves the machine belongs to that run. The zip of the run is the one file
+that stands for all of it, and the screenshots and videos that the comment previews are parts of
+the same run.
+
 The script is not a Bajutsu feature. It is one file that uses the standard library alone and imports nothing from `bajutsu`. It adds no subcommand and no entry in `[project.scripts]`, and the installed package does not ship it. The portable `post-evidence` GitHub Action, which the sibling proposal [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) defines, renders through this same file. A reviewer therefore reads one comment format, whether a runner or a laptop produced the run.
 
 ## Motivation

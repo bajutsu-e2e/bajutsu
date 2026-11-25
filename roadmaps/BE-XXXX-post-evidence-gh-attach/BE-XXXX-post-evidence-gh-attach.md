@@ -20,7 +20,9 @@ This item adds a third sink, `--sink attach`, to `scripts/post_evidence.py`, the
 [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md) ships. The sink hands the
 failing screenshots and the failing scenarios' videos to the GitHub CLI (`gh`) through its
 `--attach` flag. GitHub then hosts the files, and the comment shows each screenshot inline and plays each
-video at the end of the comment. The developer hosts nothing and creates no release.
+video at the end of the comment. The sink also uploads the whole run as a zip and links it, so a
+reviewer who wants more than the previews opens the zip. The script's unit stays the run: it
+uploads no standalone file.
 
 The script still posts after the verdict and never changes it. It still uses the standard library
 alone. The only addition is running `gh` as a subprocess, for this sink alone.
@@ -60,8 +62,14 @@ GitHub does not play. An unreferenced video is appended as a bare URL at the end
 and that form renders as a player. The comment therefore names each video by its path under the
 scenario, and the videos play together at its end.
 
-The sink uploads media alone. A zip, a device log, and a JSON file are out of scope, so the comment
-carries no link to the whole run. A developer who wants the zip uses the `release` sink.
+`gh --attach` takes media alone, and the spike showed that it refuses a zip before it posts. The
+zip of the run therefore goes up as an asset of the release `bajutsu-evidence-<number>`, with the
+rules of the `release` sink in BE-0503: a draft prerelease that never becomes the latest release,
+`--publish` as an opt-in, and a plan that lists the workflows publishing would fire. The script
+uploads the zip first and posts the comment second, so a failed upload posts nothing. The comment
+links the zip as `Whole run`. A zip above `--size-warn-mb` is skipped with a note, and the comment
+then carries no link. A device log or a JSON file never goes up on its own. The release needs
+write access to repository contents, and the draft opens for people with write access alone.
 
 ### The `gh` call
 
@@ -143,6 +151,7 @@ The spike ran on a throwaway public repository, with `gh` 2.105.0 and a token gi
 | Does an alt text on a video work? | No: `gh` refuses it before it posts. |
 | Which types and sizes does `gh` take? | It lists png, jpg, jpeg, gif, webp, svg, mp4, mov, and webm. It refuses an image above 10 MB. |
 | What happens to an unsupported file? | `gh` refuses before it posts, and no comment is created. |
+| Does `gh --attach` take a zip? | No: it refuses the file before it posts. |
 | Does `--edit-last` compose with `--attach`? | Yes. |
 | Who can open an uploaded file? | Anyone, in a public repository. |
 | Do the files outlive a deleted comment? | Yes. |
@@ -182,11 +191,12 @@ guard, the deletion after success, no deletion after failure, and a run director
 - [x] The `gh` call: the version check, the host refusal, the subcommand choice, the child environment and working directory, and the error report that covers a partial failure.
 - [x] The sticky comment: the snapshot, the deletion by id after a successful post, and the report of a failed delete.
 - [x] Tests: a fake `gh` and the fake GitHub server of BE-0503.
+- [x] The run zip: the zip as an asset of the evidence release, uploaded before the comment, with the size guard and `--publish`.
 - [x] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
 
 Log:
 
-- [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) — Added the proposal, the `attach` sink in `scripts/post_evidence.py`, its tests with a fake `gh`, and the documentation in both languages. The spike then ran on a throwaway repository, and the item records what it measured. It changed how videos are posted: they are attached unreferenced and play at the end of the comment.
+- [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) — Added the proposal, the `attach` sink in `scripts/post_evidence.py`, its tests with a fake `gh`, and the documentation in both languages. The spike then ran on a throwaway repository, and the item records what it measured. It changed how videos are posted: they are attached unreferenced and play at the end of the comment. The same PR then added the run zip as a release asset, because `gh --attach` refuses a zip.
 
 ## References
 

@@ -641,7 +641,7 @@ links instead, and `--sink` decides what the links point to.
 |---|---|---|
 | `none` (default) | Nothing. The comment names each file by its path in the run directory. With `--evidence-base-url`, each path becomes a link to a copy the developer serves. | Whoever can open the base URL. |
 | `release` | The failing screenshots, the failing scenarios' videos, and a zip of the run, as assets of the release `bajutsu-evidence #<number>`. | A draft release opens for people with write access alone. `--publish` opens it to everyone who can see the repository. |
-| `attach` | The failing screenshots and the failing scenarios' videos, through `gh --attach`. GitHub hosts the files, and the comment shows them inline. | Whoever can view the thread. For a public repository, anyone. |
+| `attach` | The failing screenshots and the failing scenarios' videos, through `gh --attach`, and a zip of the run as a release asset. GitHub hosts the previews, and the comment shows them inline. | Whoever can view the thread. For a public repository, anyone. |
 
 The `none` sink pairs with a run that `bajutsu run --evidence-store` uploaded
 ([evidence](evidence.md)). Pass the public base URL of the store's prefix as `--evidence-base-url`.
@@ -668,8 +668,10 @@ The sink needs `gh` 2.99.0 or newer on `PATH`. It supports `github.com` alone. T
 the token to `gh` through `GH_TOKEN` in the child environment, never on a command line. The target
 decides between `gh pr comment` and `gh issue comment`.
 
-- **Only media goes up.** The sink takes the image and video types that `gh --attach` accepts.
-  A zip and a device log stay out, so the comment has no link to the whole run.
+- **Media through `gh`, the run through a release.** `gh --attach` takes images and videos alone.
+  The run's zip goes up as an asset of a draft prerelease, and the comment links it as `Whole run`.
+  This needs write access to repository contents. `--publish` publishes the release.
+  The script drops a zip above `--size-warn-mb` and notes it.
 - **Limits stay bounded.** The script skips an image above 10 MB. It skips a video above
   `--attach-video-mb` (default 10) and any file past the 50th. The plan and the comment name each
   skip.

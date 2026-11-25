@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import threading
 import zipfile
@@ -55,6 +56,7 @@ class FakeGitHub:
     is_pr: bool = True
     visibility: str = "private"
     fail_delete: bool = False
+    fail_uploads: bool = False
     fail_writes: bool = False
 
     def writes(self) -> list[tuple[str, str]]:
@@ -97,6 +99,8 @@ class FakeGitHub:
             release = self._by_id(self.releases, path)
             release.update(json.loads(body))
             return 200, release
+        if path.startswith("/upload/") and self.fail_uploads:
+            return 500, {"message": "no space"}
         if path.startswith("/upload/"):
             return self._upload(path, query, body)
         if path == f"/repos/{OWNER}/{REPO}/contents/.github/workflows":
@@ -856,7 +860,7 @@ def test_a_failing_gh_deletes_nothing_and_says_the_comment_may_exist(attach: Att
     assert code == pe.EXIT_POST_FAILED
     assert "boom" in err
     assert "may already exist" in err
-    assert [m for m, _ in attach.github.writes()] == []
+    assert "DELETE" not in [m for m, _ in attach.github.writes()]
     assert [c["id"] for c in attach.github.comments] == [11]
 
 
@@ -984,3 +988,65 @@ def test_attach_video_limit_must_sit_between_one_and_a_hundred(attach: Attach, v
     assert code == pe.EXIT_POST_FAILED
     assert "--attach-video-mb must be between 1 and 100" in err
     assert attach.calls() == []
+
+
+def test_attach_also_uploads_the_run_zip_and_links_it(attach: Attach) -> None:
+    before = _tree_digest(attach.run_dir)
+    code, _, _ = attach.run()
+    assert code == pe.EXIT_OK
+    (release,) = attach.github.releases
+    assert release["tag_name"] == "bajutsu-evidence-7"
+    assert (release["draft"], release["prerelease"], release["make_latest"]) == (
+        True,
+        True,
+        "false",
+    )
+    assert [a["name"] for a in release["assets"]] == ["20261125-101530-20261125-101530.zip"]
+    with zipfile.ZipFile(
+        io.BytesIO(attach.github.blobs["20261125-101530-20261125-101530.zip"])
+    ) as z:
+        assert "manifest.json" in z.namelist()
+    body = attach.calls()[0]["body"]
+    assert "[Whole run](https://github.test/dl/20261125-101530-20261125-101530.zip)" in body
+    assert _tree_digest(attach.run_dir) == before
+
+
+def test_the_zip_goes_up_before_gh_posts(attach: Attach) -> None:
+    attach.run()
+    paths = [p for _, p in attach.github.writes()]
+    zip_at = next(i for i, p in enumerate(paths) if p.startswith("/upload/"))
+    comment_at = next(i for i, p in enumerate(paths) if p.endswith("/comments"))
+    assert zip_at < comment_at
+
+
+def test_a_failed_zip_upload_posts_no_comment(attach: Attach) -> None:
+    attach.github.fail_uploads = True
+    code, _, err = attach.run()
+    assert code == pe.EXIT_POST_FAILED
+    assert "HTTP 500" in err
+    assert attach.calls() == []
+    assert attach.github.comments == []
+
+
+def test_an_oversize_zip_is_skipped_and_no_release_is_made(attach: Attach) -> None:
+    (attach.run_dir / "filler.bin").write_bytes(os.urandom(2 * 1024 * 1024))
+    code, _, _ = attach.run("--size-warn-mb", "1")
+    assert code == pe.EXIT_OK
+    assert attach.github.releases == []
+    body = attach.calls()[0]["body"]
+    assert "exceeds 1 MB" in body
+    assert "Whole run" not in body
+
+
+def test_publish_publishes_the_release_that_holds_the_zip(attach: Attach) -> None:
+    attach.run("--publish")
+    assert attach.github.releases[0]["draft"] is False
+
+
+def test_attach_dry_run_shows_the_zip_and_the_release_plan(attach: Attach) -> None:
+    code, out, _ = attach.run("--dry-run")
+    assert code == pe.EXIT_OK
+    assert attach.github.writes() == []
+    assert "Run zip, as a release asset: 20261125-101530.zip" in out
+    assert "Release: create 'bajutsu-evidence-7' as a draft prerelease" in out
+    assert "[Whole run](<the run zip's release asset URL>)" in out
