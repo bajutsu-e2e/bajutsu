@@ -290,6 +290,15 @@ jobs:
           # `-memory`/`-cores` below so a hardware change always earns a fresh, matching cache entry.
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
@@ -434,6 +443,15 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
@@ -529,6 +547,15 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
@@ -618,6 +645,15 @@ jobs:
             ~/.android/avd/*
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
+
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -717,6 +753,15 @@ jobs:
             ~/.android/avd/*
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
+
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -825,6 +870,15 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
@@ -923,6 +977,15 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
@@ -997,6 +1060,15 @@ jobs:
             ~/.android/avd/*
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
+
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -1091,6 +1163,15 @@ jobs:
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
 
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d  # v2.38.0
@@ -1163,6 +1244,15 @@ jobs:
             ~/.android/avd/*
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
+
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -1256,6 +1346,15 @@ jobs:
             ~/.android/avd/*
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem8192-cores2
+
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
@@ -1429,6 +1528,15 @@ jobs:
             ~/.android/avd/*
             ~/.android/adb*
           key: avd-api34-x86_64-pixel6-mem3072-cores1
+
+      # Install the emulator and system image ourselves, so a damaged download fails here by
+      # package name instead of as a later `adb` `Connection refused` (issue #2519).
+      - name: Install the emulator SDK packages
+        uses: ./.github/actions/install-android-emulator-sdk
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
 
       - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
