@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| 実装 PR | [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532)（スパイクを除くすべての単位） |
 | トピック | Integration with external services |
 | 関連 | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action-ja.md) |
 <!-- /BE-METADATA -->
@@ -96,6 +97,10 @@ BE-0503 は、テキストとリンクだけのコメントを投稿します。
 - [x] 固定コメント：スナップショット、投稿に成功したあとの id による削除、削除の失敗の報告。
 - [x] テスト：偽の `gh` と、BE-0503 の偽の GitHub サーバー。
 - [x] ドキュメント：`docs/reporting.md` の節と、`docs/ja/` のミラー。
+
+ログ：
+
+- [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) — 提案、`scripts/post_evidence.py` の `attach` シンク、偽の `gh` を使うテスト、両言語のドキュメントを追加しました。スパイクは未了です。
 
 ## 参考
 

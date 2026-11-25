@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Implementing PR | [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) (all units but the spike) |
 | Topic | Integration with external services |
 | Related | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) |
 <!-- /BE-METADATA -->
@@ -159,6 +160,10 @@ guard, the deletion after success, no deletion after failure, and a run director
 - [x] The sticky comment: the snapshot, the deletion by id after a successful post, and the report of a failed delete.
 - [x] Tests: a fake `gh` and the fake GitHub server of BE-0503.
 - [x] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
+
+Log:
+
+- [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) — Added the proposal, the `attach` sink in `scripts/post_evidence.py`, its tests with a fake `gh`, and the documentation in both languages. The spike stays open.
 
 ## References
 
