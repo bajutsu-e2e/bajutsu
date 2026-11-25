@@ -7,13 +7,22 @@
 |---|---|
 | Proposal | [BE-0503](BE-0503-local-evidence-post.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0503") |
 | Topic | Integration with external services |
 | Related | [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md), [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
+
+> **Rejected — the evidence belongs in the server's store, linked by URL.**
+> GitHub gives a script no documented way to put a run's zip into a comment. `gh --attach` takes
+> images and videos alone, and it refuses a zip before it posts. A release asset is the fallback.
+> It leaves one release entry for each thread, and a draft release opens for people with write
+> access alone. An Actions artifact needs a runner, which a local run lacks. Nothing here waits on
+> a blocker, so the item is rejected rather than deferred. A later item persists the finished run
+> in the `serve` store and links its URL from the comment. The spike on a draft release did run: the asset API serves each file as an attachment, and a
+> draft asset's public link answers 404 without write access.
 
 This item adds a helper script, `scripts/post_evidence.py`, that takes a finished run from a developer's own machine and posts it to a pull request or an issue. The comment names each failed scenario, the failing step, and the reason, and it links to the run's evidence. Running the script again updates the same comment instead of adding a new one. The script uses the developer's own GitHub credentials, and it runs after the verdict, so it never changes what the run decided.
 
@@ -60,7 +69,7 @@ GitHub has no documented endpoint that uploads an image or a video into a commen
 
 The default is `none` because an upload is outward-facing and the script should not make one unless the developer asked. A developer who already ran `bajutsu run --evidence-store` ([BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md)) passes the public base URL of the store's prefix (a public bucket path, or a CDN in front of it) as `--evidence-base-url`, and a screenshot then appears inline in the comment. The renderer percent-encodes each path segment before it joins the base, so a run id or a file name holding a space, a `#`, or a `?` still produces a link that resolves. A presigned URL signs one object, so it cannot serve as a base URL. The script does not call the uploader of BE-0110, so it needs no `s3` or `gcs` extra.
 
-A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Each release uses the tag `bajutsu-evidence-<number>` and is created with `prerelease: true` and `make_latest: "false"`, so it never becomes the repository's latest release. Publishing creates that tag and fires any workflow that listens for a published release. The script finds an existing release by listing releases and matching the tag name exactly, because the tag endpoint does not return drafts. The plan states whether the reused release is a draft or published. When `--publish` would publish an existing draft, the plan also lists the assets already on it, since they become public too. Whether a browser displays or downloads each asset type is unverified, and the first work item is a spike that records it.
+A reviewer without write access gets a 404 on a draft release's links. A developer who targets such a reviewer, or an issue opened by an outside contributor, passes `--publish`. The same release serves a pull request and an issue, because both share one numbering space in a repository. The script never deletes a release, and the plan lists the release it reuses so that cleanup stays a visible, manual step. Each release uses the tag `bajutsu-evidence-<number>` and is created with `prerelease: true` and `make_latest: "false"`, so it never becomes the repository's latest release. Publishing creates that tag and fires any workflow that listens for a published release. The script finds an existing release by listing releases and matching the tag name exactly, because the tag endpoint does not return drafts. The plan states whether the reused release is a draft or published. When `--publish` would publish an existing draft, the plan also lists the assets already on it, since they become public too. A spike on a draft release found that the asset API serves each file as an attachment, and that a draft asset's public link answers 404 without write access. Whether a published release shows an image inline stayed unmeasured.
 
 ### What the comment holds
 
@@ -111,7 +120,7 @@ The Action item currently places its script in the Action's directory. The two i
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: upload a screenshot, a video, and a zip as assets of a draft and a published release, and record who can open each and whether it displays or downloads.
+- [x] Spike: the draft half ran on a throwaway repository: the asset API serves each file as an attachment, and a draft asset's public link answers 404 without write access. The published half was not pursued, because the item is rejected.
 - [ ] Shared renderer: one script that both this item and the Action run, with the Action item's script location reconciled to `scripts/post_evidence.py`.
 - [ ] GitHub client: token resolution, `GET /user`, the find-or-update sticky comment with paging, the `--key` check, and `--author`.
 - [ ] Sinks: `none` with `--evidence-base-url`, and `release` with `--publish`, the tag scheme, `make_latest: false`, the lookup by tag name, and the draft-or-published state in the plan.
