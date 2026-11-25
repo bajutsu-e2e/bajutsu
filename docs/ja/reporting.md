@@ -471,7 +471,7 @@ GitHub には、コメントに画像を埋め込むための、文書化され�
 
 ### GitHub CLI でスクリーンショットと動画を添付する
 
-`--sink attach` は、失敗したステップのスクリーンショットと失敗したシナリオの動画を、GitHub CLI（`gh`）に渡します。使うのは、`gh` の `--attach` フラグです。コメントでは、スクリーンショットがその場に表示され、動画はプレイヤーとして表示されます。ホストする写しとリリースは要りません。このシンクは、[BE-0503](../../roadmaps/BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md) のスクリプトを拡張したものです。
+`--sink attach` は、失敗したステップのスクリーンショットと失敗したシナリオの動画を、GitHub CLI（`gh`）に渡します。使うのは、`gh` の `--attach` フラグです。コメントでは、スクリーンショットがその場に表示されます。動画は、コメントの末尾で再生されます。ホストする写しとリリースは要りません。このシンクは、[BE-0503](../../roadmaps/BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md) のスクリプトを拡張したものです。
 
 ```bash
 python3 scripts/post_evidence.py runs/20261125-101530 --to acme/app#42 --sink attach --dry-run

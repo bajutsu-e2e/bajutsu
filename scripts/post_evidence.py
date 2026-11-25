@@ -263,7 +263,7 @@ def marker(key: str) -> str:
     return f"<!-- {MARKER_PREFIX}{key} -->"
 
 
-def _evidence_lines(failure: Failure, links: Mapping[str, str], *, embed_videos: bool) -> list[str]:
+def _evidence_lines(failure: Failure, links: Mapping[str, str]) -> list[str]:
     lines = []
     for path in failure.screenshots:
         if path in links:
@@ -271,23 +271,21 @@ def _evidence_lines(failure: Failure, links: Mapping[str, str], *, embed_videos:
         else:
             lines.append(f"  - Screenshot {literal(path)}")
     for path in failure.videos:
-        if path in links and embed_videos:
-            lines.append(f"  - Video {literal(path)}:<br>![video]({links[path]})")
-        elif path in links:
+        if path in links:
             lines.append(f"  - [Video]({links[path]}) {literal(path)}")
         else:
             lines.append(f"  - Video {literal(path)}")
     return lines
 
 
-def _failure_block(failure: Failure, links: Mapping[str, str], *, embed_videos: bool) -> list[str]:
+def _failure_block(failure: Failure, links: Mapping[str, str]) -> list[str]:
     lines = [
         f"#### {literal(failure.name)}",
         "",
         f"- Failed at: {literal(failure.step)}",
         f"- Reason: {literal(failure.reason)}",
     ]
-    evidence = _evidence_lines(failure, links, embed_videos=embed_videos)
+    evidence = _evidence_lines(failure, links)
     if evidence:
         lines += ["- Evidence:", *evidence]
     return [*lines, ""]
@@ -301,7 +299,6 @@ def render(
     max_failures: int,
     notes: Sequence[str] = (),
     run_link: str | None = None,
-    embed_videos: bool = False,
 ) -> str:
     """Render the comment's Markdown.
 
@@ -313,8 +310,6 @@ def render(
         max_failures: How many failed scenarios get a block; the rest are counted.
         notes: Lines stating each truncation and skipped file.
         run_link: A link to the whole run (a zip asset or a hosted report), if any.
-        embed_videos: Reference each linked video as `![video](...)`, so `gh --attach` rewrites it
-            and GitHub shows a player, instead of a plain link.
     """
     verdict = "passed" if run.ok else "failed"
     total = run.passed + run.failed
@@ -330,7 +325,7 @@ def render(
         lines.append(f"[Whole run]({run_link})")
     lines.append("")
     for failure in run.failures[: max(max_failures, 0)]:
-        lines += _failure_block(failure, links, embed_videos=embed_videos)
+        lines += _failure_block(failure, links)
     omitted = len(run.failures) - max(max_failures, 0)
     if omitted > 0:
         lines += [f"{omitted} more failed scenarios are not shown.", ""]
@@ -835,7 +830,13 @@ def stage_attach(
         dest = attach_dir / f"{len(staged) + 1:02d}-{asset_name('', Path(path).name)}"
         shutil.copyfile(src, dest)
         staged.append(Staged(path, dest, dest.stat().st_size))
+    if any(_is_video(f.source) for f in staged):
+        notes.append("Videos are attached at the end of this comment, where GitHub plays them.")
     return staged, notes
+
+
+def _is_video(path: Path) -> bool:
+    return path.suffix.lower() in VIDEO_SUFFIXES
 
 
 def _attach_limit_mb(src: Path, video_mb: int) -> int:
@@ -1148,8 +1149,9 @@ def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
     print(format_plan(plan, publish=args.publish, base_url=args.evidence_base_url), file=io.out)
     links = _base_links(run, args.evidence_base_url, args.max_failures)
     if args.sink == "attach":
-        links = {f.path: f"./{f.source.name}" for f in plan.files}
-    embed = args.sink == "attach"
+        # A video is not referenced: `gh` appends an unreferenced video as a bare URL at the end of
+        # the comment, which is the one form GitHub renders as a player.
+        links = {f.path: f"./{f.source.name}" for f in plan.files if not _is_video(f.source)}
     if args.dry_run:
         body = render(
             run,
@@ -1157,7 +1159,6 @@ def _post(args: argparse.Namespace, io: Io, staging: Path) -> str | None:
             links=links,
             max_failures=args.max_failures,
             notes=plan.notes,
-            embed_videos=embed,
         )
         print("\n--- comment (dry run: nothing was written) ---\n" + body, file=io.out)
         return None
@@ -1228,7 +1229,6 @@ def _post_with_gh(
         links=links,
         max_failures=args.max_failures,
         notes=plan.notes,
-        embed_videos=True,
     )
     body_path = plan.attach_dir / "body.md"
     body_path.write_text(body, encoding="utf-8")

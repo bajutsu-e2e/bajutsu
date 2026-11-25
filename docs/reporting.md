@@ -656,7 +656,7 @@ lists each workflow in the target repository whose triggers mention a release or
 ### Attach screenshots and videos through the GitHub CLI
 
 `--sink attach` passes the failing screenshots and videos to the GitHub CLI (`gh`). It uses the
-`--attach` flag of `gh`. The comment then shows each screenshot inline and each video as a player.
+`--attach` flag of `gh`. The comment then shows each screenshot inline. GitHub plays each video at the end of the comment.
 The sink needs no hosted copy and no release. It extends the script of
 [BE-0503](../roadmaps/BE-0503-local-evidence-post/BE-0503-local-evidence-post.md).
 

@@ -808,7 +808,10 @@ def test_attach_posts_through_gh_with_each_file(attach: Attach) -> None:
     assert call["missing"] == []
     body = call["body"]
     assert "![failing step](./01-after.png)" in body
-    assert "![video](./02-video.mp4)" in body
+    # A video is attached but never referenced: gh appends it as a bare URL, which GitHub plays.
+    assert "02-video.mp4)" not in body
+    assert "- Video `02-login/video.mp4`" in body
+    assert "Videos are attached at the end of this comment" in body
     assert body.splitlines()[0] == "<!-- bajutsu-evidence:local -->"
     assert "Posted:" in out
     assert _tree_digest(attach.run_dir) == before

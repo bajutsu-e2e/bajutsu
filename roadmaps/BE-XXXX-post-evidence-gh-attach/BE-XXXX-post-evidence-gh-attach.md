@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-XXXX](BE-XXXX-post-evidence-gh-attach.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
-| Implementing PR | [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) (all units but the spike) |
+| Implementing PR | [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) (units 2-7) |
 | Topic | Integration with external services |
 | Related | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md) |
 <!-- /BE-METADATA -->
@@ -19,8 +19,8 @@
 This item adds a third sink, `--sink attach`, to `scripts/post_evidence.py`, the helper that
 [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md) ships. The sink hands the
 failing screenshots and the failing scenarios' videos to the GitHub CLI (`gh`) through its
-`--attach` flag. GitHub then hosts the files, and the comment shows each screenshot inline and each
-video as a player. The developer hosts nothing and creates no release.
+`--attach` flag. GitHub then hosts the files, and the comment shows each screenshot inline and plays each
+video at the end of the comment. The developer hosts nothing and creates no release.
 
 The script still posts after the verdict and never changes it. It still uses the standard library
 alone. The only addition is running `gh` as a subprocess, for this sink alone.
@@ -31,9 +31,8 @@ BE-0503 posts a comment of text and links, because it assumed that GitHub offers
 to put an image into a comment. That assumption no longer holds. The help text of `gh pr comment`
 and `gh issue comment` in `gh` 2.105.0 documents `--attach`, which uploads an image or a video and
 rewrites a reference in the comment body to the uploaded file. A public write-up of the flag adds
-details that the help text does not carry: the release that introduced it, the accepted types, the
-size limits, and the platforms it supports. This item treats those details as unverified until the
-spike measures them.
+details that the help text does not carry. A spike on a throwaway repository measured most of them,
+and the section on measured behavior below records what it found and what it could not reach.
 
 The two existing sinks each leave a gap. The `none` sink needs a copy that the developer hosts. The
 `release` sink uploads assets that a browser downloads rather than displays, and a draft release
@@ -54,11 +53,12 @@ beside a body file that holds the rendered Markdown. The body comes from the sam
 other sinks, with each file's link set to `./<name>`. The script gives each staged file a unique
 name, so two scenarios never collide.
 
-A screenshot is passed as `--attach './name#alt'`. The help text says that a video takes no alt text,
-so a video is passed as `--attach './name'` with no `#`. Whether `gh` rewrites the reference to a
-video when it appears as `[Video](./name)` or as `![video](./name)` is unmeasured, and the spike
-decides it. The fallback is documented: a file that the body does not reference is appended at the
-end of the comment.
+A screenshot is passed as `--attach './name#alt'`, and the body references it as `![alt](./name)`.
+A video is passed as `--attach './name'` and is never referenced in the body. The spike found that
+`gh` refuses an alt text on a video, and that it rewrites a video reference into a plain link, which
+GitHub does not play. An unreferenced video is appended as a bare URL at the end of the comment,
+and that form renders as a player. The comment therefore names each video by its path under the
+scenario, and the videos play together at its end.
 
 The sink uploads media alone. A zip, a device log, and a JSON file are out of scope, so the comment
 carries no link to the whole run. A developer who wants the zip uses the `release` sink.
@@ -83,19 +83,20 @@ Three rules keep `gh` on the instance and the files that the plan showed:
 
 ### Guards
 
-The help text states one limit: a command takes at most 50 files. The remaining limits come from the
-public write-up, and the spike confirms them: the accepted types (PNG, JPEG, GIF, WebP, SVG, MP4,
-MOV, WebM), an image cap of 10 MB, a video cap of 10 MB or 100 MB depending on the owner's plan, and
-a version floor of 2.99.0. The script skips a file of another type, an image above 10 MB, a video
-above `--attach-video-mb` (default 10), and any file past the 50th. The plan and the comment name
-every skip. If the spike shows that `gh` rejects such a file by itself, a later item can drop the
-matching guard.
+The help text states one limit: a command takes at most 50 files. The spike confirmed that `gh`
+rejects a file of another type, and that it rejects an image above 10 MB, both before it posts
+anything. An 11 MB video went through on the test account, so the video cap depends on the owner's
+plan. The script keeps 10 MB as its default (`--attach-video-mb`, 1 to 100) and skips the 50-file
+excess, any file of another type, any image above 10 MB, and any video above its limit. The plan
+and the comment name every skip. The version floor of 2.99.0 comes from the public write-up, and
+the spike could not measure it: only `gh` 2.105.0 was at hand.
 
 ### The sticky comment
 
 `gh` creates a comment. Through `--edit-last`, it edits only the current user's last comment, which
-another tool may own, and whether `--edit-last` composes with `--attach` is unmeasured. The script
-therefore posts the new comment first and deletes the older ones afterward.
+another tool may own. The spike showed that `--edit-last` composes with `--attach`, so it can serve
+as a later optimization when this key's comment is the last one. The script posts the new comment
+first and deletes the older ones afterward, because that works wherever the old comment sits.
 
 Deletion follows four rules:
 
@@ -112,20 +113,42 @@ plan lists each comment it will delete, and the confirmation covers the deletion
 
 When `gh` exits non-zero, the script deletes nothing and exits non-zero. It prints the error of `gh`
 and warns that the comment may exist with some attachments, and that uploaded files may already be
-reachable by URL. The help text of `gh issue create` documents that a partial failure still creates
-the issue and prints its URL. This item infers the same behavior for `gh ... comment --attach`, and
-the spike measures it.
+reachable by URL. The spike measured one case: `gh` checks every file before it posts, so an
+unsupported file, a missing file, or an oversize image creates no comment at all. A failure during
+the upload itself could not be provoked, so the warning stays.
 
 ### Privacy
 
-A public write-up reports that files uploaded to a public repository are visible without signing
-in. The plan states that line for a public repository, and the confirmation exists for that reason.
-`--yes` accepts that exposure.
+In a public repository, an uploaded file answers an anonymous request with `200` and its media type,
+and no attachment disposition. Anyone with the URL can see it. The plan states that line for a
+public repository, and the confirmation exists for that reason. `--yes` accepts that exposure.
 
-Deleting a comment removes the comment. GitHub may keep serving the files that the comment uploaded
-at their URLs, which the spike checks. The plan says so next to the public-repository line, so the
-sticky comment's deletion never suggests that older evidence is gone. Redaction applies to the text
-of a run, not to pixels, as BE-0503 states.
+Deleting a comment removes the comment and keeps its files. The spike deleted a comment and fetched
+its image anonymously afterward: the request still answered `200`. The plan says so next to the
+public-repository line, so the sticky comment's deletion never suggests that older evidence is
+gone. Redaction applies to the text of a run, not to pixels, as BE-0503 states.
+
+### Measured behavior
+
+The spike ran on a throwaway public repository, with `gh` 2.105.0 and a token given only through
+`GH_TOKEN`, against an empty `gh` configuration directory. It used dummy files alone.
+
+| Question | Result |
+|---|---|
+| Does `gh` work with `GH_TOKEN` alone? | Yes, for `gh issue create` and `gh issue comment`. |
+| Does the marker stay the first line of the body? | Yes. |
+| How is an image reference rewritten? | `![alt](./name)` becomes `![alt](<hosted URL>)`, and the page shows the image. |
+| How is a video reference rewritten? | `![v](./name)` and `[v](./name)` become a plain link, which is not a player. A bare path is not rewritten. |
+| How does a video play? | An unreferenced video is appended as a bare URL, and that renders as a player. |
+| Does an alt text on a video work? | No: `gh` refuses it before it posts. |
+| Which types and sizes does `gh` take? | It lists png, jpg, jpeg, gif, webp, svg, mp4, mov, and webm. It refuses an image above 10 MB. |
+| What happens to an unsupported file? | `gh` refuses before it posts, and no comment is created. |
+| Does `--edit-last` compose with `--attach`? | Yes. |
+| Who can open an uploaded file? | Anyone, in a public repository. |
+| Do the files outlive a deleted comment? | Yes. |
+
+Not measured, for lack of the means: the 2.99.0 version floor, GitHub Enterprise Server, a video cap
+on a free plan, and a failure that happens during the upload.
 
 ### Tests and documentation
 
@@ -153,7 +176,7 @@ guard, the deletion after success, no deletion after failure, and a run director
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: on a throwaway thread, measure what this item takes from the help text and the public write-up. Confirm that `gh pr comment --attach` and `gh issue comment --attach` work with a token given only through `GH_TOKEN`. Record the version floor, the accepted types, and the size caps. Record how `gh` rewrites a video reference, and whether `--edit-last` composes with `--attach`. Check that the marker stays the first line after the rewrite, what a partial failure leaves behind, and whether files outlive a deleted comment.
+- [x] Spike: on a throwaway thread, measure what this item takes from the help text and the public write-up. Confirm that `gh pr comment --attach` and `gh issue comment --attach` work with a token given only through `GH_TOKEN`. Record the version floor, the accepted types, and the size caps. Record how `gh` rewrites a video reference, and whether `--edit-last` composes with `--attach`. Check that the marker stays the first line after the rewrite, what a partial failure leaves behind, and whether files outlive a deleted comment.
 - [x] CLI and plan: `--sink attach`, `--attach-video-mb`, and the plan's lines for files, skips, deletions, and privacy.
 - [x] Staging and guards: media types, size caps, the file cap, unique staged names, and the body references.
 - [x] The `gh` call: the version check, the host refusal, the subcommand choice, the child environment and working directory, and the error report that covers a partial failure.
@@ -163,7 +186,7 @@ guard, the deletion after success, no deletion after failure, and a run director
 
 Log:
 
-- [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) — Added the proposal, the `attach` sink in `scripts/post_evidence.py`, its tests with a fake `gh`, and the documentation in both languages. The spike stays open.
+- [#2532](https://github.com/bajutsu-e2e/bajutsu/pull/2532) — Added the proposal, the `attach` sink in `scripts/post_evidence.py`, its tests with a fake `gh`, and the documentation in both languages. The spike then ran on a throwaway repository, and the item records what it measured. It changed how videos are posted: they are attached unreferenced and play at the end of the comment.
 
 ## References
 
