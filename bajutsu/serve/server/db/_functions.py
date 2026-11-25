@@ -8,13 +8,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .api_key_record import ApiKeyRecord
 from .org_record import OrgRecord
 from .run_record import RunRecord
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
-    from bajutsu.serve.server.models import Org, Run
+    from bajutsu.serve.server.models import ApiKey, Org, Run
 
     from .sql_repository import SqlRepository
 
@@ -36,6 +37,21 @@ def _to_org(row: Org) -> OrgRecord:
         deleted_at=row.deleted_at,
         created_at=row.created_at,
         config_source=dict(row.config_source) if row.config_source is not None else None,
+    )
+
+
+def _to_api_key(row: ApiKey) -> ApiKeyRecord:
+    return ApiKeyRecord(
+        id=row.id,
+        org_id=row.org_id,
+        name=row.name,
+        role=row.role,
+        secret_hash=row.secret_hash,
+        expires_at=_as_utc(row.expires_at),
+        created_by=row.created_by,
+        created_at=_as_utc(row.created_at),
+        last_used_at=_as_utc(row.last_used_at) if row.last_used_at is not None else None,
+        revoked_at=_as_utc(row.revoked_at) if row.revoked_at is not None else None,
     )
 
 

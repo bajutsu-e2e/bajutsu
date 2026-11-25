@@ -9,15 +9,20 @@ from typing import Literal
 #: A session belongs either to a person who signed in, or to a CI pipeline that exchanged an OIDC
 #: token for one (BE-0414). The two are governed by different gates — a human by the viewer /
 #: editor / admin role, a machine by an endpoint allowlist — so the store records which it is
-#: rather than letting the gate infer it from the shape of an identity string.
-PrincipalKind = Literal["human", "machine"]
+#: rather than letting the gate infer it from the shape of an identity string. A third kind, an
+#: organization-scoped API key (BE-0509), has no session at all: only the bearer check builds one.
+PrincipalKind = Literal["human", "machine", "api-key"]
 
 HUMAN: PrincipalKind = "human"
 MACHINE: PrincipalKind = "machine"
+API_KEY: PrincipalKind = "api-key"
 
 #: The reserved prefix a machine session's identity carries. A GitHub login cannot contain `/`, and
 #: the repository that follows always does, so the form can never collide with a person's.
 _MACHINE_PREFIX = "repo:"
+
+#: The reserved prefix an API key's identity carries. A GitHub login cannot contain `:`.
+_API_KEY_PREFIX = "api-key:"
 
 _logger = logging.getLogger(__name__)
 
@@ -74,21 +79,37 @@ def machine_repository(identity: str | None) -> str | None:
     return identity[len(_MACHINE_PREFIX) :].lower()
 
 
+def api_key_identity(key_id: str) -> str:
+    """The identity a request authenticated by API key *key_id* acts under (BE-0509)."""
+    return f"{_API_KEY_PREFIX}{key_id}"
+
+
+def api_key_id(identity: str | None) -> str | None:
+    """The key identifier behind *identity*, or None for any other caller. As with
+    `machine_repository`, this only names a caller already admitted; it admits nobody."""
+    if identity is None or not identity.startswith(_API_KEY_PREFIX):
+        return None
+    return identity[len(_API_KEY_PREFIX) :]
+
+
 @dataclass(frozen=True)
 class Principal:
-    """Who a session belongs to, as the gate reads it.
+    """Who a request acts as, as the gate reads it.
 
     Attributes:
-        identity: The GitHub login for a human session, `repo:<owner>/<repo>` for a machine one, or
+        identity: The GitHub login for a human session, `repo:<owner>/<repo>` for a machine one,
+            `api-key:<id>` for an API key, or
             None for a shared-token login that carries no identity at all. A login cannot contain
             `/`, so the machine form can never collide with one — and a non-None identity is what
             makes a session revocable, since `revoke_identities` never touches one carrying none.
-        org: The tenant a machine session acts as, resolved once at the exchange and carried here
-            rather than re-derived per request. None for a human session, whose org comes from
-            their persisted user row instead.
+        org: The tenant a machine session or an API key acts as, resolved once (at the exchange,
+            or from the key's row) and carried here rather than re-derived per request. None for a
+            human session, whose org comes from their persisted user row instead.
         kind: Which gate governs this session.
         ci_job: The CI job a machine session was minted for, as `WorkloadClaims.ci_job` records
             it — what the audit trail writes in place of a user. None for a human session.
+        role: The role an API key was issued with. None for a session, whose role comes from the
+            user row; `from_stored` never reads one, so a session row cannot claim a key's role.
     """
 
     identity: str | None
@@ -97,6 +118,7 @@ class Principal:
     # Out of the hash, in the equality: a dict member would make the generated `__hash__` raise for
     # the one shape that carries a job, while two principals for different jobs still compare unequal.
     ci_job: dict[str, str] | None = field(default=None, hash=False)
+    role: str | None = None
 
     @classmethod
     def from_stored(
@@ -130,7 +152,7 @@ def _ci_job_from_stored(value: object) -> dict[str, str] | None:
 
 
 def kind_from_stored(value: object) -> PrincipalKind:
-    """Narrow a kind read back out of a store to the two this code knows.
+    """Narrow a kind read back out of a store to the two a session can have.
 
     Only an absent value and the literal `"human"` read as human: an absent one is a session row
     written before these columns existed, which predates machine sessions entirely. Anything else

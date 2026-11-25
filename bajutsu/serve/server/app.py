@@ -46,7 +46,7 @@ from starlette.requests import ClientDisconnect
 from starlette.types import Receive, Scope, Send
 
 from bajutsu.common.run_meta.object_store import content_type_for
-from bajutsu.serve import gate, oplog
+from bajutsu.serve import api_keys, gate, oplog
 from bajutsu.serve import operations as ops
 from bajutsu.serve.handler import (
     _JS_MODULES,
@@ -384,6 +384,56 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
     # The `file://` store's routes exist only when this server is that store (BE-0449).
     file_store = state.object_store if isinstance(state.object_store, FileObjectStore) else None
 
+    def _gate_session(request: Request, method: str, path: str) -> Response | None:
+        """The shared-token and session half of the gate: the refusal to send, or None to admit."""
+        if not _authorized(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        # Which of the three caller shapes is this? A machine session (BE-0414) carries an
+        # identity like a human one, so its own gate runs first and unconditionally — the role
+        # gate below would read it as a user with no row and default it to viewer.
+        # One read, not two: asking separately for the kind and then the identity lets a
+        # session that stops validating in between answer None to both, and a caller that is
+        # neither machine nor human is served as the shared-token shape — full access.
+        principal = gate.principal_for(state.auth, request.cookies.get(_SESSION_COOKIE))
+        is_machine = principal is not None and principal.kind == MACHINE
+        if is_machine and gate.forbidden_for_machine(
+            method, path, org=principal.org if principal is not None else None
+        ):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        if principal is not None:
+            # The identity the gate admitted this request on, for every caller shape.
+            request.state.gate_actor = principal.identity
+        if is_machine and principal is not None:
+            request.state.machine_org = principal.org
+            request.state.ci_job = principal.ci_job
+        # Enforce the user's role on mutating endpoints for an OAuth session (an identity)
+        # when a database is wired (BE-0015 7c-2); token/Bearer has no identity and stays
+        # full-access. A machine principal never reaches that gate — the allowlist above is
+        # the whole of what governs it.
+        login = None if is_machine else (principal.identity if principal is not None else None)
+        if (
+            login is not None
+            and state.repository is not None
+            and ops.forbidden_for_role(state, login, method, path)
+        ):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        return None
+
+    def _gate_api_key(request: Request, admission: api_keys.Admission) -> Response | None:
+        """The API-key half (BE-0509): such a request has no session to read and no user row for
+        the role gate, so `admission` is the whole verdict."""
+        if admission.status is not None or admission.principal is None:
+            status = admission.status or 401
+            error = "unauthorized" if status == 401 else "forbidden"
+            return JSONResponse({"error": error}, status_code=status)
+        request.state.gate_actor = admission.principal.identity
+        # The same slot a machine session fills, so `state.org_for` answers the key's org.
+        request.state.machine_org = admission.principal.org
+        # Bound on the request's own context, which the endpoint copies: the threadpool binding
+        # inside `admit` does not come back out of it.
+        oplog.bind_actor(admission.principal.identity or "")
+        return None
+
     @app.middleware("http")
     async def _security_gate(request: Request, call_next: Any) -> Response:
         """Host allowlist + auth + CSRF + hardening headers, mirroring the stdlib handler's
@@ -418,37 +468,18 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
             and not signed_store_route
             and not gate.is_open(method, path, oidc=state.auth.oidc is not None)
         ):
-            if not _authorized(request):
-                return _hardened(JSONResponse({"error": "unauthorized"}, status_code=401))
-            # Which of the three caller shapes is this? A machine session (BE-0414) carries an
-            # identity like a human one, so its own gate runs first and unconditionally — the role
-            # gate below would read it as a user with no row and default it to viewer.
-            # One read, not two: asking separately for the kind and then the identity lets a
-            # session that stops validating in between answer None to both, and a caller that is
-            # neither machine nor human is served as the shared-token shape — full access.
-            principal = gate.principal_for(state.auth, request.cookies.get(_SESSION_COOKIE))
-            is_machine = principal is not None and principal.kind == MACHINE
-            if is_machine and gate.forbidden_for_machine(
-                method, path, org=principal.org if principal is not None else None
-            ):
-                return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
-            if principal is not None:
-                # The identity the gate admitted this request on, for every caller shape.
-                request.state.gate_actor = principal.identity
-            if is_machine and principal is not None:
-                request.state.machine_org = principal.org
-                request.state.ci_job = principal.ci_job
-            # Enforce the user's role on mutating endpoints for an OAuth session (an identity)
-            # when a database is wired (BE-0015 7c-2); token/Bearer has no identity and stays
-            # full-access. A machine principal never reaches that gate — the allowlist above is
-            # the whole of what governs it.
-            login = None if is_machine else (principal.identity if principal is not None else None)
-            if (
-                login is not None
-                and state.repository is not None
-                and ops.forbidden_for_role(state, login, method, path)
-            ):
-                return _hardened(JSONResponse({"error": "forbidden"}, status_code=403))
+            # An API key (BE-0509) is judged ahead of the session gates, as in the stdlib handler.
+            # Off the event loop: it reads and writes the database.
+            admission = await run_in_threadpool(
+                api_keys.admit, state, request.headers.get("authorization", ""), method, path
+            )
+            refusal = (
+                _gate_session(request, method, path)
+                if admission is None
+                else _gate_api_key(request, admission)
+            )
+            if refusal is not None:
+                return _hardened(refusal)
         try:
             response = await call_next(request)
         except Exception:

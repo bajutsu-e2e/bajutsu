@@ -117,6 +117,11 @@ ROUTES: tuple[Route, ...] = (
     Route("GET", "/api/orgs", lambda state, ctx: ops.list_orgs_view(state, actor=ctx.actor())),
     Route(
         "GET",
+        "/api/orgs/{slug}/keys",
+        lambda state, ctx: ops.list_api_keys(state, ctx.path_param("slug")),
+    ),
+    Route(
+        "GET",
         "/api/metrics/targets",
         lambda state, ctx: ops.target_metrics_view(state, actor=ctx.actor(), session=ctx.session()),
     ),
@@ -377,6 +382,22 @@ ROUTES: tuple[Route, ...] = (
         "/api/orgs/{slug}/machine-sessions/revoke",
         lambda state, ctx: ops.revoke_machine_sessions(
             state, ctx.path_param("slug"), ctx.body(), actor=ctx.actor()
+        ),
+    ),
+    # Organization-scoped API keys (BE-0509). Under `/api/orgs/…` for the same inherited admin
+    # gate: a route under the singular `/api/org` would let any signed-in viewer issue keys.
+    Route(
+        "POST",
+        "/api/orgs/{slug}/keys",
+        lambda state, ctx: ops.create_api_key(
+            state, ctx.path_param("slug"), ctx.body(), actor=ctx.actor()
+        ),
+    ),
+    Route(
+        "DELETE",
+        "/api/orgs/{slug}/keys/{key_id}",
+        lambda state, ctx: ops.revoke_api_key(
+            state, ctx.path_param("slug"), ctx.path_param("key_id"), actor=ctx.actor()
         ),
     ),
     Route(

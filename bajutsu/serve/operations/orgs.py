@@ -301,11 +301,19 @@ def delete_org(state: ServeState, slug: str, *, actor: str | None = None) -> tup
     # 3), so its sessions survive that call entirely — and would go on acting as the retired tenant
     # until they expired, the exact leak BE-0375 added this revocation to close. Revoke them by org.
     revoked += state.auth.sessions.revoke_machine_sessions(slug)
+    # Its API keys (BE-0509) outlive every session and are not sessions: retiring is a soft delete,
+    # so no cascade fires either.
+    keys_revoked = state.repository.revoke_org_keys(slug, at=datetime.now(UTC))
     # Their configuration bindings go with the sessions that held them (BE-0393 unit 2): a revoked
     # cookie already reads the fallback, so this reclaims the slots rather than closing a hole.
     state.drop_revoked_bindings()
     _record_audit(
-        state, actor, state.org_of(actor), "org.delete", slug, {"sessionsRevoked": revoked}
+        state,
+        actor,
+        state.org_of(actor),
+        "org.delete",
+        slug,
+        {"sessionsRevoked": revoked, "apiKeysRevoked": keys_revoked},
     )
     return {"ok": True, "slug": slug, "sessionsRevoked": revoked}, 200
 

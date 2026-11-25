@@ -1125,6 +1125,42 @@ Removing an `allowedRepositories` entry stops *new* sessions and leaves live one
 configuration binds at the exchange. Revoking is the second half of that operator duty. Rename,
 transfer, or delete a listed repository, and you remove the entry **and** revoke what it minted.
 
+### API keys for a script
+
+This section is optional. A script on a developer's machine cannot complete a browser sign-in, and it
+holds no token from a CI platform. An administrator can issue it an **API key** for one organization
+([BE-0509](../roadmaps/BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md)). The script sends the
+key as `Authorization: Bearer <key>` and acts as that organization. A key needs a database, so without
+one the three routes below answer `409`.
+
+**A key opens no route yet.** It reaches only the routes on an allowlist that ships empty, and each
+feature that adds a key-callable route adds it there. Any other route answers `403`.
+
+| Request | What it does |
+|---|---|
+| `POST /api/orgs/<slug>/keys` | Issue a key from `{"name": "...", "role": "viewer" or "editor", "expiresInDays": 90}`. `expiresInDays` is optional, from 1 to 365 (default 90). The reply carries the key in `key`, and no later request returns it. |
+| `GET /api/orgs/<slug>/keys` | List each unrevoked key's identifier, name, role, creator, expiry, and last-used time. |
+| `DELETE /api/orgs/<slug>/keys/<id>` | Revoke a key. Its next request answers `401`. An identifier that belongs to another organization answers `404`. |
+
+All three are admin actions, like the rest of `/api/orgs/…`:
+
+```bash
+# -b: the admin's own signed-in session cookie.
+curl -X POST "$BAJUTSU_URL/api/orgs/acme/keys" -b cookies.txt \
+  -H 'Content-Type: application/json' -d '{"name": "laptop", "role": "viewer"}'
+```
+
+The key is written `bajutsu_<id>_<secret>`. `serve` stores the identifier and a SHA-256 hash of the
+secret, never the secret itself, so a lost key cannot be recovered. A key never has the `admin` role,
+and it cannot issue or revoke keys. To rotate one, issue a new key, then revoke the old one.
+
+A key answers `401` once it is revoked or expired, and once its organization is retired; retiring an
+organization also revokes its keys. A route on the allowlist still requires the role it requires of a
+person, so a `viewer` key cannot call an `editor` route.
+
+The audit log records each issue, revocation, and use under the key's identifier. A use is recorded
+whether the route was allowed or refused. A key's last-used time updates at most once a minute.
+
 ### Operator secrets and the Claude API key
 
 The **API key** an admin sets through the settings panel is an *operator secret*, and on the hosted

@@ -854,6 +854,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   載せません。**非 loopback の `--host`（例 `0.0.0.0`）への bind はトークン必須**で、無認証での公開を防ぎます
   （無ければ起動を中止）。トークン未設定なら従来どおり全開放で、loopback でのみ安全です。完全なマルチユーザー認証
   （OAuth/RBAC）は対象外です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
+- **org 単位の API キー（BE-0509）。** データベースがあるデプロイでは、admin が `POST /api/orgs/<slug>/keys` で
+  org 1 つ分のキーを発行します。一覧は `GET`、失効は `DELETE /api/orgs/<slug>/keys/<id>` です。キーが開くのは
+  許可リストの route だけで、許可リストは現時点では空です。詳しくは
+  [スクリプト向けの API キー](self-hosting.md#スクリプト向けの-api-キー)を参照してください。
 - **CSRF + セキュリティヘッダ（BE-0051）。** トークン設定時、`Origin` が `Host` と一致しない状態変更 POST は
   拒否します（`SameSite=Strict` セッション Cookie に対する多層防御）。`Origin` を送らない非ブラウザ
   クライアントは影響を受けません。全レスポンスに `X-Content-Type-Options: nosniff` /

@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.serve import gate, oplog
+from bajutsu.serve import api_keys, gate, oplog
 from bajutsu.serve import operations as ops
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import (
@@ -280,6 +280,19 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             path = urlparse(self.path).path
             if gate.is_open(self.command, path, oidc=state.auth.oidc is not None):
                 return True
+            # An API key (BE-0509) is judged ahead of both session gates below: it has no session
+            # to read and no user row for the role gate.
+            admission = api_keys.admit(
+                state, self.headers.get("Authorization", ""), self.command, path
+            )
+            if admission is not None:
+                if admission.status is not None or admission.principal is None:
+                    status = admission.status or 401
+                    return self._refuse(status, "unauthorized" if status == 401 else "forbidden")
+                self._gate_actor = admission.principal.identity
+                # The same slot a machine session fills, so `state.org_for` answers the key's org.
+                self._machine_org = admission.principal.org
+                return True
             if self._authorized():
                 # Authenticated — but as which of the three caller shapes? A machine session
                 # (BE-0414) carries an identity like a human one, so it would otherwise fall into
@@ -294,11 +307,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 if is_machine and gate.forbidden_for_machine(
                     self.command, path, org=principal.org if principal is not None else None
                 ):
-                    length = int(self.headers.get("Content-Length") or 0)
-                    if length:
-                        self.rfile.read(length)
-                    self._json({"error": "forbidden"}, 403)
-                    return False
+                    return self._refuse(403, "forbidden")
                 if principal is not None:
                     # The identity the gate admitted this request on, for every caller shape.
                     self._gate_actor = principal.identity
@@ -322,18 +331,18 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                     and state.repository is not None
                     and ops.forbidden_for_role(state, login, self.command, path)
                 ):
-                    length = int(self.headers.get("Content-Length") or 0)
-                    if length:
-                        self.rfile.read(length)
-                    self._json({"error": "forbidden"}, 403)
-                    return False
+                    return self._refuse(403, "forbidden")
                 return True
+            return self._refuse(401, "unauthorized")
+
+        def _refuse(self, status: int, error: str) -> bool:
+            """Answer a request the gate turns away, and return False for `_gate` to pass on."""
             # Drain any request body before replying, so a keep-alive connection isn't left with
             # unread bytes that would corrupt the next request on it.
             length = int(self.headers.get("Content-Length") or 0)
             if length:
                 self.rfile.read(length)
-            self._json({"error": "unauthorized"}, 401)
+            self._json({"error": error}, status)
             return False
 
         def _qs(self, key: str) -> str | None:
