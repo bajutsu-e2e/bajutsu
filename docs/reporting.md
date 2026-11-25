@@ -581,3 +581,73 @@ render model (outcomes from `manifest.json`, the scenario plan from `scenario.ya
 from that model. Re-rendering only re-presents recorded outcomes. It never re-runs an assertion or
 changes a verdict. An older run renders with any newer-only section shown as "not captured"
 rather than invented.
+
+## Posting evidence to a pull request (BE-0504)
+
+The `post-evidence` composite action posts a finished run to a pull request or an issue. It reads
+`manifest.json`, or `<sid>/result.json` when the run left no manifest. It installs no Bajutsu and
+calls no Bajutsu command, so any repository that produces a run directory can use it.
+
+The comment names each failed scenario, its first failed step, and the reason. It links the evidence
+that the action uploads as GitHub Actions artifacts. A rerun updates the same comment. A hidden
+marker on the comment's first line identifies it, so each job keeps one comment.
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write   # issues: write when the target is an issue
+steps:
+  - run: uv run bajutsu run --scenario scenarios/smoke.yaml --target web
+  - name: Post run evidence
+    if: always()
+    uses: bajutsu-e2e/bajutsu/.github/actions/post-evidence@<ref>
+```
+
+The action uploads three kinds of artifact:
+
+- **The whole run, as one zip.** Unpack it and open `report.html`, which works offline.
+- **A screenshot per failed scenario**, for the first three failed scenarios. It is the failing
+  step's `after.png` when the step has one, and is uploaded without a zip.
+- **A video per failed scenario**, for the same three scenarios, uploaded without a zip.
+
+A non-zipped upload names the artifact after the file. The action thus copies each file under
+`<artifact-name>-screenshot-N` or `<artifact-name>-video-N`. We have not confirmed whether a browser
+displays such a file or downloads it. Either way, the link delivers the file. A reader needs read access
+to the repository, because artifact URLs require sign-in.
+
+### Inputs
+
+| Input | Default | Meaning |
+|---|---|---|
+| `run-dir` | `runs` | One run directory, or a root that holds several runs. |
+| `artifact-name` | workflow and job name | Name of the zip, and prefix of the other artifacts. A matrix job adds its matrix values. |
+| `retention-days` | `14` | Days GitHub keeps each uploaded artifact (1 to 90). |
+| `compression-level` | `6` | Zlib level of the zip. Use `0` for a run that is mostly video. |
+| `log-tail-kb` | `1024` | A `deviceLog` larger than this keeps its last `log-tail-kb` KB in the zip. `0` keeps logs whole. |
+| `size-warn-mb` | `500` | Skips the zip upload above this staged size. `0` disables the guard. |
+| `upload` | `true` | With `false`, uploads nothing and links `artifact-url`. |
+| `artifact-url` | empty | Artifact to link when `upload` is `false`. The `bajutsu-e2e` action outputs one. |
+| `issue-number` | the pull request | Without a number the action writes the job summary alone. |
+| `github-token` | `github.token` | Token that writes the comment. |
+| `comment-key` | workflow and job name | Key of the sticky comment. A matrix job adds its matrix values. |
+| `comment-author` | `github-actions[bot]` | Login that owns the sticky comment. Set the App's login for an App token. |
+| `max-failures` | `10` | Failed scenarios listed in full. |
+| `evidence-base-url` | empty | Base URL that serves the run directory. Screenshots then render inline. |
+
+### Behavior to know
+
+- **The action never changes the job's result.** A broken upload, a read-only token (a pull request
+  from a fork), or an API error produces a warning and the job summary. The test step's own exit code
+  decides pass or fail.
+- **A run stopped partway leaves no manifest.** The comment then says the run did not complete.
+- **Truncation does not mask secrets.** The staged copy of a device log over `log-tail-kb` keeps the
+  log's end, and its first line records the original size. No upload holds the full log. The staged
+  copy keeps whatever text the log already holds.
+- **The comment carries manifest text.** The run has already masked that text. Set `upload: false`
+  when screenshots or videos must not leave the job.
+- **`pull_request_target` is unsupported.** That trigger gives a write token to a job that runs a
+  fork's code.
+- **An evidence base URL** renders each screenshot in the comment and links `<base>/report.html`.
+  The action never uploads there. A signed URL leaves a broken image once it expires.
+- **Manifest version.** The renderer reads `schemaVersion` 18 and newer. An older manifest produces
+  a notice in place of scenario details.
