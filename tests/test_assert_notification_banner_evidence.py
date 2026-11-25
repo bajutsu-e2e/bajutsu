@@ -15,7 +15,7 @@ import pytest
 
 from bajutsu.common.drivers.adb import BANNER_GUARD_OFF_NOTE
 from scripts.assert_notification_banner_evidence import main as _main
-from scripts.assert_notification_banner_evidence import violations
+from scripts.assert_notification_banner_evidence import relaunches, violations
 
 _NAME = "a heads-up notification over a control is cleared before the tap"
 _DISMISSAL = {"label": "Showcase notification", "kind": "notificationBanner"}
@@ -113,3 +113,91 @@ def test_main_fails_without_a_manifest_or_the_scenario(tmp_path: Path) -> None:
     assert _main_with(tmp_path) == 1
     (tmp_path / "manifest.json").write_text(json.dumps({"scenarios": [{"scenario": "other"}]}))
     assert _main_with(tmp_path) == 1
+
+
+# The events-buffer lines the failing CI run left (issue #2520), plus the launcher's own relaunch at
+# boot, which belongs to another package and must not count.
+_VIEWS = "com.bajutsu.showcase.android.views"
+_EVENTS = (
+    "11-25 01:57:14.453   522   539 I wm_relaunch_resume_activity: "
+    "[0,147066410,7,com.google.android.apps.nexuslauncher/.NexusLauncherActivity,80000000]\n"
+    "11-25 01:58:56.354   522   522 I notification_canceled: "
+    f"[0|{_VIEWS}|4960|null|10195,5,3592,3592,2724,-1,-1,NULL]\n"
+    "11-25 01:58:56.355   522   539 I wm_relaunch_resume_activity: "
+    f"[0,222635148,9,{_VIEWS}/com.bajutsu.showcase.views.MainActivity,80000000]\n"
+)
+
+
+def test_relaunches_picks_the_apps_own_activity_alone() -> None:
+    assert relaunches(_EVENTS, _VIEWS) == [f"{_VIEWS}/com.bajutsu.showcase.views.MainActivity"]
+    assert relaunches(_EVENTS, "com.bajutsu.showcase.android.compose") == []
+
+
+def test_relaunches_reads_the_non_resumed_variant_too() -> None:
+    line = f"I wm_relaunch_activity: [0,1,2,{_VIEWS}/.Main,80000000]"
+    assert relaunches(line, _VIEWS) == [f"{_VIEWS}/.Main"]
+
+
+def test_a_system_relaunch_is_named_as_the_cause_of_a_failure() -> None:
+    found = violations(_scenario(ok=False), relaunches(_EVENTS, _VIEWS))
+    assert "emulator-side cause" in found[0]
+    assert _VIEWS in found[0]
+    assert any("did not take its tap" in line for line in found[1:])
+
+
+def test_a_relaunch_never_fails_a_sound_run() -> None:
+    assert violations(_scenario(alerts=[_DISMISSAL]), relaunches(_EVENTS, _VIEWS)) == []
+
+
+def _main_with_events(run_dir: Path, events: Path, package: str) -> int:
+    argv = sys.argv
+    sys.argv = [
+        "assert_notification_banner_evidence.py",
+        "--events",
+        str(events),
+        "--package",
+        package,
+        str(run_dir),
+    ]
+    try:
+        return _main()
+    finally:
+        sys.argv = argv
+
+
+def test_main_names_a_relaunch_from_the_event_log(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "manifest.json").write_text(json.dumps({"scenarios": [_scenario(ok=False)]}))
+    events = tmp_path / "device-events.log"
+    events.write_text(_EVENTS)
+    assert _main_with_events(tmp_path, events, _VIEWS) == 1
+    assert "emulator-side cause" in capsys.readouterr().err
+
+
+def test_main_fails_on_a_missing_event_log(tmp_path: Path) -> None:
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"scenarios": [_scenario(alerts=[_DISMISSAL])]})
+    )
+    assert _main_with_events(tmp_path, tmp_path / "absent.log", _VIEWS) == 1
+
+
+def test_main_requires_events_and_package_together(tmp_path: Path) -> None:
+    argv = sys.argv
+    sys.argv = ["assert_notification_banner_evidence.py", "--events", "x.log", str(tmp_path)]
+    try:
+        with pytest.raises(SystemExit):
+            _main()
+    finally:
+        sys.argv = argv
+
+
+def test_relaunches_skips_a_malformed_tuple() -> None:
+    assert relaunches("I wm_relaunch_activity: [0,1]", _VIEWS) == []
+
+
+def test_a_repeated_relaunch_is_named_once() -> None:
+    twice = relaunches(_EVENTS + _EVENTS, _VIEWS)
+    assert len(twice) == 2
+    found = violations(_scenario(ok=False), twice)
+    assert found[0].count(_VIEWS) == 1

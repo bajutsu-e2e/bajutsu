@@ -550,7 +550,15 @@ e2e-app-crash: compose-build
 # exercised nothing. SystemUI stretches that lifetime to the accessibility timeout the user asked for,
 # so the target raises both timeouts to a minute for its runs and deletes them afterwards, failed run
 # or not, leaving the device's own defaults behind.
+#
+# A freshly booted emulator keeps applying package changes for minutes after boot completes. On CI one
+# such change relaunched the Views activity mid-run, which sent the app back to its first tab and
+# cancelled the posted notification (issue #2520). Each run therefore waits for the system's broadcast
+# queues to drain first, bounded so a device that never quiets still runs. The run's slice of the
+# device event log goes to the evidence check, which names a relaunch as the emulator-side cause it is
+# rather than leaving a bare selector miss.
 NOTIFICATION_BANNER_RUNS := $(ROOT)/tmp/showcase-android-notification-banner-runs
+BROADCAST_IDLE_TIMEOUT_S := 120
 HEADS_UP_TIMEOUTS := accessibility_interactive_ui_timeout_ms accessibility_non_interactive_ui_timeout_ms
 e2e-notification-banner: compose-build views-build
 	$(MAKE) -C $(ROOT)/BajutsuAndroidUIAutomatorServer build
@@ -559,9 +567,14 @@ e2e-notification-banner: compose-build views-build
 	rm -rf $(NOTIFICATION_BANNER_RUNS)
 	for k in $(HEADS_UP_TIMEOUTS); do $(ADB) shell settings put secure $$k 60000 || exit 1; done
 	status=0; \
-	for t in showcase-compose showcase-views; do \
+	for tp in showcase-compose:com.bajutsu.showcase.android.compose \
+			showcase-views:com.bajutsu.showcase.android.views; do \
+		t="$${tp%%:*}"; pkg="$${tp#*:}"; \
 		runs="$(NOTIFICATION_BANNER_RUNS)/$$t"; \
 		echo "=== $$t / notification_banner_android ==="; \
+		$(ADB) shell timeout $(BROADCAST_IDLE_TIMEOUT_S) am wait-for-broadcast-idle >/dev/null \
+			|| echo "broadcast-idle wait did not finish (timed out or unsupported); running anyway"; \
+		since="$$($(ADB) shell date +%s | tr -d '\r').000"; \
 		(cd $(ROOT) && $(E2E_ENV) uv run bajutsu run \
 			--scenario demos/showcase/scenarios/notification_banner_android.yaml \
 			--runs-dir "$$runs" --target "$$t" --udid $(SERIAL) --backend android \
@@ -571,7 +584,9 @@ e2e-notification-banner: compose-build views-build
 			echo "expected exactly one run directory under $$runs/, found $$run_dir_count" >&2; \
 			status=1; break; \
 		fi; \
+		$(ADB) logcat -b events -d -T "$$since" > "$$runs/device-events.log" || status=1; \
 		(cd $(ROOT) && uv run python scripts/assert_notification_banner_evidence.py \
+			--events "$$runs/device-events.log" --package "$$pkg" \
 			"$$(find "$$runs" -mindepth 1 -maxdepth 1 -type d)") || { status=1; break; }; \
 	done; \
 	for k in $(HEADS_UP_TIMEOUTS); do $(ADB) shell settings delete secure $$k >/dev/null || status=1; done; \
