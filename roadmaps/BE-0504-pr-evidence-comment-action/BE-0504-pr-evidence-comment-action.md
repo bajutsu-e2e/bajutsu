@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
+| Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike) |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -137,6 +138,13 @@ Artifact links cannot render an image inside a comment, because the URL needs si
 - [x] Gate coverage: the script passes `ruff` and `mypy --strict` under `make check`: `make typecheck` adds `.github/actions/post-evidence`, the unit tests import the script from that path, and `make test` measures it (`--cov`), so that BE-0385's per-file floor in `coverage-floors.json` holds it to the same bar as `bajutsu/`.
 - [x] Documentation: a `docs/reporting.md` section and its `docs/ja/` mirror.
 - [x] Adoption: the web E2E workflow of this repository calls the action.
+
+Log:
+
+- [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) — added the `post-evidence` composite action: the standard-library renderer and
+  sticky-comment client, log truncation and the size guard, the zip and six non-zipped upload slots,
+  the `bajutsu-e2e` `artifact-url` output, gate coverage, docs, and adoption in the web E2E job. The
+  spike needs a real GitHub run and stays open.
 
 ## References
 
