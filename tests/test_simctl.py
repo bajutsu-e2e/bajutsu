@@ -82,6 +82,18 @@ def test_is_installed_reflects_get_app_container() -> None:
     assert simctl.Env("U", run=absent).is_installed("com.x") is False  # missing -> False, no raise
 
 
+def test_app_container_is_the_installed_path_or_none() -> None:
+    import subprocess
+
+    def absent(args: list[str], e: Mapping[str, str] | None = None) -> str:
+        raise subprocess.CalledProcessError(2, args, stderr="No such file or directory")
+
+    assert simctl.Env("U", run=lambda a, e: "/p/A.app\n").app_container("com.x") == "/p/A.app"
+    assert simctl.Env("U", run=lambda a, e: "\n").app_container("com.x") is None
+    assert simctl.Env("U", run=absent).app_container("com.x") is None
+    assert simctl.Env("U", run=_timing_out).app_container("com.x") is None
+
+
 def test_app_container_exists_is_false_only_for_an_absent_container() -> None:
     import subprocess
 
