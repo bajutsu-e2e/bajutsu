@@ -3233,6 +3233,9 @@ def test_set_interruption_policy_raises_when_the_runner_did_not_store_it() -> No
 _PASTE_ITEM = _el_wire("h-paste", None, "Paste", traits=["staticText"])
 _FIELD_TAP = ("POST", "/tap", {"handle": "h-field"})
 _FIELD_PRESS = ("POST", "/tap", {"handle": "h-field", "duration": 0.6})
+# The driver waits for a menu item it raised to become hittable before tapping it (issue #2521), so
+# every such tap is preceded by this probe.
+_PASTE_PROBE = ("POST", "/isHittable", {"handle": "h-paste"})
 
 
 def _paste_transport(
@@ -3275,7 +3278,7 @@ def test_paste_focuses_then_long_presses_to_raise_the_menu_then_taps_paste(
     _fast_paste(monkeypatch)
     transport, sent = _paste_transport([_PASTE_ITEM])
     _driver(transport).paste({"id": "form.coupon"})
-    assert sent == [_FIELD_TAP, _FIELD_PRESS, ("POST", "/tap", {"handle": "h-paste"})]
+    assert sent == [_FIELD_TAP, _FIELD_PRESS, _PASTE_PROBE, ("POST", "/tap", {"handle": "h-paste"})]
 
 
 def test_paste_uses_the_menu_its_focusing_tap_raised(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3283,7 +3286,7 @@ def test_paste_uses_the_menu_its_focusing_tap_raised(monkeypatch: pytest.MonkeyP
     _fast_paste(monkeypatch)
     transport, sent = _paste_transport([_PASTE_ITEM], raised_by="tap")
     _driver(transport).paste({"id": "form.coupon"})
-    assert sent == [_FIELD_TAP, ("POST", "/tap", {"handle": "h-paste"})]
+    assert sent == [_FIELD_TAP, _PASTE_PROBE, ("POST", "/tap", {"handle": "h-paste"})]
 
 
 def test_paste_accepts_the_label_in_the_apps_own_localization(
@@ -3356,6 +3359,31 @@ _SELECT_ALL_ITEM = _menu_item("h-select-all", "Select All")
 _COPY_ITEM = _menu_item("h-copy", "Copy")
 _SELECT_ALL_TAP = ("POST", "/tap", {"handle": "h-select-all"})
 _COPY_TAP = ("POST", "/tap", {"handle": "h-copy"})
+_SELECT_ALL_PROBE = ("POST", "/isHittable", {"handle": "h-select-all"})
+_COPY_PROBE = ("POST", "/isHittable", {"handle": "h-copy"})
+
+
+def _hittable_refusal(
+    refuse_hittable: tuple[str, int] | None,
+    refused: dict[str, int],
+    path: str,
+    handle: object,
+) -> _Reply | None:
+    """The runner's answer while an edit-menu item is still animating in; None once it has landed.
+
+    Each hittability probe advances the animation a frame. Until it lands the item is refused as a
+    tap as well, which is what issue #2521 is: a driver that tapped on existence alone then fails
+    the way the issue reports rather than on a mismatched call sequence.
+    """
+    if refuse_hittable is None or handle != refuse_hittable[0]:
+        return None
+    if refused["n"] >= refuse_hittable[1]:
+        return None
+    if path == "/isHittable":
+        refused["n"] += 1
+    elif path != "/tap":
+        return None
+    return _Reply(status="not-hittable")
 
 
 def _edit_menu_transport(
@@ -3363,6 +3391,7 @@ def _edit_menu_transport(
     raised_by: str = "press",
     menu: str | None = None,
     app: list[dict[str, Any]] | None = None,
+    refuse_hittable: tuple[str, int] | None = None,
 ) -> tuple[TransportFn, list[tuple[str, str, Mapping[str, Any] | None]]]:
     """A runner that models the iOS 26.5 edit menu on the coupon field (BE-0493).
 
@@ -3370,9 +3399,14 @@ def _edit_menu_transport(
     and Paste. A tap on the field while a menu is up closes it and ends the selection; otherwise
     the menu rises on a long press, or on the tap itself when `raised_by="tap"`. Tapping a menu item
     closes the menu. `menu="selection"` starts with the menu a `select` step leaves up.
+
+    `refuse_hittable=(handle, times)` models the menu still animating in: the item is in the tree,
+    but XCTest refuses it — both a hittability probe and a tap — until that many probes have gone
+    by (issue #2521).
     """
     sent: list[tuple[str, str, Mapping[str, Any] | None]] = []
     state: dict[str, str | None] = {"menu": menu}
+    refused = {"n": 0}
     items = {
         "caret": [_SELECT_ALL_ITEM, _PASTE_ITEM],
         "selection": [_menu_item("h-cut", "Cut"), _COPY_ITEM, _PASTE_ITEM],
@@ -3386,6 +3420,9 @@ def _edit_menu_transport(
         sent.append((method, path, body))
         fields = body or {}
         handle = fields.get("handle")
+        refusal = _hittable_refusal(refuse_hittable, refused, path, handle)
+        if refusal is not None:
+            return refusal
         if path == "/tap" and handle == "h-field":
             if "duration" in fields:
                 state["menu"] = "caret"
@@ -3410,14 +3447,14 @@ def test_select_all_long_presses_for_the_menu_then_taps_select_all(
     _fast_paste(monkeypatch)
     transport, sent = _edit_menu_transport()
     _driver(transport).select_all({"id": "form.coupon"})
-    assert sent == [_FIELD_TAP, _FIELD_PRESS, _SELECT_ALL_TAP]
+    assert sent == [_FIELD_TAP, _FIELD_PRESS, _SELECT_ALL_PROBE, _SELECT_ALL_TAP]
 
 
 def test_select_all_uses_the_menu_its_focusing_tap_raised(monkeypatch: pytest.MonkeyPatch) -> None:
     _fast_paste(monkeypatch)
     transport, sent = _edit_menu_transport(raised_by="tap")
     _driver(transport).select_all({"id": "form.coupon"})
-    assert sent == [_FIELD_TAP, _SELECT_ALL_TAP]
+    assert sent == [_FIELD_TAP, _SELECT_ALL_PROBE, _SELECT_ALL_TAP]
 
 
 def test_select_all_accepts_the_label_in_the_apps_own_localization(
@@ -3469,7 +3506,58 @@ def test_copy_selects_again_then_taps_the_copy_item_that_replaced_select_all(
     _fast_paste(monkeypatch)
     transport, sent = _edit_menu_transport(menu="selection")
     _driver(transport).copy_selection({"id": "form.coupon"})
-    assert sent == [_FIELD_TAP, _FIELD_PRESS, _SELECT_ALL_TAP, _COPY_TAP]
+    assert sent == [
+        _FIELD_TAP,
+        _FIELD_PRESS,
+        _SELECT_ALL_PROBE,
+        _SELECT_ALL_TAP,
+        _COPY_PROBE,
+        _COPY_TAP,
+    ]
+
+
+def test_select_all_waits_for_the_menu_item_to_become_hittable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The menu animates in, so Select All is in the accessibility tree a frame or two before
+    # XCTest's own `isHittable` accepts it. The driver waits for hittability rather than tapping on
+    # existence alone, which on a loaded host raised `ElementNotTappable` (issue #2521). Three reads
+    # per wait, untimed: two refusals, then the tap.
+    monkeypatch.setattr(base, "deadline_ticks", lambda *_a, **_k: iter([None, None, None]))
+    transport, sent = _edit_menu_transport(refuse_hittable=("h-select-all", 2))
+    _driver(transport).select_all({"id": "form.coupon"})
+    assert sent == [
+        _FIELD_TAP,
+        _FIELD_PRESS,
+        _SELECT_ALL_PROBE,
+        _SELECT_ALL_PROBE,
+        _SELECT_ALL_PROBE,
+        _SELECT_ALL_TAP,
+    ]
+
+
+def test_select_all_fails_loudly_when_the_menu_item_never_becomes_hittable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # An item that is there and stays unreachable points at a different cause than a menu that
+    # showed no new item, so the failure names which one it is and never taps (issue #2521).
+    monkeypatch.setattr(base, "deadline_ticks", lambda *_a, **_k: iter([None, None]))
+    transport, sent = _edit_menu_transport(refuse_hittable=("h-select-all", 99))
+    with pytest.raises(base.ElementNotTappable, match=r"^select: .*never became hittable"):
+        _driver(transport).select_all({"id": "form.coupon"})
+    assert _SELECT_ALL_TAP not in sent
+
+
+def test_copy_names_its_own_step_when_the_copy_item_never_becomes_hittable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # `copy` taps the Copy item outside the shared raise-the-menu helper, so it carries the same
+    # wait, and its failure must name `copy` rather than the `select` that already landed (#2521).
+    monkeypatch.setattr(base, "deadline_ticks", lambda *_a, **_k: iter([None, None]))
+    transport, sent = _edit_menu_transport(menu="selection", refuse_hittable=("h-copy", 99))
+    with pytest.raises(base.ElementNotTappable, match=r"^copy: .*Copy item.*never became hittable"):
+        _driver(transport).copy_selection({"id": "form.coupon"})
+    assert _COPY_TAP not in sent
 
 
 def test_copy_twice_in_a_row_raises_the_menu_each_time(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3505,7 +3593,7 @@ def test_paste_dismisses_the_menu_a_select_left_up(monkeypatch: pytest.MonkeyPat
     _fast_paste(monkeypatch)
     transport, sent = _edit_menu_transport(menu="selection")
     _driver(transport).paste({"id": "form.coupon"})
-    assert sent == [_FIELD_TAP, _FIELD_PRESS, ("POST", "/tap", {"handle": "h-paste"})]
+    assert sent == [_FIELD_TAP, _FIELD_PRESS, _PASTE_PROBE, ("POST", "/tap", {"handle": "h-paste"})]
 
 
 def test_app_content_that_drops_out_after_the_long_press_is_never_a_new_menu_item(
