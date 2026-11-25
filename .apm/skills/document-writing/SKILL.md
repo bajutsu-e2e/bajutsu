@@ -203,35 +203,32 @@ findings.
 ## Mandatory textlint verification after drafting
 
 The norms above guide human judgment; they are not machine-checkable. Once a piece is drafted, run
-it through [textlint](https://github.com/textlint/textlint) and revise until it introduces **no new
-findings**. The bar is the file you started from, not zero. textlint is a mechanical floor, not a
-substitute for the norms above — clearing it does not mean the piece satisfies them. This applies to
-English and Japanese prose alike; the same config and runtime cover both.
+it through [textlint](https://github.com/textlint/textlint) and revise until the file reports
+**zero findings**, in English and Japanese alike. textlint is a mechanical floor, not a substitute
+for the norms above, so clearing it does not mean the piece satisfies them.
 
-Zero is not the bar because zero is not reachable here, and a target nobody reaches is a target
-nobody aims at. Every merged roadmap item carries findings — BE-0390's Japanese side reports 77,
-BE-0376's 59 — and 69 of BE-0390's 77 come from a single rule, `no-mix-dearu-desumasu`, which
-demands bullets in である調, the register [`CLAUDE.md`](../../../CLAUDE.md) forbids for `*-ja.md`.
-Chasing zero therefore buys a long revise-and-rerun loop that can only end in an arbitrary stop, and
-it is the largest single cost in authoring an item. Measuring against the file's own starting count
-ends the loop on a fact instead.
+- **Zero is the bar for every file you write or edit.** A new file starts at zero. An existing file
+  ends at zero too, so clear the findings it already carried, not only the ones you introduced. Do
+  not stop at "no more than I started with", and do not calibrate against the findings of merged
+  items.
+- **Clear a finding by revising the prose.** Never loosen
+  [`.textlintrc.json`](../../../tools/textlint/.textlintrc.json), raise a threshold, or add a
+  disable comment to reach zero.
+- **Japanese keeps 敬体, and still reaches zero.** [`CLAUDE.md`](../../../CLAUDE.md) puts every
+  `*-ja.md` and `docs/ja/` page in 敬体. `no-mix-dearu-desumasu` fires on 敬体 bullet and numbered
+  lists. Reach zero with paragraphs, tables, or noun-ending lines. Never switch the file to である調
+  to silence the rule. A `## Progress` / `## 進捗` checklist bullet is exempt, like a heading
+  (BE-0434).
 
-- **Count before you edit.** Run textlint on the file as it stands and keep the number, then clear
-  what you introduced against it.
-- **A new file has no starting count**, so that rule says nothing about one — reading it as "zero"
-  reinstates the unreachable bar this section exists to retire. Calibrate against the corpus
-  instead: run textlint on two or three merged items of comparable length and land in the same
-  order of magnitude. BE-0376 reports 140 English findings, so a new item scoring near that is in
-  family; one at several times it has a real prose problem worth finding.
-- **Clear what you introduced**, and **leave what you inherited** — pre-existing findings in a file
-  you are touching in part are outside your lane, and clearing them widens the diff.
-- **A repository norm outranks a textlint rule where the two cannot both hold.** The live case is
-  register: CLAUDE.md puts every `*-ja.md` in 敬体, **bullet lists included** (a `## Progress` /
-  `## 進捗` checklist bullet excepted, like a heading — BE-0434) — so unify the whole document,
-  never just its running prose, and leave the `no-mix-dearu-desumasu` findings that
-  unification leaves behind. Switching the file to である調 to clear them inverts the hierarchy.
-- **Everywhere else textlint wins**: clear the finding by revising the prose, never by loosening the
-  config or raising a threshold to dodge it.
+Practical lessons that save reruns:
+
+- **`sentence-length` counts a table row or paragraph as one sentence** when a period follows inline
+  code or a digit, because the rule does not see a boundary there. End each sentence on a plain
+  word, and keep table rows short.
+- **`alex` flags words such as "dirty", "failed", and "executed".** Reword them ("stale", "did not
+  pass", "ran"). When the word is a key or a field name, rename the key if you own it.
+- **Expand an acronym on first use in each file**, in title case: "Large Language Model (LLM)". A
+  later section of a long file re-expands it only when it could be read alone.
 
 ### Running it
 
