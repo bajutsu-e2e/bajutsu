@@ -129,9 +129,9 @@ runner.
    selects (`ANTHROPIC_API_KEY`, the OAuth token, or Amazon Web Services (AWS) credentials for
    Bedrock). The credential is stored as an Actions secret scoped via an Environment, so an
    unrelated job cannot read it. By GitHub's design, a plain `pull_request` event from a **fork**
-   does not expose secrets. Auto-review therefore covers same-repo `claude/<topic>` /
-   `<user>/<topic>` branches, the model [CLAUDE.md](../../CLAUDE.md) already assumes, and a
-   maintainer reviews a fork PR on demand instead. This item deliberately does **not** use
+   does not expose secrets. Auto-review therefore covers the same-repo `claude/<topic>` /
+   `<user>/<topic>` branches that [CLAUDE.md](../../CLAUDE.md) already assumes, and a maintainer
+   reviews a fork PR on demand instead. This item deliberately does **not** use
    `pull_request_target`, which would run with secrets against untrusted fork code. *Alternatives
    considered* records that trade-off.
 
