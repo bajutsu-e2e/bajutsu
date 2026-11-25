@@ -16,13 +16,15 @@
 
 ## Introduction
 
-Unify the three authoring surfaces — Capture, Editor, and Enrichment — as switchable modes over one open scenario in the `serve` UI, rather than separate tabs that each manage their own state.
+Unify the three authoring surfaces (Capture, Editor, and Enrichment) as switchable modes over one open scenario in the `serve` UI. Today each surface is a separate tab that manages its own state.
 
 ## Motivation
 
-BE-0014 established the demarcation among the authoring surfaces and shipped the enrichment loop. Today, Capture (BE-0012), the Editor (BE-0013), and Enrichment (BE-0014) are separate tabs in `serve`, each with its own target/scenario selection and independent state. The author must pick a tab up front and re-select the scenario if they switch. BE-0014's design anticipated a single view where the author opens one scenario and switches authoring mode over it — demonstrate to add steps, pick to fix a selector, propose to add assertions — without choosing a tool up front.
+BE-0014 established the demarcation among the authoring surfaces and shipped the enrichment loop. Today, Capture (BE-0012), the Editor (BE-0013), and Enrichment (BE-0014) are separate tabs in `serve`, each with its own target/scenario selection and independent state. The author must pick a tab up front and must re-select the scenario after switching tabs.
 
-The concrete cost of separate tabs is workflow friction: a common flow is "capture a flow, fix a selector in the editor, then enrich with assertions," and today that requires three tab switches with three Load actions on the same scenario. A unified surface eliminates that overhead and makes the surfaces composable in practice, not just in the file format.
+BE-0014's design anticipated a single view. The author opens one scenario in that view and switches authoring mode over it, without choosing a tool up front: demonstrate to add steps, pick to fix a selector, propose to add assertions.
+
+The concrete cost of separate tabs is workflow friction. A common flow is "capture a flow, fix a selector in the editor, then enrich with assertions." Today that flow requires three tab switches with three Load actions on the same scenario. A unified surface eliminates that overhead and makes the surfaces composable in practice, not just in the file format.
 
 ## Detailed design
 
@@ -30,11 +32,11 @@ The concrete cost of separate tabs is workflow friction: a common flow is "captu
 
 The unified view replaces the separate Capture, Editor, and Enrichment tabs with a single "Author" tab. The tab hosts one open scenario (target + file + name) and exposes three modes via a mode switcher:
 
-- **Capture** mode: the current Capture tab's functionality — start a live session, click on screenshots to record steps. Steps stream into the open scenario.
-- **Edit** mode: the current Editor tab's functionality — navigate steps, click on screenshots to resolve selectors, edit YAML directly.
-- **Enrich** mode: the current Enrich button's functionality, promoted to a full mode — propose assertions, review them, accept or dismiss.
+- **Capture** mode: the current Capture tab's functionality. The author starts a live session and clicks on screenshots to record steps. Steps stream into the open scenario.
+- **Edit** mode: the current Editor tab's functionality. The author navigates steps, clicks on screenshots to resolve selectors, and edits YAML directly.
+- **Enrich** mode: the current Enrich button's functionality, promoted to a full mode. The author proposes assertions, reviews them, and accepts or dismisses each one.
 
-The mode switcher is a row of buttons (not tabs) within the Author view, visually distinct from the top-level navigation. Switching modes does not reload the scenario or lose unsaved edits.
+The mode switcher is a row of buttons (not tabs) within the Author view, visually distinct from the top-level navigation. Switching modes neither reloads the scenario nor loses unsaved edits.
 
 ### Shared state
 
@@ -49,12 +51,12 @@ Mode-specific state (the live Capture driver session, the Editor's current step 
 
 ### Migration path
 
-The existing Capture and Editor tabs remain functional during the transition. The unified Author tab is added alongside them. Once validated, the separate tabs are removed and their top-level navigation buttons are replaced by the single Author button.
+The existing Capture and Editor tabs remain functional during the transition, and the unified Author tab is added alongside them. Once the Author tab is validated, the separate tabs are removed and their top-level navigation buttons are replaced by the single Author button.
 
 ## Alternatives considered
 
-* **Keep the tabs and add cross-tab state sync.** Rejected: synchronizing scenario selection and unsaved edits across three independent tabs adds complexity without removing the fundamental UX problem (the author still picks a tab up front).
-* **Merge all three into the Editor tab without a mode switcher.** Rejected: overloading one tab with all controls at once would clutter the interface. A mode switcher keeps each mode's controls focused.
+* **Keep the tabs and add cross-tab state sync.** Rejected, because synchronizing scenario selection and unsaved edits across three independent tabs adds complexity without removing the fundamental UX problem (the author still picks a tab up front).
+* **Merge all three into the Editor tab without a mode switcher.** Rejected, because overloading one tab with all controls at once would clutter the interface. A mode switcher keeps each mode's controls focused.
 
 ## Progress
 
