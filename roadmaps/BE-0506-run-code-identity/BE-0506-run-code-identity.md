@@ -54,7 +54,7 @@ The `app` and `appSource` keys below sit under each `targets.<name>` entry.
 | `appSource.commit` | Full commit hash of the app's source repository |
 | `appSource.uncommitted` | `true` when the source tree holds uncommitted changes |
 
-The `toolSource` object describes Bajutsu's own checkout. It sits at the top level of the `provenance` stamp. It always carries `source`, which names where the identity came from, and `commit`. The value of `source` is `checkout` or `build-arg`. The `uncommitted` key appears when `source` is `checkout`, and never otherwise. A build-time commit has no working tree to compare against.
+The `toolSource` object describes Bajutsu's own checkout. It sits at the top level of the `provenance` stamp. Whenever the object is present, it carries `commit` and `source`. The `source` value names where the identity came from. The value is either `checkout` or `build-arg`, never both. The `uncommitted` key appears when `source` is `checkout`, and never otherwise. A build-time commit has no working tree to compare against. With neither a checkout nor a `BAJUTSU_BUILD_COMMIT` value, the runner omits `toolSource` entirely.
 
 The existing `gitRevision` keeps its meaning and its value. Every reader of it keeps working.
 
@@ -64,9 +64,9 @@ The serve job list is one such reader. Its function `_run_provenance` (`bajutsu/
 
 **Binary hash.** For each target, the runner reads the binary at the resolved `app.path`. It reads after `build_app` (`bajutsu/common/runner/build.py:41`) has run. The hash then covers the binary the run launches.
 
-A file hashes as a stream of its bytes. A directory hashes as a tree. The runner lists every regular file and every symbolic link in sorted order of relative paths. It never follows a link. It hashes one line per entry: `<relative path>\0<entry hash>\n`. A regular file contributes the hash of its bytes. A symbolic link contributes the hash of its target string. The tree hash includes the code-signing files, because a re-signed build is a different artifact.
+A file hashes as a stream of its bytes. A directory hashes as a tree. The runner lists every regular file and every symbolic link in sorted order of relative paths. It never follows a link. It hashes one line per entry: `<relative path>\0<kind>\0<entry hash>\n`. The `kind` is `file` or `link`. A regular file contributes the hash of its bytes. A symbolic link contributes the hash of its target string. The tree hash includes the code-signing files, because a re-signed build is a different artifact.
 
-**Version.** For an iOS `.app`, the runner parses the bundle's `Info.plist` with `plistlib`. For Android, it opens the `.apk` at `app.path` as a zip archive. It parses the binary `AndroidManifest.xml` inside for `versionName` and `versionCode`. Both versions then come from the same file the hash covers. Targets that share a package each report their own `.apk`. A version the device reports after install is a different fact. This item leaves it out of the stamp. Neither read involves a Large Language Model (LLM).
+**Version.** For an iOS `.app`, the runner parses the bundle's `Info.plist` with `plistlib`. For Android, it opens the `.apk` at `app.path` as a zip archive. It decodes the binary `AndroidManifest.xml` inside with a small decoder that lives in `bajutsu/common/`. The decoder reads `versionName` and `versionCode`. It adds no dependency and never calls the Android Software Development Kit (SDK). Both versions then come from the same file the hash covers. Targets that share a package each report their own `.apk`. A version the device reports after install is a different fact. This item leaves it out of the stamp. Neither read involves a Large Language Model (LLM).
 
 **Source commit.** A new optional target key, `sourceRoot`, names the app's source repository. The runner resolves it against the config root, as it does `app.path`. It runs `git rev-parse HEAD` and `git status --porcelain` there. The commit describes the working tree, not the binary. The stamp records both separately, so a mismatch between them stays visible.
 
@@ -91,7 +91,8 @@ A raw message can carry a local path or a token. The run directory does not othe
 | `path-missing` | The binary does not exist at `app.path` |
 | `read-error` | The runner could not read the binary |
 | `plist-unreadable` | The `Info.plist` did not parse |
-| `apk-unreadable` | The `.apk` did not open or its manifest did not parse |
+| `apk-unreadable` | The `.apk` did not open as a zip archive or has no manifest |
+| `manifest-unparsable` | The manifest inside the `.apk` did not decode |
 | `not-a-git-repo` | The `sourceRoot` is not inside a Git checkout |
 | `git-unavailable` | The `git` command is missing or timed out |
 | `status-read-failed` | `git status` errored |
@@ -115,13 +116,13 @@ A group the target never configured is a different case. A target with no `app.p
 ### Work breakdown
 
 1. Move the Git identity reader into `bajutsu/common/` and add a directory argument.
-2. Add the binary hasher and the iOS and Android version readers. Each returns a value or a code from the fixed set.
+2. Add the binary hasher, the iOS version reader, and the Android manifest decoder. Each returns a value or a code from the fixed set.
 3. Add the optional `sourceRoot` target key to the config schema, with a schema test.
 4. Compute each target's stamp once per run. Pass the `targets` mapping to `provenance` in the pipeline and the pool. Raise `schemaVersion` to 19.
 5. Surface the stamp, gaps included, in `ctrf.json` and `report.html`.
 6. Document the keys in `docs/` and `docs/ja/`. Update `DESIGN.md` and `docs/architecture.md` where they describe `provenance`.
 
-Each unit carries its own unit tests. The hasher test builds a small directory fixture. It checks that renaming a file, editing a byte, and adding a symbolic link each change the hash. The Git reader test puts the package directory inside an unrelated repository. It checks that no `toolSource` results.
+Each unit carries its own unit tests. The hasher test builds a small directory fixture. It checks that renaming a file, editing a byte, and adding a symbolic link each change the hash. It also checks that a file and a link with equal content hash differently. A decoder test feeds a small `.apk` fixture and a truncated one. The Git reader test puts the package directory inside an unrelated repository. It checks that no `toolSource` results.
 
 A gap test points a target at a missing binary and a `sourceRoot` outside any repository. It checks that the run still passes. It checks that each key is `null` and that `unavailable` names the reason. A multi-target test checks that every declared target has its own entry.
 
