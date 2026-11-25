@@ -9,6 +9,7 @@ Fast gate over an injected `adb` runner (no device).
 from __future__ import annotations
 
 from collections.abc import Callable
+from importlib import import_module
 
 import pytest
 
@@ -214,6 +215,70 @@ def test_control_overrides_and_clears_the_status_bar() -> None:
     control.override_status_bar(time="9:41")
     control.clear_status_bar()
     assert calls == [*_PREAMBLE, _demo("clock", "-e", "hhmm", "0941"), _demo("exit")]
+
+
+_WIFI_UNREGISTERED = "    StatusBarIconList state:\n        29:(wifi) holder=null \n"
+_WIFI_REGISTERED = (
+    "    StatusBarIconList state:\n"
+    "        29:(wifi) holder=StatusBarIconHolder(type=WIFI_NEW tag=0 visible=true) \n"
+)
+_ICONS_PROBE = [
+    "adb", "-s", "E", "shell", "dumpsys", "activity", "service",
+    "com.android.systemui/.SystemUIService", "StatusBarIconControllerImpl",
+]  # fmt: skip
+_WIFI_OVERRIDE = [*_PREAMBLE, _demo("network", "-e", "wifi", "show", "-e", "level", "4")]
+
+
+# The package re-exports a `device_control` function, which hides the module of the same name.
+_DEVICE_CONTROL = import_module("bajutsu.common.platform_lifecycle.device_control")
+
+
+def _override_wifi(dumps: list[str]) -> list[list[str]]:
+    calls: list[list[str]] = []
+    replies = iter(dumps)
+
+    def reply(argv: list[str]) -> str:
+        return next(replies, dumps[-1]) if "dumpsys" in argv else ""
+
+    control = platform_lifecycle.android_device_control("E", _PKG, _recorder(calls, reply))
+    control.override_status_bar(wifi_bars=3)
+    return calls
+
+
+def test_status_bar_reenters_once_system_ui_registers_the_wifi_icon() -> None:
+    # Registering the icon during the demo mode draws it twice (issue #2555), so the control waits
+    # for the registration, leaves, and enters again.
+    calls = _override_wifi([_WIFI_UNREGISTERED, _WIFI_UNREGISTERED, _WIFI_REGISTERED])
+    assert calls == [
+        _ICONS_PROBE,
+        *_WIFI_OVERRIDE,
+        _ICONS_PROBE,
+        _ICONS_PROBE,
+        _demo("exit"),
+        *_WIFI_OVERRIDE,
+    ]
+
+
+@pytest.mark.parametrize(
+    "dump",
+    [
+        _WIFI_REGISTERED,
+        # A System UI whose dump names no Wi-Fi slot is left alone.
+        "SERVICE com.android.systemui/.SystemUIService\n",
+    ],
+)
+def test_status_bar_enters_once_when_the_wifi_icon_cannot_double(dump: str) -> None:
+    assert _override_wifi([dump]) == [_ICONS_PROBE, *_WIFI_OVERRIDE]
+
+
+def test_status_bar_keeps_the_override_when_the_wifi_icon_never_registers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_DEVICE_CONTROL, "_WIFI_ICON_TIMEOUT", 0.05)
+    monkeypatch.setattr(_DEVICE_CONTROL, "_WIFI_ICON_POLL", 0.01)
+    monkeypatch.setattr(_DEVICE_CONTROL, "_WIFI_ICON_POLL_MAX", 0.01)
+    calls = _override_wifi([_WIFI_UNREGISTERED])
+    assert [c for c in calls if c != _ICONS_PROBE] == _WIFI_OVERRIDE
 
 
 def _sc(*steps: dict[str, object]) -> Scenario:

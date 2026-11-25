@@ -19,6 +19,8 @@ from ._device_state import (
     set_app_locales_cmd,
     status_bar_demo_cmds,
     status_bar_exit_cmd,
+    status_bar_icons_cmd,
+    wifi_icon_unregistered,
 )
 from ._functions import (
     EMULATOR_PROPS,
@@ -362,6 +364,10 @@ class Env:
 
     def clear_status_bar(self) -> None:
         self._run(status_bar_exit_cmd(self.serial))
+
+    def wifi_icon_unregistered(self) -> bool:
+        """Whether System UI has yet to register its Wi-Fi icon (`wifi_icon_unregistered`)."""
+        return wifi_icon_unregistered(self._run(status_bar_icons_cmd(self.serial)))
 
     def apply_app_locale(self, package: str, locale: str | None, api_level: int | None) -> None:
         """Pin *package*'s per-app language to *locale*, or clear it when *locale* is None (BE-0478).

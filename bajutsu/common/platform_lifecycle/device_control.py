@@ -13,6 +13,13 @@ from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator import DeviceControl
 
+# How long `overrideStatusBar` waits for System UI to register its Wi-Fi icon (issue #2555). The
+# registration lands within a second of `wifi show`; a System UI that never registers one (an older
+# icon pipeline) cannot draw the duplicate, so the wait ends without failing the step.
+_WIFI_ICON_TIMEOUT = 5.0
+_WIFI_ICON_POLL = 0.1
+_WIFI_ICON_POLL_MAX = 0.5
+
 
 def device_control(
     udid: str,
@@ -155,7 +162,7 @@ def android_device_control(
 
         def override_status_bar(self, **kwargs: str | int) -> None:
             _require_showable_status_bar(kwargs)
-            e.override_status_bar(**kwargs)
+            _android_override_status_bar(e, kwargs)
 
         def clear_status_bar(self) -> None:
             e.clear_status_bar()
@@ -194,6 +201,24 @@ def _require_showable_status_bar(fields: dict[str, str | int]) -> None:
     """
     if problems := adb.status_bar_problems(fields):
         raise base.UnsupportedAction(f"overrideStatusBar: {'; '.join(problems)}")
+
+
+def _android_override_status_bar(e: adb.Env, fields: dict[str, str | int]) -> None:
+    """Enter the demo mode, then enter it again if the first entry doubled the Wi-Fi icon.
+
+    System UI draws a second Wi-Fi icon when it registers the real one during the demo mode (see
+    `adb.wifi_icon_unregistered`, issue #2555). Leaving the demo mode drops both, and the icon stays
+    registered, so a second entry draws one.
+    """
+    may_double = "wifi_bars" in fields and e.wifi_icon_unregistered()
+    e.override_status_bar(**fields)
+    if not may_double:
+        return
+    for _ in base.deadline_ticks(_WIFI_ICON_TIMEOUT, _WIFI_ICON_POLL, _WIFI_ICON_POLL_MAX):
+        if not e.wifi_icon_unregistered():
+            e.clear_status_bar()
+            e.override_status_bar(**fields)
+            return
 
 
 def _android_foreground(foreground: Callable[[], None] | None) -> Callable[[], None]:
