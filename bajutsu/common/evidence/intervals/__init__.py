@@ -26,6 +26,7 @@ from ._functions import _VIDEO_START_TIMEOUT as _VIDEO_START_TIMEOUT
 from ._functions import _VIDEO_START_TIMEOUT_ENV as _VIDEO_START_TIMEOUT_ENV
 from ._functions import (
     ADB_PROVIDER,
+    DEVICE_LOG_LEVELS,
     Spawn,
     adopt,
     app_trace_cmd,
@@ -70,6 +71,7 @@ from .proc import Proc
 
 __all__ = [
     "ADB_PROVIDER",
+    "DEVICE_LOG_LEVELS",
     "INTERVAL_KINDS",
     "PROVIDER",
     "SCREENRECORD_BIT_RATE",

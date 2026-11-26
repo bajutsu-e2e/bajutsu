@@ -24,6 +24,7 @@ from bajutsu.common.evidence.network import NetworkCollector, NetworkExchange, S
 from bajutsu.common.platform_lifecycle import CollectorHost, ProvisionProfile
 from bajutsu.common.platform_lifecycle.environments.ios import _DeviceEnvironment
 from bajutsu.common.platform_lifecycle.webview_source import WebViewSource, http_bridge_source
+from bajutsu.common.run_identity.stamp import RunIdentity
 from bajutsu.common.runner import ReadinessResult, device_pool, device_relauncher
 from bajutsu.common.scenario import Relaunch, Scenario
 
@@ -200,6 +201,7 @@ def test_device_pool_wires_readiness_and_provenance_into_the_sink(
         Path("runs"),
         available=lambda b: True,
         env_run=lambda args, extra_env: "",
+        identity=RunIdentity(targets={"app": {"app": {"hash": "sha256:abc"}}}),
     )
     lz = None
     try:
@@ -211,6 +213,8 @@ def test_device_pool_wires_readiness_and_provenance_into_the_sink(
         scenario_hash = lz.sink.provenance["scenarioHash"]
         assert isinstance(scenario_hash, str) and scenario_hash.startswith("sha256:")
         assert "toolVersion" in lz.sink.provenance
+        # BE-0506: the identity read once per run reaches each lease's stamp unchanged.
+        assert lz.sink.provenance["targets"] == {"app": {"app": {"hash": "sha256:abc"}}}
     finally:
         if lz is not None:
             lz.release()

@@ -39,6 +39,7 @@ from bajutsu.common.orchestrator import (
     TargetDeviceInfo,
 )
 from bajutsu.common.report.html import html_report, scenario_render_inputs, write_html_and_junit
+from bajutsu.common.report.identity_view import identity_lines
 from bajutsu.common.scenario import Scenario, load_stored_scenario_file, renamed_outcome
 
 _logger = logging.getLogger("bajutsu.common.report.load")
@@ -379,6 +380,7 @@ def rerender_html(run_dir: Path) -> str:
         not_applicable=m.not_applicable,
         notices=report_notices(m.provenance),
         hook_phases=report_hook_phases((m.provenance or {}).get(HOOKS_KEY)),
+        identity=identity_lines(m.provenance),
     )
 
 

@@ -115,8 +115,9 @@ def xcuitest_video(udid: str, path: Path) -> intervals.Interval:
 def xcuitest_device_log(udid: str, path: Path) -> intervals.Interval:
     """`intervals.start_device_log` without `apsd`, the XCUITest twin of `android_screenrecord`'s bounds.
 
-    On a CI Simulator `apsd`'s debug output alone is most of an unfiltered stream, hundreds of MB
-    per test, which costs host CPU these suites cannot spare and says nothing about the driver.
+    On a CI Simulator `apsd` alone was most of an unfiltered debug stream, hundreds of MB per test.
+    The default level is now `info`, where its share is unmeasured; it still says nothing about the
+    driver.
     """
     return intervals.start_device_log(udid, path, 'process != "apsd"')
 

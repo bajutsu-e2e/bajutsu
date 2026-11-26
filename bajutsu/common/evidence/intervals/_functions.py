@@ -123,8 +123,23 @@ def record_video_cmd(udid: str, path: str) -> list[str]:
     ]
 
 
-def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
-    """Build the simctl command that streams the device log, optionally filtered by `predicate`."""
+# The `log stream --level` values `run --log-level` accepts.
+DEVICE_LOG_LEVELS = ("default", "info", "debug")
+
+
+def device_log_cmd(udid: str, predicate: str | None = None, level: str = "info") -> list[str]:
+    """Build the simctl command that streams the device log, optionally filtered by `predicate`.
+
+    `info` by default, not `debug`: a debug stream makes every process in the Simulator emit its debug
+    messages, which on a loaded CI host ran to thousands of lines a second and starved the runner it
+    was meant to diagnose. Info is kept, since the stream's own default would drop an app's
+    `Logger.info` lines too. `run --log-level debug` asks for debug back where a failure needs it.
+
+    Raises:
+        ValueError: `level` is not one of `DEVICE_LOG_LEVELS`.
+    """
+    if level not in DEVICE_LOG_LEVELS:
+        raise ValueError(f"unknown device log level {level!r}; expected one of {DEVICE_LOG_LEVELS}")
     cmd = [
         "xcrun",
         "simctl",
@@ -133,7 +148,7 @@ def device_log_cmd(udid: str, predicate: str | None = None) -> list[str]:
         "log",
         "stream",
         "--level",
-        "debug",
+        level,
         "--style",
         "compact",
     ]
@@ -320,14 +335,14 @@ def start_video(
 
 
 def start_device_log(
-    udid: str, path: Path, predicate: str | None = None, spawn: Spawn = spawn
+    udid: str, path: Path, predicate: str | None = None, spawn: Spawn = spawn, level: str = "info"
 ) -> Interval:
     """Begin streaming the device log to `path`; stop() (SIGTERM) ends the stream.
 
     Blocks for up to `_LOG_STREAM_START_TIMEOUT` waiting for the stream's first output, so the
     stop can signal a stream `simctl spawn` will actually forward the signal to.
     """
-    proc = spawn(device_log_cmd(udid, predicate), path)
+    proc = spawn(device_log_cmd(udid, predicate, level), path)
     return Interval(
         kind="deviceLog",
         path=path,

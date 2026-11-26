@@ -82,6 +82,7 @@ from bajutsu.common.report import (
     scenario_source_meta,
     write_report,
 )
+from bajutsu.common.run_identity.stamp import RunIdentity
 from bajutsu.common.runner.hook_commands import (
     HookContext,
     HookOutputs,
@@ -2446,6 +2447,7 @@ def run_and_report(
     resolve_actuator: Callable[[Scenario], str] | None = None,
     worker_failures: Mapping[int, str] | None = None,
     config_source: dict[str, str] | None = None,
+    identity: RunIdentity | None = None,
     command_executions: list[dict[str, Any]] | None = None,
     label: str | None = None,
     golden_context: GoldenContext | None = None,
@@ -2470,7 +2472,8 @@ def run_and_report(
     scenario name — `run/cli.py`'s `_load_scenarios`) feeds the report's verbatim YAML / per-step
     line numbers, and `config_source` — the Git source the config came from (BE-0063), or None for
     a local config — is stamped into the manifest's provenance so a branch-based run states the
-    exact commit it executed.
+    exact commit it executed. `identity` adds which app builds and sources the run exercised
+    (BE-0506).
 
     Returns:
         The per-scenario results and the path to the written `manifest.json`.
@@ -2529,6 +2532,7 @@ def run_and_report(
         plan_sources=plan_sources,
         secret_values=secret_values,
         config_source=config_source,
+        identity=identity,
         command_executions=command_executions,
         target=eff.target,
         label=label,
@@ -2550,6 +2554,7 @@ def run_matrix_and_report(
     plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
+    identity: RunIdentity | None = None,
     command_executions: list[dict[str, Any]] | None = None,
     label: str | None = None,
     cancelled: CancelSource = not_cancelled,
@@ -2624,6 +2629,7 @@ def run_matrix_and_report(
         plan_sources=plan_sources,
         secret_values=secret_values,
         config_source=config_source,
+        identity=identity,
         command_executions=command_executions,
         target=eff.target,
         label=label,
@@ -2647,6 +2653,7 @@ def report_run_matrix(
     plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
+    identity: RunIdentity | None = None,
     command_executions: list[dict[str, Any]] | None = None,
     label: str | None = None,
     worker_failures: Mapping[int, str] | None = None,
@@ -2687,6 +2694,7 @@ def report_run_matrix(
         plan_sources=plan_sources,
         secret_values=secret_values,
         config_source=config_source,
+        identity=identity,
         command_executions=command_executions,
         target=eff.target,
         label=label,
@@ -2773,6 +2781,7 @@ def _assemble_report(
     plan_sources: Mapping[str, ScenarioPlanSource] | None = None,
     secret_values: list[str] | None = None,
     config_source: dict[str, str] | None = None,
+    identity: RunIdentity | None = None,
     command_executions: list[dict[str, Any]] | None = None,
     target: str | None = None,
     label: str | None = None,
@@ -2818,7 +2827,10 @@ def _assemble_report(
     # Stamp the run's identity (scenario fingerprint + tool/git version) so accumulated runs can be
     # grouped to tell true flakiness from an edited scenario (BE-0049); pure metadata, never a verdict.
     provenance = run_provenance(
-        scenario_yaml, git_revision=git_revision(), config_source=config_source
+        scenario_yaml,
+        git_revision=git_revision(),
+        config_source=config_source,
+        identity=identity,
     )
     # Every command the config declared that the run met, with its source, the worker's mode, the
     # decision, and a hash (BE-0492), so "what did this run execute, and what did the policy refuse?"

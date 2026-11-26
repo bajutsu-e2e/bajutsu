@@ -24,6 +24,7 @@ from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.orchestrator import RunResult
 from bajutsu.common.report.ctrf import ctrf_json
 from bajutsu.common.report.format import _fmt_duration
+from bajutsu.common.report.identity_view import identity_lines
 from bajutsu.common.report.manifest import (
     _matrix,
     _run_backend,
@@ -160,6 +161,7 @@ def html_report(
     not_applicable: Sequence[Mapping[str, str]] = (),
     notices: Sequence[str] = (),
     hook_phases: Sequence[Mapping[str, Any]] = (),
+    identity: Sequence[Mapping[str, object]] = (),
 ) -> str:
     """A self-contained interactive HTML report (inline CSS + JS, no external assets).
 
@@ -177,6 +179,7 @@ def html_report(
     `hook_phases` are the target's external hook commands (BE-0491), each list its own block with a
     link to that entry's log — apart from the scenarios' numbered steps, the way `setup` and
     `cleanup` already are, so a reader can tell preparation and teardown from what was under test.
+    `identity` is the header's per-target build line (`identity_lines`, BE-0506).
     """
     passed = sum(1 for r in results if r.ok)
 
@@ -236,6 +239,7 @@ def html_report(
             description=description,
             notices=list(notices),
             hook_phases=list(hook_phases),
+            identity=list(identity),
         )
     )
 
@@ -267,8 +271,8 @@ def write_html_and_junit(
 
     The renderable half of the report: the initial bake calls it after the manifest, and the
     offline re-render (BE-0068) calls it alone to refresh a finished run from its stored model.
-    `provenance` (the manifest's run-identity stamp) only feeds the CTRF export's tool/environment
-    fields; None omits them. `run_dir` is read (the report embeds the run's captured logs inline);
+    `provenance` (the manifest's run-identity stamp) feeds the CTRF export's tool/environment
+    fields and the report's notices, hook blocks, and build lines; None omits them. `run_dir` is read (the report embeds the run's captured logs inline);
     every write goes through `writer`. `source_files` / `step_lines` / `not_applicable` are
     `html_report`'s own — see there; JUnit and CTRF list each not-applicable record as skipped.
     """
@@ -293,6 +297,7 @@ def write_html_and_junit(
             not_applicable,
             report_notices(provenance),
             report_hook_phases((provenance or {}).get(HOOKS_KEY)),
+            identity_lines(provenance),
         ),
     )
 

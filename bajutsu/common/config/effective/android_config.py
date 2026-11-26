@@ -16,6 +16,8 @@ class AndroidConfig:
     # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary is
     # missing. None = no on-demand build.
     build: str | None = None
+    # Source repository of the app, read for the provenance stamp (BE-0506). None = not recorded.
+    source_root: str | None = None
     # Runtime permissions granted up front (`pm grant`) at lease time, so a permission prompt never
     # blocks a scenario (BE-0210). Empty = grant nothing.
     grant_permissions: list[str] = field(default_factory=list)

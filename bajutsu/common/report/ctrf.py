@@ -18,6 +18,7 @@ from datetime import datetime
 
 from bajutsu import __version__
 from bajutsu.common.orchestrator import RunResult, StepOutcome
+from bajutsu.common.report.identity_view import identity_extra
 from bajutsu.common.report.manifest import (
     _details,
     _matrix,
@@ -213,13 +214,17 @@ def _not_applicable_test(record: Mapping[str, str]) -> dict[str, object]:
 def _environment(provenance: dict[str, object] | None) -> dict[str, object] | None:
     """The run environment, drawn only from stored data so the export stays reproducible.
 
-    Just the commit from provenance today — no live host info, which would make `ctrf.json` vary
-    across machines and re-renders of the same run. None when there's nothing to record, so the
-    optional block is omitted rather than emitted empty.
+    The commit and the build identity from provenance — no live host info, which would make
+    `ctrf.json` vary across machines and re-renders of the same run. CTRF's `environment` rejects a
+    key it does not define, and defines none for a per-target build identity, so it goes in `extra`.
+    None when there's nothing to record, so the optional block is omitted rather than emitted empty.
     """
+    environment: dict[str, object] = {}
     if provenance and (commit := provenance.get("gitRevision")):
-        return {"commit": commit}
-    return None
+        environment["commit"] = commit
+    if extra := identity_extra(provenance):
+        environment["extra"] = extra
+    return environment or None
 
 
 def _summary(started: datetime | None, results: list[RunResult], skipped: int) -> dict[str, object]:
@@ -254,7 +259,8 @@ def ctrf_json(
     backends export identically with no per-app branching. The output is a pure function of the
     stored run — no live host state — so `bajutsu report` regenerates it byte-for-byte (BE-0068).
     `provenance` is the manifest's run-identity stamp (BE-0049); its `toolVersion` / `gitRevision`
-    feed `tool.version` and `environment.commit`, and it is None for a run without the stamp.
+    feed `tool.version` and `environment.commit`, its build identity (BE-0506) feeds
+    `environment.extra`, and it is None for a run without the stamp.
 
     Args:
         run_id: The run's `YYYYmmdd-HHMMSS` id (UTC), used for `summary.start` and `timestamp`.
@@ -275,7 +281,7 @@ def ctrf_json(
         "tests": [_test(r) for r in results]
         + [_not_applicable_test(record) for record in not_applicable],
     }
-    # Environment is optional; include it only when there is stored data to record (a commit).
+    # Environment is optional; include it only when there is stored data to record.
     if (environment := _environment(provenance)) is not None:
         inner["environment"] = environment
     # The engine x scenario matrix (BE-0076) has no first-class CTRF home; carry the aggregate under
