@@ -64,10 +64,11 @@ _ANCHOR_UNCORRECTED_MSG = (
 
 # `simctl spawn … log stream` forwards a stop signal to the guest only once the guest process is
 # running. Signalled before that, simctl exits and the stream stays behind in the Simulator, loading
-# the host until it shuts down. The stream's first output (its header line, about 0.4s after the
-# spawn on an idle host; a filtered stream's `Filtering the log data` preamble, flushed even into a
-# plain file, so a silent one does not wait out the deadline) is the proof it is running, so the start waits for it, and a stop whose
-# start gave up waits once more, longer, before signalling.
+# the host until it shuts down. The stream's first output is the proof it is running: its header
+# line, about 0.4s after the spawn on an idle host, or a filtered stream's `Filtering the log data`
+# preamble, which reaches a plain file just as promptly, so a silent stream does not wait out the
+# deadline. The start waits for it, and a stop whose start gave up waits once more, longer, before
+# signalling.
 _LOG_STREAM_START_TIMEOUT = 10.0
 _LOG_STREAM_STOP_GRACE = 30.0
 
