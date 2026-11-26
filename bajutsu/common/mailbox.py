@@ -161,7 +161,8 @@ def extract_value(body: str, extract: EmailExtract) -> str | None:
 def select(messages: list[MailboxMessage], match: EmailMatch) -> MailboxMessage | None:
     """The awaited message among `messages`: the one matching message with the newest time. Pure.
 
-    The caller passes only messages that arrived after the step started.
+    The caller passes the new messages of one poll; the step returns on the first poll that holds
+    a match, so a message arriving after it is never compared.
 
     Raises:
         UnknownNewestError: Two or more messages match and the newest cannot be told, because one

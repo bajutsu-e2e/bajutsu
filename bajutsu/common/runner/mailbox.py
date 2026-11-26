@@ -62,11 +62,17 @@ class _Server:
     username: str
     password: str
     unset: tuple[str, ...] = ()
+    multiline: tuple[str, ...] = ()
 
 
 def _unset(**settings: str) -> tuple[str, ...]:
     """The settings still holding a `${secrets.*}` token no binding filled."""
     return tuple(name for name, value in settings.items() if "${secrets." in value)
+
+
+def _multiline(**settings: str) -> tuple[str, ...]:
+    """The settings holding a line break, which would split a protocol command in two."""
+    return tuple(name for name, value in settings.items() if "\r" in value or "\n" in value)
 
 
 def _server(cfg: Mailbox, bindings: Mapping[str, str]) -> _Server:
@@ -75,6 +81,7 @@ def _server(cfg: Mailbox, bindings: Mapping[str, str]) -> _Server:
     username = str(interp.interpolate(cfg.username, bindings))
     password = str(interp.interpolate(cfg.password, bindings))
     folder = str(interp.interpolate(cfg.folder or "", bindings))
+    settings = {"host": host, "username": username, "password": password, "folder": folder}
     return _Server(
         protocol=cfg.kind.upper(),
         host=host,
@@ -82,7 +89,8 @@ def _server(cfg: Mailbox, bindings: Mapping[str, str]) -> _Server:
         starttls=cfg.security == "starttls",
         username=username,
         password=password,
-        unset=_unset(host=host, username=username, password=password, folder=folder),
+        unset=_unset(**settings),
+        multiline=_multiline(**settings),
     )
 
 
@@ -125,13 +133,17 @@ class _Deadline:
     """The budget of one `list_ids` / `fetch` call, spread over its several round trips.
 
     Raises:
-        base.SelectorError: A configured secret was never set, so no connection is attempted.
+        base.SelectorError: A configured secret was never set or holds a line break, so no
+            connection is attempted.
     """
 
     def __init__(self, server: _Server, timeout: float) -> None:
         if server.unset:
             names = ", ".join(f"mailbox.{name}" for name in server.unset)
             raise _failure(server, f"{names} references a secret that is not set")
+        if server.multiline:
+            names = ", ".join(f"mailbox.{name}" for name in server.multiline)
+            raise _failure(server, f"{names} contains a line break")
         self._server = server
         self._end = time.monotonic() + timeout
 

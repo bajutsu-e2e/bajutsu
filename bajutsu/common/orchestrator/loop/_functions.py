@@ -368,11 +368,13 @@ def _do_email(
     deadline = clock.now() + email.timeout
     baseline = mailbox.list_ids(email.timeout)
     seen = set(baseline)
-    timed_out = f"email: no matching message within {email.timeout:g}s"
+    stalled: MailboxTimeout | None = None
     while True:
         remaining = deadline - clock.now()
         if remaining <= 0:
-            return False, timed_out
+            # Keep the server's silence on the last poll visible, since that can be the cause.
+            note = f" (last poll: {stalled})" if stalled else ""
+            return False, f"email: no matching message within {email.timeout:g}s{note}"
         # Bound each call by the time left, so a single hung server can't overrun email.timeout.
         try:
             listed = mailbox.list_ids(remaining)
@@ -380,10 +382,11 @@ def _do_email(
             new_ids = listed - seen
             remaining = deadline - clock.now()
             messages = mailbox.fetch(new_ids, remaining) if new_ids and remaining > 0 else []
+            stalled = None
         except MailboxTimeout as e:
-            # The last poll often has too little time left to log in, so lead with the real news —
-            # and keep the server's silence visible, since that can be the cause.
-            return False, f"{timed_out} (last poll: {e})"
+            # One socket operation is capped well below a long `email.timeout`, so a stall with
+            # time left is retried; the deadline above is the only thing that ends the wait.
+            stalled, messages = e, []
         try:
             picked = select(messages, email.match)
         except UnknownNewestError as e:

@@ -847,7 +847,7 @@ defaults:
 
 ### mailbox（`email` ステップ）
 
-`targets.<name>.services.mailbox` には、[`email`](scenarios.md#emailメールで届くコードをメールボックスから取得) ステップが読むメールサーバーを書きます。対応するのは Internet Message Access Protocol（IMAP）と POP3 です。サーバーと認証情報は config に置くので、シナリオはどちらも名指ししません。
+`targets.<name>.services.mailbox` には、[`email`](scenarios.md#emailメールで届くコードをメールボックスから取得) ステップが読むメールサーバーを書きます。対応するのは Internet Message Access Protocol（IMAP）と Post Office Protocol version 3（POP3）です。サーバーと認証情報は config に置くので、シナリオはどちらも名指ししません。
 
 ```yaml
 targets:

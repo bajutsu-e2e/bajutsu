@@ -330,7 +330,16 @@ def test_do_email_fails_when_the_newest_match_is_unknown() -> None:
     assert not ok and "newest is unknown" in reason
 
 
-def test_do_email_reports_a_last_poll_that_ran_out_of_time_as_a_timeout() -> None:
+def test_do_email_retries_a_stalled_poll_while_time_is_left() -> None:
+    code = _msg(id="new", subject="Code", body="123456")
+    email = _email_step(
+        match={"subject": "Code"}, extract={"var": "c", "bodyMatches": r"\d+"}, timeout=120
+    )
+    mailbox = _FakeMailbox([], MailboxTimeout("email: IMAP did not answer"), [code])
+    assert _do_email(email, _FakeClock(), mailbox, {}) == (True, "")
+
+
+def test_do_email_names_a_stalled_last_poll_in_its_timeout() -> None:
     email = _email_step(
         match={"to": "u@x.io"}, extract={"var": "c", "bodyMatches": r"\d+"}, timeout=5
     )

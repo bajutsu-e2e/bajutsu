@@ -1193,7 +1193,7 @@ defaults:
 
 `targets.<name>.services.mailbox` describes a mail server for the
 [`email`](scenarios.md#email-poll-a-mailbox-for-a-received-code) step. The server speaks Internet
-Message Access Protocol (IMAP) or POP3. The server and the
+Message Access Protocol (IMAP) or Post Office Protocol version 3 (POP3). The server and the
 credentials stay in config, so a scenario names neither.
 
 ```yaml

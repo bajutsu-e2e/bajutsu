@@ -1911,7 +1911,7 @@ generator's name.
 
 `email` waits for a verification code that arrives by mail. It reads the server under `targets.<name>.services.mailbox`
 (see [configuration](configuration.md#mailbox-the-email-step)). The server speaks Internet Message
-Access Protocol (IMAP) or POP3.
+Access Protocol (IMAP) or Post Office Protocol version 3 (POP3).
 It waits until a message that arrived **after the step started** satisfies `match`. Then
 `bodyMatches` extracts the value into `${vars.<var>}`. The first capture group wins, and a pattern
 without a group yields the whole match.
@@ -1929,8 +1929,9 @@ The wait is a **condition wait with a mandatory `timeout`**, with no fixed sleep
 the step starts never counts. A stale code from an earlier run thus cannot match. Each new message
 downloads once. Neither adapter deletes mail or marks it as read.
 
-Among new matches, the newest wins. The step stops when it cannot tell which
-match is newest. One match may lack a date, or the newest two share a receive time.
+Among new matches, the newest wins. The step ends on the first poll that holds a match, and compares the
+matches of that poll alone. It stops when it cannot tell which of them is newest. One may lack a
+date, or the newest two share a receive time.
 
 A timeout fails the step. A body that the pattern cannot hit fails it too. A connection error, a
 certificate error, or a rejected login also fails it. No error message quotes the password or the

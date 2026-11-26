@@ -174,7 +174,7 @@ Log:
 - [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581): units 1 to 3 landed together. The change removes the `HTTP`
   mailbox, and the manual check is still open. BE-0515,
   which this design wants no later than this item, has not shipped yet.
-- Review added two stricter rules. Matches that share the newest receive time stop the step. The
+- Review added two stricter rules. Matches of one poll that share the newest receive time stop it. The
   reader also gained `check_same_inbox`, which stops the step when an IMAP folder is rebuilt.
 
 ## References

@@ -454,3 +454,13 @@ def test_every_round_trip_gets_only_the_time_left(
 def test_an_imap_user_name_with_specials_is_quoted(log: list[tuple[Any, ...]]) -> None:
     _reader(_cfg(username='DOMAIN\\qa "bot"')).list_ids(5.0)
     assert ("login", '"DOMAIN\\\\qa \\"bot\\""', "pw-s3cr3t") in log
+
+
+@pytest.mark.parametrize("setting", ["host", "username", "password", "folder"])
+def test_a_line_break_in_a_setting_never_reaches_a_server(
+    log: list[tuple[Any, ...]], setting: str
+) -> None:
+    reader = _reader(_cfg(**{setting: "${secrets.v}"}), {"secrets.v": "value\n"})
+    with pytest.raises(base.SelectorError, match=rf"mailbox\.{setting} contains a line break"):
+        reader.list_ids(5.0)
+    assert log == []
