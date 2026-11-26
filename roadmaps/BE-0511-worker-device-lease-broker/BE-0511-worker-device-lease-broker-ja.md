@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0511") |
+| 実装 PR | [#2565](https://github.com/bajutsu-e2e/bajutsu/pull/2565) |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
 <!-- /BE-METADATA -->
@@ -311,6 +312,19 @@ worker の capability token、route token、`_device_reader` を、上の routin
 - [x] worker への組み込み
 - [x] 孤児になった run の停止
 - [x] ドキュメントと日本語ミラー
+
+ログ：
+
+[#2565](https://github.com/bajutsu-e2e/bajutsu/pull/2565) で 6 つの作業単位をすべて実装しました。実装が設計と異なる点は、次の表の
+とおりです。
+
+| 対象 | 実装した内容と理由 |
+|---|---|
+| 台数の数え方 | worker は job のディレクトリで `python -m bajutsu.run.demand` を実行。相対パスを run と同じように解決するため |
+| 混在するモデル指定 | モデル指定と並んで family や OS の条件があれば、broker が選ぶ 1 台を追加 |
+| fake ドライバ | `leased` の run でも借用なし |
+| `record`、`crawl`、`--once` | 自分で借り、辞退の対象外 |
+| lease の途中終了 | job のログに記録し、run は継続 |
 
 ## 参考
 
