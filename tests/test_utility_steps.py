@@ -222,3 +222,41 @@ def test_a_saved_response_body_is_read_by_a_following_parse_json_step() -> None:
             clock=FakeClock(),
         )
     assert result.ok, result.failure
+
+
+# --- clearKeychain / clearClipboard runtime ---
+
+
+def test_clear_keychain_requires_device_control() -> None:
+    result = run_scenario(
+        FakeDriver([el("x", "X")]),
+        _scenario({"name": "ck", "steps": [{"clearKeychain": {}}]}),
+        clock=FakeClock(),
+    )
+    assert not result.ok
+    assert "clearKeychain" in (result.failure or "")
+
+
+def test_clear_clipboard_requires_device_control() -> None:
+    result = run_scenario(
+        FakeDriver([el("x", "X")]),
+        _scenario({"name": "cc", "steps": [{"clearClipboard": {}}]}),
+        clock=FakeClock(),
+    )
+    assert not result.ok
+    assert "clearClipboard" in (result.failure or "")
+
+
+# --- env command builders ---
+
+
+def test_keychain_reset_cmd() -> None:
+    from bajutsu.common.backend_cli.simctl import keychain_reset_cmd
+
+    assert keychain_reset_cmd("U") == ["xcrun", "simctl", "keychain", "U", "reset"]
+
+
+def test_pbcopy_cmd() -> None:
+    from bajutsu.common.backend_cli.simctl import pbcopy_cmd
+
+    assert pbcopy_cmd("U") == ["xcrun", "simctl", "pbcopy", "U"]

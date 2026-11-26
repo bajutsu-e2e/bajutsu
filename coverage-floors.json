@@ -397,7 +397,6 @@
     "bajutsu/common/scenario/models/scenario/__init__.py": 100.0,
     "bajutsu/common/scenario/models/scenario/_functions.py": 95.23,
     "bajutsu/common/scenario/models/scenario/_group_nesting.py": 100.0,
-    "bajutsu/common/scenario/models/scenario/_http_extract.py": 100.0,
     "bajutsu/common/scenario/models/scenario/_navigate_urls.py": 100.0,
     "bajutsu/common/scenario/models/scenario/_open_urls.py": 96.55,
     "bajutsu/common/scenario/models/scenario/_targets.py": 100.0,
