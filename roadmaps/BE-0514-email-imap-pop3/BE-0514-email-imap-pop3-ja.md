@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
+| 実装 PR | [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)、[BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md) |
 <!-- /BE-METADATA -->
@@ -143,7 +144,7 @@ class MailboxReader(Protocol):
 
 ログは次のとおりです。
 
-単位 1 から 3 をまとめて実装しました。`HTTP` の受信箱は削除し、手動の確認が残っています。本設計が本項目と同時か先にと求める BE-0515 は、まだリリースしていません。
+[#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) で単位 1 から 3 をまとめて実装しました。`HTTP` の受信箱は削除し、手動の確認が残っています。本設計が本項目と同時か先にと求める BE-0515 は、まだリリースしていません。
 
 レビューで 2 つの厳しい規則を加えました。最新の受信時刻を複数の一致で共有する場合は、ステップを失敗にします。読み取りには `check_same_inbox` も加え、IMAP のフォルダーが作り直されたらステップを止めます。
 

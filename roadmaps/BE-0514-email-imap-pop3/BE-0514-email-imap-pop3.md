@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
+| Implementing PR | [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) |
 | Topic | Scenario authoring features |
 | Related | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) |
 <!-- /BE-METADATA -->
@@ -170,7 +171,7 @@ The gate cannot reach a mail server, so the last unit is a manual check.
 
 Log:
 
-- Units 1 to 3 landed together. The change removes the `HTTP`
+- [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581): units 1 to 3 landed together. The change removes the `HTTP`
   mailbox, and the manual check is still open. BE-0515,
   which this design wants no later than this item, has not shipped yet.
 - Review added two stricter rules. Matches that share the newest receive time stop the step. The
