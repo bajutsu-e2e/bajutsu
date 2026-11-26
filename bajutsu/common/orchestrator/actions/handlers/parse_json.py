@@ -100,7 +100,7 @@ def _parse_path(path: str, where: str) -> list[_PathSeg]:
         elif ch == ".":
             key_start = i + 1
         else:
-            raise malformed(f"unexpected character at position {i}")
+            raise malformed(f"unexpected character at position {i} of the resolved path")
         m = _KEY_CHARS.match(path, key_start)
         if m is None:
             raise malformed("empty key segment")
