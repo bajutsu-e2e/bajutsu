@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0515") |
+| 実装 PR | [#2580](https://github.com/bajutsu-e2e/bajutsu/pull/2580) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) |
 <!-- /BE-METADATA -->
@@ -91,7 +92,7 @@
 
 ログ：
 
-- 2026-11-27：任意の `timeout` と読み込み検査、状態コードの待機、日英の文書を追加しました。
+- [#2580](https://github.com/bajutsu-e2e/bajutsu/pull/2580)、2026-11-27：任意の `timeout` と読み込み検査、状態コードの待機、日英の文書を追加しました。
 
 ## 参考
 

@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0515") |
+| Implementing PR | [#2580](https://github.com/bajutsu-e2e/bajutsu/pull/2580) |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) |
 <!-- /BE-METADATA -->
@@ -103,7 +104,7 @@ for something unique to the run. The `generate` step can build such an address.
 
 Log:
 
-- 2026-11-27: Added the optional `timeout` with its load checks, the status wait, and the documents.
+- [#2580](https://github.com/bajutsu-e2e/bajutsu/pull/2580), 2026-11-27: Added the optional `timeout` with its load checks, the status wait, and the documents.
 
 ## References
 
