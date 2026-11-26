@@ -196,10 +196,11 @@ the run that produced it exits
   - `configSource`: `{ host, owner, repo, ref, sha }`, the exact commit a branch-based run executed,
     present when the config came from a Git source
     ([BE-0063](../roadmaps/BE-0063-git-config-source/BE-0063-git-config-source.md))
+  - `targets` and `toolSource`: which build of which code ran ([below](#build-and-source-identity))
 
   The stamp groups accumulated runs by identity. A verdict that flips while the fingerprint is
   unchanged is **true flakiness** rather than an edited scenario. The stamp is pure metadata and never
-  enters `ok`. (`schemaVersion` is `3` or higher once this block can appear, and `18` today.)
+  enters `ok`. (`schemaVersion` is `3` or higher once this block can appear, and `19` today.)
 
   A `run-set` job also records `workerEnvironment`, the environment of the worker that ran it
   (`local`, `devicefarm`, …). Another run of the same job may land elsewhere. The report lists
@@ -229,6 +230,58 @@ the run that produced it exits
   Nothing enforces a unique `name:` across a multi-file run. A second scenario sharing an earlier
   one's name gets its own row. The row carries a `(2)`, `(3)`, … suffix, so it does not
   overwrite the first's cell. (`schemaVersion` is `4` or higher once this block can appear.)
+
+### Build and source identity
+
+The stamp names the build of each app a run drove
+([BE-0506](../roadmaps/BE-0506-run-code-identity/BE-0506-run-code-identity.md)). `gitRevision` keeps
+its older meaning: the commit of the directory the run started in. The two keys below appear from
+`schemaVersion` 19. A reader treats a run without them as an older run.
+
+`provenance.targets.<name>` holds one entry per target the run drove. The entry has two groups.
+
+| Key | Content |
+|---|---|
+| `app.hash` | `sha256:<hex>` digest of the binary at `subject.path` |
+| `app.hashKind` | `file` for an `.apk`, `tree` for an `.app` bundle |
+| `app.version` | `CFBundleShortVersionString` or `versionName` |
+| `app.buildNumber` | `CFBundleVersion` or `versionCode`, as a string |
+| `appSource.commit` | Full commit of the repository at `subject.sourceRoot` |
+| `appSource.uncommitted` | `true` when that working tree holds uncommitted changes |
+
+`provenance.toolSource` describes Bajutsu's own code. It carries `commit` and `source`. A `source` of
+`checkout` also carries `uncommitted`. A checkout counts when it tracks Bajutsu's package. A source of
+`build-arg` names the `BAJUTSU_BUILD_COMMIT` value of an install with no checkout. With neither, the
+stamp omits `toolSource`.
+
+The runner reads these values once per run. The read follows the builds and the `beforeRun` entries,
+and precedes the first lease. Every
+scenario in a run thus reports the same build. The commit describes the working tree, not the binary.
+The two values can disagree, and the stamp keeps both.
+
+A value the runner could not read stays in the stamp as `null`. A sibling `unavailable` mapping names
+the reason for each such key. An unreadable value never changes a verdict and never stops a run.
+
+| Reason | Meaning |
+|---|---|
+| `path-missing` | No binary exists at `subject.path`, or the bundle holds no file |
+| `read-error` | The runner could not read the binary |
+| `plist-unreadable` | The `Info.plist` did not parse, or lacks the version key |
+| `apk-unreadable` | The `.apk` did not open as a zip archive, or has no manifest |
+| `manifest-unparsable` | The manifest did not decode, or gives no literal version |
+| `not-a-git-repo` | `subject.sourceRoot` holds no file a Git checkout tracks |
+| `git-unavailable` | The `git` command is missing or timed out |
+| `status-read-failed` | `git status` errored, or the runner did not run it |
+
+The runner runs `git status` for a config the operator chose, and for no other. A `--config-source` of `uploaded`
+or `remote` records `status-read-failed` instead. Git can run commands that such a tree configures
+during a status read. The commit is still recorded.
+
+The stamp omits a group the target never configured. A target with no `subject.path` has no `app`
+group. A target with no `subject.sourceRoot` has no `appSource` group. A web target has neither. A
+target whose device provider installs the app also has no `app` group. A real iOS device is the same
+case, since its build arrives out of band. The file at `subject.path` is not known to be the binary
+under test there.
 
 ## junit.xml
 
@@ -297,6 +350,12 @@ The document is `{ reportFormat: "CTRF", specVersion, generatedBy, timestamp, re
   absolute per-scenario epoch (an optional follow-up), so the export omits them rather than
   approximating. The export carries no live host state, so `bajutsu report` regenerates the same
   run's `ctrf.json` byte-for-byte.
+- `environment.commit` repeats `gitRevision`. The build identity sits under `environment.extra`,
+  because CTRF accepts defined keys there and no others. None of those keys covers a per-target
+  build. `extra.targets.<name>` carries the app
+  values `hash` and `version`. It also carries the source `commit` and `uncommitted`.
+  `extra.toolSource` carries the tool `commit`, `uncommitted`, and `source`. A gap stays
+  `null`, with its reason under `unavailable`.
 - `tests[].status` is `passed` / `failed` for every run that ran. A not-applicable record is
   `skipped` ([Runs that device conditions form](#runs-that-device-conditions-form)). The other CTRF
   counts stay `0`.
@@ -341,6 +400,10 @@ The header shows the run id and the overall PASS/FAIL. Below it sits the **scena
 (`source_name`), the label of the whole suite. A lone `--scenario` file gives its own name. A
 multi-file or whole-directory run gives the containing directory's name instead. The **file-level
 `description`** follows when present.
+
+One line per target then shows the build ([Build and source identity](#build-and-source-identity)).
+The line holds the app version, the short hash, and the short source commit. An `uncommitted` marker
+appears for a source tree with changes. A gap reads `unknown` with its reason.
 
 Each scenario row's summary shows the **scenario name** and the scenario's **own originating file
 name** (`source_files`). The file name is distinct from the header's whole-suite label. A
@@ -557,8 +620,8 @@ above describe. `runMatrix` appears from `schemaVersion` 15, and the other field
 def write_report(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None, writer=None, target=None, label=None, source_files=None, step_lines=None) -> Path  # all 4 formats; definitions = per-scenario dict, sources = raw YAML, source_name = scenario file name (whole suite), description = file-level description; source_files / step_lines = each scenario's own file name and steps' original line numbers, when a live run recovered them; provenance = run-identity stamp (BE-0049)
 def write_html_and_junit(run_dir, run_id, results, definitions=None, sources=None, source_name=None, description=None, provenance=None, writer=None, source_files=None, step_lines=None) -> None  # the regenerable half (report.html + junit.xml + ctrf.json), leaving manifest.json untouched — used by re-render; provenance feeds the CTRF tool/environment fields
 def manifest_dict(run_id, results, *, source_name=None, provenance=None, target=None, label=None) -> dict  # the versioned render model (schemaVersion); the manifest source (for tests / inspection)
-def run_provenance(scenario_yaml, *, git_revision, config_source=None) -> dict  # the run-identity stamp: scenarioHash + toolVersion + optional gitRevision (BE-0049) + optional configSource (BE-0063)
-def ctrf_json(run_id, results, *, provenance=None) -> dict  # the CTRF projection of the result model (BE-0161); provenance feeds tool.version / environment.commit
+def run_provenance(scenario_yaml, *, git_revision, config_source=None, identity=None) -> dict  # the run-identity stamp: scenarioHash + toolVersion + optional gitRevision (BE-0049) + optional configSource (BE-0063) + optional targets / toolSource (BE-0506)
+def ctrf_json(run_id, results, *, provenance=None) -> dict  # the CTRF projection of the result model (BE-0161); provenance feeds tool.version / environment.commit / environment.extra
 def junit_xml(results) -> str
 def html_report(run_id, results, run_dir=None, definitions=None, sources=None, source_name=None, description=None, source_files=None, step_lines=None) -> str
 def scenario_render_inputs(scenarios, plan_sources=None) -> tuple[list[dict], list[str]]  # (definitions, sources); shared by the bake and the re-render — `sources` is each scenario's own verbatim YAML when `plan_sources` (keyed by declared scenario name) recovers one, else the structured re-dump as before
