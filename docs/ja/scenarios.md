@@ -845,7 +845,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（iOS は `simctl push`、Android はアプリ内の BajutsuAndroid のプッシュレシーバ） |
-| `http` | `http: { method?, url, headers?, body?, status?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
+| `http` | `http: { method?, url, headers?, body?, status?, timeout?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し（`timeout` を指定すると一致するまで繰り返し）、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
 | `totp` | `totp: { secret, into?: { var }, name? }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる。`name` を指定すると、後続の `otp` ステップ向けにシークレットも登録する |
 | `otp` | `otp: { from, into: { var }, minRemaining? }` | `totp` ステップが `from` の名前で登録したジェネレータの現在のコードを `${vars.<var>}` に入れる（[後述](#otp-で後から新しいコードを取得する)） |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
@@ -1318,6 +1318,32 @@ Android では、`setLocation` はローカルのエミュレータならエミ�
 `path` と `var` はそれ自体に `${vars.*}` / `${secrets.*}` 置換を使えます（`path: "items[${vars.i}].id"`）。ただし `path` に差し込む値は、1 つのパスセグメントだけを供給しなければなりません。空の値や、`.`、`[`、`]` を含む値はステップを失敗させます。レスポンスボディ由来のフィールド名で、たどり先を別のフィールドへすり替えることを防ぐためです。
 
 `extractBody` の 2 つのエントリが同じ `var` を持つ場合、または `var` が `saveBody` と一致する場合は、シナリオの読み込みでエラーになります。置換によって初めて衝突が判明する場合は、実行時のステップ失敗になります。どちらの場合も、書き込む順序によって片方が黙って上書きされることはありません。
+
+#### `timeout` でステータスを待つ
+
+ボタンを押した数秒後に届くコードのように、あとから現れるデータがあります。`http` ステップに任意の `timeout`（秒）を指定すると、データが現れるまで待てます（[BE-0515](../../roadmaps/BE-0515-http-status-wait/BE-0515-http-status-wait-ja.md)）。
+
+```yaml
+- http:
+    url: "${secrets.API}/codes/latest"
+    status: 200
+    timeout: 30
+    saveBody: response
+```
+
+ステップは、レスポンスのステータスが `status` と一致するまで、約 1 秒ごとにリクエストを繰り返します。`saveBody` と `extractBody` が読むのは、一致したレスポンスのボディだけです。
+
+| 状況 | ステップの動き |
+|---|---|
+| `status` のない `timeout` | シナリオの読み込みエラー |
+| `GET` と `HEAD` 以外のメソッド（`${...}` トークンを含む） | シナリオの読み込みエラー。繰り返すとデータが二重に作られるおそれがあるため |
+| 違うステータスが返る | 次の試行に進む |
+| 接続エラー | すぐに失敗する |
+| 1 回のリクエスト | 残り時間まで使える。上限は 30 秒。使い切った場合は次の試行に進む |
+| 期限に達する | 最後に受け取ったステータスを報告して失敗する |
+| 実行のキャンセル | 待機を抜ける |
+
+成功の条件はステータスだけです。そのため、データができる前から空のボディと 200 を返すサービスには、この待機を使えません。`email` と違い、新しいデータかどうかも区別しません。古い値を読まないように、実行ごとに固有のものを問い合わせます。たとえば `generate` ステップでアドレスを組み立てます。
 
 ### `totp`（二要素認証のワンタイムパスワード）
 
