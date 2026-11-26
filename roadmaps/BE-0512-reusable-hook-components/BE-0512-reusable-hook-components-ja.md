@@ -1,14 +1,14 @@
-[English](BE-XXXX-reusable-hook-components.md) · **日本語**
+[English](BE-0512-reusable-hook-components.md) · **日本語**
 
-# BE-XXXX — シナリオの準備と後片付けを、再利用できるフックコンポーネントにまとめる
+# BE-0512 — シナリオの準備と後片付けを、再利用できるフックコンポーネントにまとめる
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-reusable-hook-components-ja.md) |
+| 提案 | [BE-0512](BE-0512-reusable-hook-components-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates-ja.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks-ja.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md) |
 <!-- /BE-METADATA -->
