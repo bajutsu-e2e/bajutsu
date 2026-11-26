@@ -88,6 +88,8 @@ def _spawn_env(job: Job) -> dict[str, str]:
         for var in PROVIDER_MANAGED_ENV:
             e.pop(var, None)
         e.update(job.env_overlay)
+    # Last, so a borrowed device stays reachable whatever the process inherited (BE-0511).
+    e.update(job.lease_env)
     if not job.keep_caller_path:
         bindir = str(Path(sys.executable).parent)
         e["PATH"] = bindir + os.pathsep + e.get("PATH", "")

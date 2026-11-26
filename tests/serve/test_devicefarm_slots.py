@@ -861,7 +861,7 @@ def test_a_bundle_lease_keeps_every_runnable_body_and_warns_on_the_rest(
 ) -> None:
     monkeypatch.setattr(worker_mod, "_post_json", lambda *_a, **_k: (200, answer))
 
-    bodies = worker_mod._lease_bundle("http://server", None, "w1", [], 3)
+    bodies = worker_mod._lease_bundle("http://server", None, "w1", [], 3, "devicefarm")
 
     assert [b["job_id"] for b in bodies] == jobs
     assert ("unexpected lease body" in caplog.text) is (
@@ -876,7 +876,9 @@ def test_a_worker_with_more_slots_than_a_lease_may_take_asks_for_the_ceiling(
 
     asked: list[int] = []
 
-    def lease(_url: str, _token: str | None, _wid: str, _caps: list[str], free: int) -> list[Any]:
+    def lease(
+        _url: str, _token: str | None, _wid: str, _caps: list[str], free: int, _environment: str
+    ) -> list[Any]:
         asked.append(free)
         raise RuntimeError("stop after one request")
 

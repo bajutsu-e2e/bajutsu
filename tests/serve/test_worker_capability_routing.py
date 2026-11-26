@@ -426,7 +426,7 @@ def test_the_worker_rereads_its_real_devices_before_each_lease(
     connected = iter([set(), {"device:ipad"}, set()])
     leased: list[list[str]] = []
 
-    def lease(url: str, token: str | None, wid: str, caps: list[str]) -> None:
+    def lease(url: str, token: str | None, wid: str, caps: list[str], environment: str) -> None:
         leased.append(caps)
 
     monkeypatch.setattr(worker_mod, "_lease", lease)

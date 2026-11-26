@@ -30,7 +30,7 @@ from bajutsu.common.capability.command_policy import (
     ConfigSource,
 )
 from bajutsu.common.capability.route_tokens import WORKER_ENVIRONMENT_KEY
-from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS
+from bajutsu.common.capability.worker_capability import BATCH_PROVIDERS, LEASED
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.run import INTERNAL_MODULE as _INTERNAL_RUN_MODULE
 from bajutsu.serve import oplog
@@ -467,6 +467,35 @@ def _with_worker_config(cmd: list[str], worker_config: Path | None) -> list[str]
 _SOURCE_FLAGS = ("--config-source", "--scenario-source")
 
 
+def run_flags(cmd: list[str]) -> list[str] | None:
+    """The flags of *cmd* when it is a leased `run` as a worker spawns one, else None."""
+    return cmd[_INTERNAL_HEAD:] if _run_argv_head(cmd) == _INTERNAL_HEAD else None
+
+
+def _without_udid(cmd: list[str]) -> list[str]:
+    """*cmd* without a spec-supplied `--udid`, for a worker whose devices a broker lends (BE-0511).
+
+    A device the request named was not borrowed, so the run must not drive it.
+    """
+    head = _run_argv_head(cmd)
+    return cmd if head is None else [*cmd[:head], *_without_options(cmd, head, ("--udid",))]
+
+
+def _leased_worker(worker_config: Path | None) -> bool:
+    """Whether *worker_config* names a `leased` environment (BE-0511)."""
+    if worker_config is None:
+        return False
+    from bajutsu.common.capability.worker_capability import (
+        WorkerCapabilityError,
+        load_worker_capability,
+    )
+
+    try:
+        return load_worker_capability(worker_config).environment == LEASED
+    except WorkerCapabilityError:
+        return False  # the run reads the same file and reports why it cannot
+
+
 def _with_config_source(
     cmd: list[str], source: ConfigSource, scenario_source: ConfigSource | None = None
 ) -> list[str]:
@@ -506,6 +535,7 @@ def execute_job_spec(
     batch_checkpoint: BatchCheckpoint | None = None,
     lease_lost: threading.Event | None = None,
     batch_dir: Path | None = None,
+    prepare: Callable[[Job], bool] | None = None,
 ) -> Job:
     """Worker entrypoint: rebuild the job from *spec*, run the unchanged `run_job`, then upload its
     run tree through the control plane's presigned URLs.
@@ -534,7 +564,10 @@ def execute_job_spec(
     environment and never written into the spec or the run's argv. *batch_checkpoint* and
     *lease_lost* are a leased cloud-batch job's link to its lease (BE-0448): where its run's ARN is
     stored, and the flag that tells its poll the lease is gone. *batch_dir* is the directory a
-    cloud-batch job packages, when it is not *cwd*: its group's staging directory (BE-0484)."""
+    cloud-batch job packages, when it is not *cwd*: its group's staging directory (BE-0484).
+    *prepare* runs on the rebuilt job after its files are in place and before it starts, which is
+    where a `leased` worker borrows its devices (BE-0511); False means the job must not start, and
+    then nothing runs or uploads."""
     # The subprocess runs with cwd=work and writes runs/<id>/ relative to it, so runs_dir must be
     # work/runs — otherwise state.artifacts would be confined to an unrelated process-CWD runs/.
     work = cwd or Path.cwd()
@@ -545,6 +578,8 @@ def execute_job_spec(
     # workspace-relative `--scenario` / `--config` resolve here (the worker has no project on disk).
     _materialize(work, spec.get("materials") or {})
     log_bus = bus if bus is not None else InMemoryLogBus()
+    # A public `bajutsu run` keeps the devices its caller typed.
+    leased = apply_worker_config and _leased_worker(worker_config)
     # Download the visual baselines into the workspace before the run (the cmd's `--baselines` points
     # at this dir), over the presigned GET URLs the control plane signed — no worker credentials.
     if spec.get("materialize_baselines") and io is not None:
@@ -561,20 +596,21 @@ def execute_job_spec(
             repository if repository is not None or one_shot else _repository_from_env_or_none()
         ),
     )
+    argv = (
+        _with_config_source(
+            _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config),
+            _spec_source(spec),
+            _spec_scenario_source(spec),
+        )
+        if apply_worker_config
+        else _local_interpreter(_spec_argv(spec))
+    )
     job = Job(
         id=str(spec["job_id"]),  # keep the control plane's id so logs/results line up
         # A local `bajutsu run` (`apply_worker_config=False`) keeps the flags its caller typed,
         # `--config-source` included; a leased job takes the worker's file and the spec's label.
-        cmd=(
-            _with_config_source(
-                _with_worker_config(_local_interpreter(_spec_argv(spec)), worker_config),
-                _spec_source(spec),
-                _spec_scenario_source(spec),
-            )
-            if apply_worker_config
-            else _local_interpreter(_spec_argv(spec))
-        ),
-        udids=list(spec.get("udids") or []),
+        cmd=_without_udid(argv) if leased else argv,
+        udids=[] if leased else list(spec.get("udids") or []),
         app_path=spec.get("app_path"),
         build=_spec_build(spec),
         rebuild=bool(spec.get("rebuild")),
@@ -616,6 +652,8 @@ def execute_job_spec(
         on_job(job)
     with oplog.job_context(job_id=job.id, org=org, actor=spec.get("actor")):
         oplog.log_event(_logger, "worker.job.started", "worker started job")
+        if prepare is not None and not prepare(job):
+            return job
         run_job(state, job, inherit_stdio=one_shot, one_shot=one_shot)
         # Bind run_id for correlation only: the run resolves `${secrets.X}` inside the `bajutsu run`
         # subprocess, so those values aren't in this process to seed a run-scoped redactor here.

@@ -47,6 +47,7 @@ from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
+from bajutsu.common.runner.device_provider.lease_command import LeaseDeclinedError
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
@@ -63,6 +64,7 @@ from bajutsu.serve.capabilities import (
     reserved_tokens,
     worker_capabilities,
 )
+from bajutsu.serve.cli.worker_devices import JobDevices
 from bajutsu.serve.cli.worker_relay import ArtifactStreamer, HandoffRelay
 from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env_name
 from bajutsu.serve.jobs import _runs_dir_of
@@ -87,6 +89,9 @@ from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, Artif
 from bajutsu.serve.uploads import find_bundle_config, materialize_bundle, validate_bundle_config
 
 _logger = logging.getLogger("bajutsu.worker")
+
+# The key of a result that is not one: the job goes back to the queue (BE-0511).
+_DECLINED = "declined"
 
 # Heartbeat well under the control plane's default lease timeout (DEFAULT_LEASE_TIMEOUT_SECONDS) so
 # a legitimately long run is never mistaken for a dead worker and reclaimed (BE-0016).
@@ -677,7 +682,7 @@ def _serve_leases(
     *devices* reads the real-device tokens added to *caps* before each lease (`_device_reader`).
     """
     while not stopped():
-        body = _lease(url, auth_token, wid, _advertised(caps, devices))
+        body = _lease(url, auth_token, wid, _advertised(caps, devices), environment)
         if body is None:
             time.sleep(poll_interval)
             continue
@@ -739,23 +744,32 @@ def _serve_leases(
             _discard_batch_workspace(work, job_work)
 
 
-def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[str, Any] | None:
+def _lease(
+    url: str, auth_token: str | None, wid: str, caps: list[str], environment: str
+) -> dict[str, Any] | None:
     """Ask the control plane for one job; the lease body, or None when there is nothing to run."""
-    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps})
+    request = {"worker_id": wid, "capabilities": caps, "environment": environment}
+    body = _post_lease(url, auth_token, request)
     if not isinstance(body, dict) or not body.get("spec"):
         return None
     return dict(body)
 
 
 def _lease_bundle(
-    url: str, auth_token: str | None, wid: str, caps: list[str], free: int
+    url: str, auth_token: str | None, wid: str, caps: list[str], free: int, environment: str
 ) -> list[dict[str, Any]]:
     """Ask for up to *free* jobs at once (BE-0484); the lease bodies, empty when there is none.
 
     The control plane fills them from one `run-set` group, so the slots that run them can share
     that group's uploads.
     """
-    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps, "maxJobs": free})
+    request = {
+        "worker_id": wid,
+        "capabilities": caps,
+        "maxJobs": free,
+        "environment": environment,
+    }
+    body = _post_lease(url, auth_token, request)
     if body is None:
         return []
     # A control plane from before BE-0484 ignores `maxJobs` and answers one body. Its job is leased
@@ -848,7 +862,9 @@ def _serve_slots(
                     places.wait(timeout=poll_interval)
                     continue
             # The control plane refuses a larger ask; the slots past it fill on the next poll.
-            bodies = _lease_bundle(url, auth_token, wid, caps, min(free_slots, MAX_LEASE_JOBS))
+            bodies = _lease_bundle(
+                url, auth_token, wid, caps, min(free_slots, MAX_LEASE_JOBS), environment
+            )
             if not bodies:
                 time.sleep(poll_interval)
                 continue
@@ -1166,6 +1182,10 @@ def _finish_job(
         typer.echo(
             f"  bundle fetch failed transiently for job {job_id}; leaving it to be re-leased"
         )
+        return
+
+    if _DECLINED in result:
+        _post_decline(url, job_id, wid, result, auth_token)
         return
 
     run_id = result.get("runId")
@@ -1827,6 +1847,18 @@ def _run_with_heartbeat(
         if cancel.requested:  # cancelled during the fetch — nothing has touched the device yet
             holder["result"] = cancelled_job_result(job_id)
             return
+        # Borrowed here, on the heart-beaten thread and after the fetch, so the claim stays renewed
+        # while a broker is slow and no device sits idle through a download (BE-0511).
+        devices = (
+            JobDevices(
+                worker_file=worker_config,
+                cwd=job_work,
+                stop=lambda: lost.is_set() or cancel.requested,
+                log=lambda line: bus.publish(job_id, line),
+            )
+            if environment == LEASED
+            else None
+        )
         try:
             job = execute_job_spec(
                 spec,
@@ -1841,16 +1873,26 @@ def _run_with_heartbeat(
                 batch_checkpoint=checkpoint,
                 lease_lost=lost,
                 batch_dir=group.path if group is not None else None,
+                prepare=devices.prepare if devices is not None else None,
                 # Written before the run tree uploads, so console.log travels with it and is the
                 # durable copy the server's log stream falls back to (BE-0449).
                 before_upload=functools.partial(_write_job_console_log, job_work, bus),
             )
             result = job.view()
             result.pop("lines", None)
+            # A job `prepare` stopped never started: a cancel records it cancelled, and a lost
+            # lease drops the result below.
+            if devices is not None and job.exit_code is None and cancel.requested:
+                result = cancelled_job_result(job_id)
             holder["result"] = result
+        except LeaseDeclinedError as e:
+            holder["result"] = {_DECLINED: str(e), "environment": environment}
         except Exception as e:  # a worker keeps running past one job's failure
             _logger.exception("job %s failed", job_id)
             holder["result"] = {"ok": False, "error": str(e)}
+        finally:
+            if devices is not None:
+                devices.release()
 
     runner = threading.Thread(target=_run, daemon=True)
     runner.start()
@@ -2106,6 +2148,31 @@ def _post_result(
         )
     except (URLError, OSError):
         _logger.exception("result post failed for job %s", job_id)
+
+
+def _post_decline(
+    url: str, job_id: str, wid: str, declined: dict[str, Any], auth_token: str | None
+) -> None:
+    """Give back a job whose devices could not be borrowed (BE-0511).
+
+    A post that fails, a control plane without the route included, leaves the lease to lapse, which
+    returns the job to the queue as well.
+    """
+    reason = str(declined[_DECLINED])
+    typer.echo(f"  declined job {job_id}: {reason}")
+    request = {
+        "worker_id": wid,
+        "job_id": job_id,
+        "reason": reason,
+        "environment": declined["environment"],
+    }
+    try:
+        code, body = _post_json(f"{url}/api/worker/decline", request, token=auth_token)
+    except (URLError, OSError) as e:
+        _logger.warning("could not decline job %s: %s", job_id, e)
+        return
+    if code != 200:
+        _logger.warning("declining job %s was refused (HTTP %s): %s", job_id, code, body)
 
 
 def _safe_org(org: Any) -> str:
