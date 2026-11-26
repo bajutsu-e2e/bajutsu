@@ -16,9 +16,10 @@
 ## Introduction
 
 The iOS end-to-end (E2E) jobs run on hosted macOS runners. A runner spends most of a job at a load
-average in the hundreds. This item turns off Simulator services that the tests do not need. In a
-first experiment, the median one-minute load fell from about 200 to about 20 in two lanes. We adopt
-the change on the `run`, `actuation`, and `golden` jobs. Pass criteria fixed in advance decide it.
+average in the hundreds. This item proposes turning off Simulator services that the tests do not
+need. In a first experiment, the median one-minute load fell from about 200 to about 20 in two
+lanes. Criteria fixed in advance (unit 4) decide whether the `run` and `actuation` jobs adopt the
+change.
 
 ## Motivation
 
@@ -110,7 +111,7 @@ private interface. In the experiments that reboot took 73 to 253 seconds.
 
 ### 3. Wire the jobs
 
-Turn the change on for the `run`, `actuation`, and `golden` jobs. Leave it off elsewhere. An offline
+Turn the change on for the `run` and `actuation` jobs. Leave it off elsewhere. An offline
 write belongs in the `boot-simulator` action. The toolchain setup action passes the input to it.
 That action returns before the boot ends. The fallback runs as its own step, after each job
 waits for `bootstatus`. The path that reuses a booted device states whether it applies the
@@ -123,8 +124,8 @@ change. Each job logs two numbers at the start and the end:
 
 Run the `run` and `actuation` jobs ten times with the change and ten times without it. Alternate
 them in the same hours. Use fresh runs and leave out the pilot runs above. With the fallback route,
-the jobs without the change reboot the same way. Each job logs which route it used. `golden` is too
-short to measure load and stays out of this step.
+the jobs without the change reboot the same way. Each job logs which route it used. `golden` runs
+three scenarios, too few to gather a countable signal. Unit 5 covers it.
 
 Fix these criteria before the first run:
 
@@ -136,18 +137,28 @@ Fix these criteria before the first run:
 | Scenario results | No scenario traces back to a service that we turned off |
 
 A job counts for the first criterion when it logs `recordVideo did not report 'Recording started'`.
-The test covers both jobs together, one-sided, at 0.05. To trace a scenario that does not pass, run
+The test covers both jobs together, one-sided, at 0.05.
+
+The pilot runs give the baseline for that line. It appeared in 10 of 12 `run` and `actuation` jobs
+without the change, and in none of 12 reduced jobs. With no such job on the change side, at least
+5 of the 20 other jobs must log it. A count of 4 gives p of about 0.053. The pilot rate leaves a wide margin.
+
+Every job stays in its own arm, even after an erase or a replacement device. Dropping such jobs
+would remove the recoveries that the third criterion counts. A job that loses the change
+midway weakens the measured effect, so the bias runs against adoption. Report the count of such
+jobs per arm. To trace a scenario that does not pass, run
 it again with the suspect service left on. A pass then counts against the change.
 
 Each job records its runner image and setup-step times. The measurement costs about 20 runner hours.
 
 ### 5. Extend the scope
 
-Add `golden`, `conformance`, `fault-injection`, and `network` checks one at a time. A device erase
-or a replacement device should drop the entries. We have verified neither case. The scenarios of the
-three first jobs do not erase. A retry after a runner problem does erase the device, and a recovery
-step can replace it. Count both events in the unit 4 logs. A frequent loss calls for a separate
-item. That item would design how to apply the list again from configuration.
+Add `golden`, `conformance`, `fault-injection`, and `network` checks one at a time. Each one passes
+when its scenarios pass with the change on and no recovery rises. A device erase or a replacement
+device should drop the entries. We have verified neither case. The scenarios of `run`, `actuation`,
+and `golden` do not erase. A retry after a runner problem does erase the device, and a recovery
+step can replace it. Count both events in the logs. A frequent loss calls for a separate item. That
+item would design how to apply the list again from configuration.
 
 ## Alternatives considered
 
@@ -166,7 +177,7 @@ item. That item would design how to apply the list again from configuration.
 
 - [ ] Choose the service list
 - [ ] Apply the change before the first boot, or after it with a reboot
-- [ ] Wire the `run`, `actuation`, and `golden` jobs
+- [ ] Wire the `run` and `actuation` jobs
 - [ ] Measure and decide adoption
 - [ ] Extend to other lanes and decide on applying again after an erase
 
