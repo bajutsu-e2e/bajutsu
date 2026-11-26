@@ -1,6 +1,6 @@
 [English](../reporting.md) · **日本語**
 
-# レポート（manifest.json / JUnit / CTRF / HTML）
+# レポート（manifest.json / JUnit / CTRF / `HTML`）
 
 > 1 回の run は、1 つ以上のシナリオ（`list[RunResult]`）を実行します。その結果を 4 つの形式で
 > 書き出します。`manifest.json` が、レポートと継続的インテグレーション（CI）の **唯一の情報源**です。
@@ -478,7 +478,7 @@ CTRF は秘匿処理済みの manifest から射影されるので、同じ秘�
 
 ## report.html
 
-`report.html` は、人間が見る自己完結の Hyper Text Markup Language（HTML）ページです。
+`report.html` は、人間が見る自己完結の HyperText Markup Language（`HTML`）ページです。
 Cascading Style Sheets（CSS）はインラインで、外部アセットを持ちません。
 
 ### ヘッダとシナリオ名
@@ -556,7 +556,7 @@ detail 中の識別子（`#home.title`）と定数リテラル（`”text”` �
 
 観測した通信は、時系列で steps に差し込みます。
 各通信は、シナリオ開始からのオフセットで配置します。
-通信の行は、Hyper Text Transfer Protocol（HTTP）メソッドを中立バッジで示します。
+通信の行は、リクエストのメソッドを中立バッジで示します。
 ステータスは `result` 列に置きます。
 通信の設定は、detail セル内のネストしたテーブルで表示します。
 設定の項目は method / endpoint / status / duration / ヘッダです。
@@ -644,8 +644,8 @@ Command Line Interface（CLI）版は [`bajutsu approve`](cli.md#approve) です
 
 操作の時刻を持たない行もあります。
 
-`wait` や `assert` のように操作をしないステップが、その一例です。
-`schemaVersion` 13 より前に記録された run では、すべてのステップが該当します。
+該当するのは次の2つです。1つは、`wait` や `assert` のように操作をしないステップです。
+もう1つは、`schemaVersion` 13 より前に記録された run のすべてのステップです。
 
 こうした行は `at` 列の時刻で切り替わります。
 レポートは、表示されるフレームごとに再生位置を読みます。

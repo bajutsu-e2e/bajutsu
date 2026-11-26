@@ -96,7 +96,7 @@ as unsupported for that reason. Every input reaches a shell step or the script t
 | `comment-key` | `${{ github.workflow }}-${{ github.job }}` | Key of the sticky comment. Two jobs with different keys keep two comments. A matrix job must add its matrix values, or each leg overwrites the comment the previous leg wrote. |
 | `comment-author` | `github-actions[bot]` | Login of the account that owns the sticky comment. Set it to the App's bot login when `github-token` belongs to a GitHub App. |
 | `max-failures` | `10` | Failing scenarios listed in full. The comment counts the rest. |
-| `evidence-base-url` | empty | Optional base URL that serves the run directory over Hyper Text Transfer Protocol (HTTP). See [Full fidelity through an evidence base URL](#full-fidelity-through-an-evidence-base-url). |
+| `evidence-base-url` | empty | Optional base URL that serves the run directory. See [Full fidelity through an evidence base URL](#full-fidelity-through-an-evidence-base-url). |
 
 The action exposes one output, `artifact-url`, the URL of the whole-run artifact.
 
@@ -137,8 +137,7 @@ That path reads `<runId>/<name recorded in the manifest>`.
 The renderer puts each scenario name, reason, and artifact path inside a code span. Text that spans
 lines goes in a fenced block. The renderer delimits a code span with a backtick run. That run is one longer than the
 longest run inside the text, and a space pads it. A fenced block uses a fence longer than any backtick
-run inside. Together, the code span and the fence stop app text from adding a mention. They also stop it
-from adding Hyper Text Markup Language (HTML). The renderer also strips `<!--` and `-->` again and again until none remain. The text then cannot
+run inside. Together, the code span and the fence stop app text from adding a mention. They also stop it from adding raw markup. The renderer also strips `<!--` and `-->` again and again until none remain. The text then cannot
 forge a second marker.
 
 The script reads fields that the manifest already records, and no others. The comment omits a screenshot or video that the manifest does not list. The omission is not an
@@ -158,8 +157,7 @@ itself, which this item avoids. A separate item can add it.
   The copy replaces each one that exceeds `log-tail-kb` with its last `log-tail-kb` kilobytes. The
   first line of the truncated file names the original size and the kept size. The comment states
   that the action truncated a log. The action uploads the full log nowhere, so the log vanishes when
-  GitHub discards the job's runner. The truncation keeps the end of the log, because a red run leaves
-  its trace near the end.
+  GitHub discards the job's runner. The truncation keeps the end of the log, because the trace of what broke sits near the end.
 - **Warn before an upload that cannot fit.** The script sums the staged files uncompressed. When the
   sum exceeds `size-warn-mb`, it skips the whole-run upload. The comment names the total and the
   threshold, and still links the small per-file artifacts. This guard protects the shared storage
@@ -234,7 +232,7 @@ cover. A team that cannot upload them sets `upload: false` and keeps its own han
 ### Full fidelity through an evidence base URL
 
 Artifact links cannot render an image inside a comment, because the URL needs sign-in. A team that
-also serves the run over HTTP can close the gap. Setting `evidence-base-url` changes what the
+also serves the run on the web can close the gap. Setting `evidence-base-url` changes what the
 renderer emits. A screenshot appears as `![](<base>/<path>)` and a video as a link. The renderer also
 links to `<base>/report.html`. All three sit under the same base. The renderer percent-encodes each
 path segment before joining it to the base. The action never uploads to that location. A job that
@@ -288,7 +286,7 @@ its web E2E workflow as the first user. CI thus exercises the comment shape on r
   [BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export.md). It changes the
   recorder, which this item leaves alone. It belongs in its own item.
 - **Drop `device.log` from the zip.** The zip would stay small. Yet the log is the evidence that
-  explains an abnormal exit. A tail keeps the part that carries the trace.
+  explains what broke. A tail keeps the part that carries the trace.
 - **Accept a duplicate upload.** The existing `bajutsu-e2e` action already uploads the run. Every
   iOS job would then store it twice. Instead, such a job can link the first upload through the
   `upload` and `artifact-url` inputs.

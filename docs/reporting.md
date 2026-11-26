@@ -1,6 +1,6 @@
 **English** · [日本語](ja/reporting.md)
 
-# Reporting (manifest.json / JUnit / CTRF / HTML)
+# Reporting (manifest.json / JUnit / CTRF / `HTML`)
 
 > One run covers one or more scenarios (`list[RunResult]`). Bajutsu writes their results in four
 > formats. `manifest.json` is the **single source of truth** for the report and for continuous
@@ -411,7 +411,7 @@ example, the `ctrf-io/github-test-reporter` action turns the file into a PR comm
 
 ## report.html
 
-`report.html` is a self-contained Hyper Text Markup Language (HTML) page for humans. It carries inline
+`report.html` is a self-contained HyperText Markup Language (`HTML`) page for humans. It carries inline
 Cascading Style Sheets (CSS) and no external assets.
 
 ### Header and scenario names
