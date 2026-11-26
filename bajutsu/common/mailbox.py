@@ -1,80 +1,143 @@
-"""Pure mailbox logic for the `email` step (BE-0046).
+"""Pure mailbox logic for the `email` step (BE-0046, BE-0514).
 
-`email` polls a generic HTTP mailbox, waits for a matching message that arrived *after* the step
-started, and extracts a value by regex into `vars.*`. This module holds the deterministic,
-network-free core — reading a provider's JSON shape into normalized messages, matching, extracting,
-and the after-start selection — so it is fully gate-tested; the HTTP fetch (the only external
-dependency) is injected at the handler layer (`orchestrator/types.py`).
+`email` waits for a matching message that arrived *after* the step started and extracts a value by
+regex into `vars.*`. This module holds the deterministic, network-free core — turning a raw RFC 5322
+message into a normalized one, matching, extracting, and picking the newest — so it is fully
+gate-tested; the IMAP / POP3 transport is injected at the handler layer (`runner/mailbox.py`).
 """
 
 from __future__ import annotations
 
-import hashlib
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from datetime import UTC, datetime
+from email import message_from_bytes, policy
+from email.message import EmailMessage
+from email.utils import parsedate_to_datetime
 
 from bajutsu.common.scenario import EmailExtract, EmailMatch
 
 
 @dataclass(frozen=True)
 class MailboxMessage:
-    """One inbox message, normalized from a provider's JSON via the configured field mapping.
+    """One inbox message, normalized from its raw form.
 
-    `id` is the message's stable identity (the provider's id, or a content hash when it exposes
-    none) — the after-start baseline keys on it. `received_at` is the provider's timestamp string,
-    used only to order newest-first; it is never compared to the local run clock (which would be
-    skew-prone).
+    `id` is the server's stable identity for the message — the after-start baseline keys on it.
+    `to` is every address in the `To` header. `received_at` is the receive time in UTC, written in
+    ISO 8601 form, or "" when the message has no usable date; it is only used to order newest-first,
+    never compared to the local run clock (which would be skew-prone).
     """
 
     id: str
-    to: str
+    to: tuple[str, ...]
     subject: str
     body: str
     received_at: str
 
 
-def _field(raw: dict[str, Any], fields: dict[str, str], key: str, default_key: str) -> str:
-    """Read one normalized field, following the configured path (or the default key) — "" if absent."""
-    value = raw.get(fields.get(key, default_key))
-    return value if isinstance(value, str) else ""
+class UnknownNewestError(ValueError):
+    """Which of several matching messages is newest cannot be told from their receive times."""
 
 
-def read_messages(payload: Any, messages_path: str, fields: dict[str, str]) -> list[MailboxMessage]:
-    """Normalize a provider's JSON response into messages. Pure; an unexpected shape yields none.
+def parse_message(raw: bytes, *, message_id: str, received: datetime | None) -> MailboxMessage:
+    """Normalize one raw message. Pure; a malformed header or charset degrades, never raises.
 
-    `messages_path` is a dotted path to the message array (empty = the response is the array
-    itself); `fields` maps each normalized field (`to` / `subject` / `body` / `receivedAt` / `id`)
-    to the provider's key, defaulting to the field's own name. A message with no usable `id` gets a
-    content-hash identity, so the after-start baseline still distinguishes it.
+    Args:
+        raw: The message source as the server returned it.
+        message_id: The server's identity for the message.
+        received: When the server (or the message itself) says it arrived; None if unknown.
     """
-    node: Any = payload
-    for part in (p for p in messages_path.split(".") if p):
-        node = node.get(part) if isinstance(node, dict) else None
-    if not isinstance(node, list):
-        return []
-    out: list[MailboxMessage] = []
-    for raw in node:
-        if not isinstance(raw, dict):
-            continue
-        to = _field(raw, fields, "to", "to")
-        subject = _field(raw, fields, "subject", "subject")
-        body = _field(raw, fields, "body", "body")
-        received_at = _field(raw, fields, "receivedAt", "receivedAt")
-        mid = _field(raw, fields, "id", "id") or _synthetic_id(to, subject, body, received_at)
-        out.append(
-            MailboxMessage(id=mid, to=to, subject=subject, body=body, received_at=received_at)
-        )
-    return out
+    msg = message_from_bytes(raw, policy=policy.default)
+    return MailboxMessage(
+        id=message_id,
+        to=_recipients(msg),
+        subject=_header_text(msg, "Subject"),
+        body=_safe_body(msg),
+        received_at=_utc_text(received),
+    )
 
 
-def _synthetic_id(*parts: str) -> str:
-    return hashlib.sha1("\x00".join(parts).encode("utf-8"), usedforsecurity=False).hexdigest()
+def date_header(raw: bytes) -> datetime | None:
+    """The time in a raw message's `Date` header, or None when it is absent or unreadable."""
+    value = _header_text(message_from_bytes(raw, policy=policy.default), "Date")
+    try:
+        return parsedate_to_datetime(value) if value else None
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _utc_text(when: datetime | None) -> str:
+    if when is None:
+        return ""
+    # RFC 5322's "-0000" parses as a naive time that is already UTC.
+    aware = when if when.tzinfo is not None else when.replace(tzinfo=UTC)
+    try:
+        return aware.astimezone(UTC).isoformat(timespec="seconds")
+    except (ValueError, OverflowError):
+        return ""
+
+
+def _header_text(msg: EmailMessage, name: str) -> str:
+    # The stdlib's structured header parser raises on some malformed input; one bad message in the
+    # inbox must not fail a step that is waiting for another.
+    try:
+        return str(msg.get(name, ""))
+    except Exception:
+        return ""
+
+
+def _recipients(msg: EmailMessage) -> tuple[str, ...]:
+    try:
+        headers = msg.get_all("To", [])
+        return tuple(a.addr_spec for header in headers for a in header.addresses)
+    except Exception:  # same reason as `_header_text`
+        return ()
+
+
+def _text_parts(part: EmailMessage) -> Iterator[EmailMessage]:
+    """The leaf parts that are not attachments.
+
+    An embedded `message/*` is another mail, not this one's text, so it is not descended into.
+    """
+    if part.get_content_disposition() == "attachment":
+        return
+    if part.get_content_maintype() == "multipart":
+        for child in part.iter_parts():
+            yield from _text_parts(child)  # type: ignore[arg-type]  # default policy: EmailMessage
+    elif not part.is_multipart():
+        yield part
+
+
+def _decode(part: EmailMessage) -> str:
+    payload = part.get_payload(decode=True)
+    if not isinstance(payload, bytes):
+        return ""
+    try:
+        text = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+    except LookupError:  # an unknown charset name
+        text = payload.decode("utf-8", errors="replace")
+    return text.replace("\r\n", "\n")
+
+
+def _body(msg: EmailMessage) -> str:
+    parts = list(_text_parts(msg))
+    chosen = [p for p in parts if p.get_content_type() == "text/plain"] or [
+        p for p in parts if p.get_content_type() == "text/html"
+    ]
+    return "\n".join(_decode(p) for p in chosen)
+
+
+def _safe_body(msg: EmailMessage) -> str:
+    try:
+        return _body(msg)
+    except Exception:  # same reason as `_header_text`; an empty body then fails extraction cleanly
+        return ""
 
 
 def match_message(msg: MailboxMessage, match: EmailMatch) -> bool:
     """Whether a message satisfies the `match` criteria (to / subject / subjectMatches), AND-ed."""
-    if match.to is not None and msg.to != match.to:
+    if match.to is not None and match.to.casefold() not in (a.casefold() for a in msg.to):
         return False
     if match.subject is not None and msg.subject != match.subject:
         return False
@@ -95,16 +158,27 @@ def extract_value(body: str, extract: EmailExtract) -> str | None:
     return m.group(1) if m.groups() else m.group(0)
 
 
-def select(
-    messages: list[MailboxMessage], match: EmailMatch, baseline_ids: frozenset[str]
-) -> MailboxMessage | None:
-    """The awaited message: matching, arrived after the step started, newest first. Pure.
+def select(messages: list[MailboxMessage], match: EmailMatch) -> MailboxMessage | None:
+    """The awaited message among `messages`: the one matching message with the newest time. Pure.
 
-    `baseline_ids` are the ids present when the step began; only ids absent from it are eligible, so
-    a stale message left by an earlier run is never matched (skew-free — no clock comparison). Among
-    eligible matches the newest `received_at` wins, with a stable tie-break on `id`.
+    The caller passes the new messages of one poll; the step returns on the first poll that holds
+    a match, so a message arriving after it is never compared.
+
+    Raises:
+        UnknownNewestError: Two or more messages match and the newest cannot be told, because one
+            has no date or the newest time is shared (receive times have one-second resolution). It
+            never falls back to the identifier, which could pick a superseded code.
     """
-    eligible = [m for m in messages if m.id not in baseline_ids and match_message(m, match)]
-    if not eligible:
-        return None
-    return max(eligible, key=lambda m: (m.received_at, m.id))
+    eligible = [m for m in messages if match_message(m, match)]
+    if len(eligible) < 2:
+        return eligible[0] if eligible else None
+    newest = max(eligible, key=lambda m: m.received_at)
+    if any(not m.received_at for m in eligible):
+        why = "at least one has no date"
+    elif sum(m.received_at == newest.received_at for m in eligible) > 1:
+        why = "the newest ones share a receive time"
+    else:
+        return newest
+    raise UnknownNewestError(
+        f"{len(eligible)} messages match and {why}, so the newest is unknown; narrow `match`"
+    )

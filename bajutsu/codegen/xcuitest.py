@@ -451,7 +451,7 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # A runner-side RFC 6238 OTP (`totp` / `otp`); no XCUITest equivalent (BE-0046).
         return [todo]
     if step.email is not None:
-        # Polls an HTTP mailbox in the bajutsu runner; no XCUITest equivalent (BE-0046).
+        # Polls a mail server in the bajutsu runner; no XCUITest equivalent (BE-0046).
         return [
             f"// TODO: email(into: {step.email.extract.var}) — poll mailbox + extract; not generated"
         ]

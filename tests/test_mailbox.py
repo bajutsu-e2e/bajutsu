@@ -1,20 +1,28 @@
-"""Tests for the pure mailbox logic behind the `email` step (bajutsu/common/mailbox.py, BE-0046).
+"""Tests for the pure mailbox logic behind the `email` step (bajutsu/common/mailbox.py).
 
-`email` polls a generic HTTP mailbox, waits for a matching message that arrived *after* the step
-started, and extracts a value by regex into `vars.*`. The matching, extraction, response-shape
-reading, and after-start selection are pure deterministic functions tested here; the HTTP fetch
-(the only external dependency) is injected at the handler layer.
+Raw-message parsing, matching, extraction, and newest-first selection are pure deterministic
+functions tested here, as is the step's poll loop over a fake reader; the IMAP / POP3 transport is
+covered in `test_mailbox_registry.py`.
 """
 
 from __future__ import annotations
 
+from collections.abc import Collection
+from datetime import UTC, datetime, timedelta, timezone
+from email import message_from_bytes, policy
+from email.message import EmailMessage
 from typing import Any
 
+import pytest
+
+from bajutsu.common import mailbox as mailbox_module
 from bajutsu.common.mailbox import (
     MailboxMessage,
+    UnknownNewestError,
+    date_header,
     extract_value,
     match_message,
-    read_messages,
+    parse_message,
     select,
 )
 from bajutsu.common.scenario import EmailExtract, EmailMatch
@@ -23,7 +31,7 @@ from bajutsu.common.scenario import EmailExtract, EmailMatch
 def _msg(
     *, id: str = "1", to: str = "u@x.io", subject: str = "", body: str = "", at: str = ""
 ) -> MailboxMessage:
-    return MailboxMessage(id=id, to=to, subject=subject, body=body, received_at=at)
+    return MailboxMessage(id=id, to=(to,), subject=subject, body=body, received_at=at)
 
 
 # --- matching ---
@@ -79,77 +87,156 @@ def test_extract_returns_none_when_regex_misses() -> None:
     assert extract_value("no digits here", EmailExtract(var="c", bodyMatches=r"\d{6}")) is None
 
 
-# --- response-shape reading (field mapping) ---
+def test_match_to_any_recipient_ignoring_case() -> None:
+    m = MailboxMessage(id="1", to=("a@x.io", "U@X.io"), subject="", body="", received_at="")
+    assert match_message(m, EmailMatch(to="u@x.io"))
+    assert not match_message(m, EmailMatch(to="x.io"))  # a whole address, not a substring
 
 
-def test_read_messages_default_shape() -> None:
-    payload = [
-        {
-            "to": "u@x.io",
-            "subject": "Code",
-            "body": "123456",
-            "receivedAt": "2026-01-01T00:00:00Z",
-            "id": "m1",
-        }
-    ]
-    [m] = read_messages(payload, messages_path="", fields={})
-    assert m.to == "u@x.io" and m.subject == "Code" and m.body == "123456"
-    assert m.received_at == "2026-01-01T00:00:00Z" and m.id == "m1"
+# --- raw message parsing ---
 
 
-def test_read_messages_with_path_and_field_mapping() -> None:
-    payload = {
-        "items": [{"recipient": "u@x.io", "subj": "Code", "text": "999111", "ts": "t1", "uid": "x"}]
-    }
-    [m] = read_messages(
-        payload,
-        messages_path="items",
-        fields={
-            "to": "recipient",
-            "subject": "subj",
-            "body": "text",
-            "receivedAt": "ts",
-            "id": "uid",
-        },
+def _parse(raw: bytes, received: datetime | None = None) -> MailboxMessage:
+    return parse_message(raw, message_id="m1", received=received)
+
+
+def test_parse_headers_decodes_subject_and_lists_every_recipient() -> None:
+    raw = (
+        b"To: Ann <a@x.io>, =?utf-8?q?B=2C_Smith?= <b@x.io>\r\n"
+        b"Subject: =?utf-8?b?56K66KqN44Kz44O844OJ?=\r\n\r\ncode 123456\r\n"
     )
-    assert m.to == "u@x.io" and m.body == "999111" and m.received_at == "t1" and m.id == "x"
+    m = _parse(raw)
+    assert m.id == "m1"
+    assert m.to == ("a@x.io", "b@x.io")
+    assert m.subject == "確認コード"
+    assert m.body == "code 123456\n"
 
 
-def test_read_messages_unexpected_shape_is_empty() -> None:
-    assert read_messages({"items": "nope"}, messages_path="items", fields={}) == []
-    assert read_messages(42, messages_path="", fields={}) == []
+def test_parse_joins_plain_parts_and_skips_attachments() -> None:
+    msg = EmailMessage()
+    msg.set_content("first 111")
+    msg.add_alternative("<p>html 222</p>", subtype="html")
+    msg.add_attachment("attached 333", filename="note.txt")
+    forwarded = EmailMessage()
+    forwarded.set_content("forwarded 444")
+    msg.add_attachment(forwarded)
+    body = _parse(msg.as_bytes()).body
+    assert "111" in body
+    assert not {"222", "333", "444"} & set(body.split())
 
 
-def test_read_messages_synthesizes_id_when_absent() -> None:
-    # no id field/value: identity is synthesized from content so the after-start baseline still works
-    payload = [{"to": "u@x.io", "subject": "Code", "body": "111"}]
-    [m] = read_messages(payload, messages_path="", fields={})
-    assert m.id  # non-empty, stable identity
+def test_parse_falls_back_to_html_source() -> None:
+    msg = EmailMessage()
+    msg.set_content("<p>code <b>555</b></p>", subtype="html")
+    assert "<b>555</b>" in _parse(msg.as_bytes()).body
 
 
-# --- after-start selection (id-set baseline, skew-free; newest by receivedAt) ---
+def test_parse_decodes_the_declared_charset_and_survives_an_unknown_one() -> None:
+    head = b"Content-Type: text/plain; charset=%s\r\nContent-Transfer-Encoding: 8bit\r\n\r\n"
+    assert _parse(head % b"shift_jis" + "番号".encode("shift_jis")).body == "番号"
+    assert _parse(head % b"x-nope" + b"123").body == "123"
 
 
-def test_select_ignores_messages_present_at_start() -> None:
-    old = _msg(id="old", subject="Code", body="000000", at="2026-01-01T00:00:00Z")
-    new = _msg(id="new", subject="Code", body="123456", at="2026-01-01T00:01:00Z")
+def test_parse_tolerates_missing_and_malformed_headers() -> None:
+    m = _parse(b"To: <<<\r\nSubject:\r\n\r\nbody")
+    assert m.subject == "" and m.body == "body"
+    assert all("@" not in a for a in m.to)
+
+
+def _raise(*_args: object, **_kwargs: object) -> Any:
+    raise IndexError("parser bug")
+
+
+@pytest.mark.parametrize(
+    ("broken", "lost"),
+    [("get", {"subject", "body"}), ("get_all", {"to"}), ("iter_parts", {"body"})],
+)
+def test_what_the_stdlib_cannot_parse_degrades_instead_of_raising(
+    monkeypatch: pytest.MonkeyPatch, broken: str, lost: set[str]
+) -> None:
+    msg = EmailMessage()
+    msg["To"] = "u@x.io"
+    msg["Subject"] = "Code"
+    msg.set_content("111")
+    msg.add_alternative("<p>222</p>", subtype="html")
+    parsed_message = message_from_bytes(msg.as_bytes(), policy=policy.default)
+    # Broken on the parsed object alone, so parsing the source itself still works.
+    monkeypatch.setattr(parsed_message, broken, _raise)
+    monkeypatch.setattr(mailbox_module, "message_from_bytes", lambda *a, **k: parsed_message)
+    parsed = _parse(b"")
+    values = {"subject": parsed.subject, "to": parsed.to, "body": parsed.body}
+    assert {name for name, value in values.items() if not value} == lost
+
+
+def test_parse_does_not_read_an_inline_embedded_message_as_this_ones_text() -> None:
+    raw = (
+        b"Content-Type: multipart/mixed; boundary=x\r\n\r\n"
+        b"--x\r\nContent-Type: text/plain\r\n\r\nmine 111\r\n"
+        b"--x\r\nContent-Type: message/rfc822\r\n\r\nSubject: old\r\n\r\ntheirs 222\r\n"
+        b"--x--\r\n"
+    )
+    assert _parse(raw).body == "mine 111"
+
+
+def test_parse_reads_a_multipart_with_no_parts_as_an_empty_body() -> None:
+    assert _parse(b"Content-Type: multipart/mixed; boundary=x\r\n\r\n").body == ""
+
+
+def test_a_date_that_leaves_the_calendar_in_utc_is_unusable() -> None:
+    behind_utc = timezone(timedelta(hours=-1))
+    assert _parse(b"\r\n", datetime(9999, 12, 31, 23, 59, tzinfo=behind_utc)).received_at == ""
+
+
+def test_received_at_is_utc_iso8601_or_empty() -> None:
+    jst = timezone(timedelta(hours=9))
+    assert _parse(b"\r\n", datetime(2026, 1, 1, 9, 30, tzinfo=jst)).received_at == (
+        "2026-01-01T00:30:00+00:00"
+    )
+    assert _parse(b"\r\n").received_at == ""
+
+
+def test_date_header_reads_rfc5322_dates() -> None:
+    assert date_header(b"Date: Thu, 01 Jan 2026 09:00:00 +0900\r\n\r\n") == datetime(
+        2026, 1, 1, tzinfo=UTC
+    )
+    unzoned = date_header(b"Date: Thu, 01 Jan 2026 00:00:00 -0000\r\n\r\n")
+    assert _parse(b"\r\n", unzoned).received_at == "2026-01-01T00:00:00+00:00"
+    assert date_header(b"Date: yesterday\r\n\r\n") is None
+    assert date_header(b"Subject: x\r\n\r\n") is None
+
+
+# --- newest-match selection ---
+
+
+def test_select_picks_newest_among_matches() -> None:
+    a = _msg(id="a", subject="Code", at="2026-01-01T00:01:00+00:00")
+    b = _msg(id="b", subject="Code", at="2026-01-01T00:03:00+00:00")  # newer
+    assert select([b, a], EmailMatch(subjectMatches="Code")) == b
+
+
+def test_select_returns_none_when_nothing_matches() -> None:
+    a = _msg(id="a", subject="welcome")
+    assert select([a], EmailMatch(subjectMatches="Code")) is None
+
+
+def test_select_takes_a_lone_undated_match_but_refuses_to_rank_one() -> None:
+    undated = _msg(id="z", subject="Code")
+    dated = _msg(id="a", subject="Code", at="2026-01-01T00:00:00+00:00")
+    unrelated = _msg(id="u", subject="welcome")
     m = EmailMatch(subjectMatches="Code")
-    # baseline captured "old" at step start, so only "new" is eligible
-    assert select([old, new], m, baseline_ids=frozenset({"old"})) == new
-    # before the new one arrives, nothing eligible
-    assert select([old], m, baseline_ids=frozenset({"old"})) is None
+    assert select([undated, unrelated], m) == undated
+    with pytest.raises(UnknownNewestError, match="no date"):
+        select([undated, dated], m)
 
 
-def test_select_picks_newest_among_eligible_matches() -> None:
-    a = _msg(id="a", subject="Code", at="2026-01-01T00:01:00Z")
-    b = _msg(id="b", subject="Code", at="2026-01-01T00:03:00Z")  # newer
-    m = EmailMatch(subjectMatches="Code")
-    assert select([a, b], m, baseline_ids=frozenset()) == b
-
-
-def test_select_returns_none_when_no_eligible_match() -> None:
-    a = _msg(id="a", subject="welcome", at="t")
-    assert select([a], EmailMatch(subjectMatches="Code"), baseline_ids=frozenset()) is None
+def test_select_refuses_to_break_a_same_second_tie_by_id() -> None:
+    # "7:9" sorts after "7:10", so an id tie-break would hand back the superseded code.
+    at = "2026-01-01T00:00:00+00:00"
+    pair = [_msg(id="7:9", subject="Code", at=at), _msg(id="7:10", subject="Code", at=at)]
+    with pytest.raises(UnknownNewestError, match="share a receive time"):
+        select(pair, EmailMatch(subject="Code"))
+    newer = _msg(id="7:1", subject="Code", at="2026-01-01T00:00:01+00:00")
+    assert select([*pair, newer], EmailMatch(subject="Code")) == newer
 
 
 # --- handler + end-to-end (injected reader + fake clock; no network) ---
@@ -158,7 +245,7 @@ from conftest import el  # noqa: E402
 
 from bajutsu.common.drivers import base  # noqa: E402
 from bajutsu.common.drivers.fake import FakeDriver  # noqa: E402
-from bajutsu.common.orchestrator import run_scenario  # noqa: E402
+from bajutsu.common.orchestrator import MailboxTimeout, run_scenario  # noqa: E402
 from bajutsu.common.orchestrator.loop import _do_email  # noqa: E402
 from bajutsu.common.scenario import Scenario  # noqa: E402
 
@@ -175,18 +262,28 @@ class _FakeClock:
 
 
 class _FakeMailbox:
-    """Scripts a sequence of fetch() results; an Exception entry is raised when reached."""
+    """Scripts the inbox seen by each `list_ids()` call; an Exception entry is raised when reached."""
 
-    def __init__(self, *responses: object) -> None:
-        self._responses = list(responses)
+    def __init__(self, *inboxes: object) -> None:
+        self._inboxes = list(inboxes)
+        self._current: list[MailboxMessage] = []
         self.calls = 0
+        self.fetched: list[set[str]] = []
 
-    def fetch(self, timeout: float = 0) -> list[MailboxMessage]:
-        r = self._responses[min(self.calls, len(self._responses) - 1)]
+    def list_ids(self, timeout: float) -> frozenset[str]:
+        inbox = self._inboxes[min(self.calls, len(self._inboxes) - 1)]
         self.calls += 1
-        if isinstance(r, Exception):
-            raise r
-        return r  # type: ignore[return-value]
+        if isinstance(inbox, Exception):
+            raise inbox
+        self._current = inbox  # type: ignore[assignment]
+        return frozenset(m.id for m in self._current)
+
+    def fetch(self, ids: Collection[str], timeout: float) -> list[MailboxMessage]:
+        self.fetched.append(set(ids))
+        return [m for m in self._current if m.id in ids]
+
+    def check_same_inbox(self, baseline: frozenset[str], current: frozenset[str]) -> None:
+        pass
 
 
 def _email_step(**kw: Any) -> Email:
@@ -207,6 +304,49 @@ def test_do_email_waits_for_a_new_matching_message_then_extracts() -> None:
     ok, reason = _do_email(email, _FakeClock(), mailbox, bindings)
     assert ok and reason == ""
     assert bindings["vars.otp"] == "314159"
+
+
+def test_do_email_ignores_mail_present_at_start_and_downloads_each_message_once() -> None:
+    old = _msg(id="old", subject="Code", body="000000")
+    noise = _msg(id="noise", subject="welcome")
+    new = _msg(id="new", subject="Code", body="123456")
+    mailbox = _FakeMailbox([old], [old, noise], [old, noise], [old, noise, new])
+    email = _email_step(
+        match={"subject": "Code"}, extract={"var": "c", "bodyMatches": r"\d+"}, timeout=10
+    )
+    bindings: dict[str, str] = {}
+    assert _do_email(email, _FakeClock(), mailbox, bindings) == (True, "")
+    assert bindings["vars.c"] == "123456"
+    assert mailbox.fetched == [{"noise"}, {"new"}]
+
+
+def test_do_email_fails_when_the_newest_match_is_unknown() -> None:
+    a = _msg(id="a", subject="Code", body="1")
+    b = _msg(id="b", subject="Code", body="2", at="2026-01-01T00:00:00+00:00")
+    email = _email_step(
+        match={"subject": "Code"}, extract={"var": "c", "bodyMatches": r"\d+"}, timeout=5
+    )
+    ok, reason = _do_email(email, _FakeClock(), _FakeMailbox([], [a, b]), {})
+    assert not ok and "newest is unknown" in reason
+
+
+def test_do_email_retries_a_stalled_poll_while_time_is_left() -> None:
+    code = _msg(id="new", subject="Code", body="123456")
+    email = _email_step(
+        match={"subject": "Code"}, extract={"var": "c", "bodyMatches": r"\d+"}, timeout=120
+    )
+    mailbox = _FakeMailbox([], MailboxTimeout("email: IMAP did not answer"), [code])
+    assert _do_email(email, _FakeClock(), mailbox, {}) == (True, "")
+
+
+def test_do_email_names_a_stalled_last_poll_in_its_timeout() -> None:
+    email = _email_step(
+        match={"to": "u@x.io"}, extract={"var": "c", "bodyMatches": r"\d+"}, timeout=5
+    )
+    mailbox = _FakeMailbox([], MailboxTimeout("email: IMAP did not answer"))
+    ok, reason = _do_email(email, _FakeClock(), mailbox, {})
+    assert not ok
+    assert "no matching message within 5s (last poll: email: IMAP did not answer)" in reason
 
 
 def test_do_email_times_out_cleanly() -> None:
@@ -283,15 +423,13 @@ def test_run_scenario_email_fetch_error_fails_the_step() -> None:
         scenario,
         clock=_FakeClock(),
         bindings={},
-        mailbox=_FakeMailbox(base.SelectorError("email: mailbox returned status 500")),
+        mailbox=_FakeMailbox(base.SelectorError("email: IMAP login rejected")),
     )
     assert not result.ok
-    assert "500" in (result.failure or "")
+    assert "login rejected" in (result.failure or "")
 
 
 # --- model validation (load-time, BE-0046 review hardening) ---
-
-import pytest  # noqa: E402
 
 from bajutsu.common.scenario import Email  # noqa: E402
 
