@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0516") |
+| 実装 PR | [#2582](https://github.com/bajutsu-e2e/bajutsu/pull/2582) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0440](../BE-0440-http-step-field-extraction/BE-0440-http-step-field-extraction-ja.md)、[BE-0472](../BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations-ja.md) |
 <!-- /BE-METADATA -->
@@ -99,7 +100,7 @@
 
 ログ：
 
-- `parseJson` ステップを追加し、`http` から `extractBody` を削除しました。設計に加えて、次の 2 点を決めました。
+- [#2582](https://github.com/bajutsu-e2e/bajutsu/pull/2582)：`parseJson` ステップを追加し、`http` から `extractBody` を削除しました。設計に加えて、次の 2 点を決めました。
   取り出した値は、ステップの manifest エントリに記録しません。どのマスクも対象にしていないレスポンスから読むことが
   多いためです。過去の実行を読み直す処理は、保存された `extractBody` を取り除き、その実行のレポートを引き続き
   描画できるようにします。
