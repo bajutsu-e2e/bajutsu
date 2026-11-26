@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0511](BE-0511-worker-device-lease-broker.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0511") |
 | Topic | Device-cloud execution |
 | Related | [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
@@ -322,12 +322,12 @@ The worker takes its platforms from the file and not from `--platform`. A `lease
 > *Detailed design* (one entry per unit of work), and the log records what changed and when, oldest
 > first, each with a link to its PR.
 
-- [ ] Lease environment in `worker.yaml`
-- [ ] Provider and lease environment
-- [ ] Decline route
-- [ ] Worker integration
-- [ ] Orphaned run stop
-- [ ] Documentation and ja mirrors
+- [x] Lease environment in `worker.yaml`
+- [x] Provider and lease environment
+- [x] Decline route
+- [x] Worker integration
+- [x] Orphaned run stop
+- [x] Documentation and ja mirrors
 
 ## References
 

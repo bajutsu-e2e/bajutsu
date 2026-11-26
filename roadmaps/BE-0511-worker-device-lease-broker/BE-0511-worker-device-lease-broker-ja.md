@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0511](BE-0511-worker-device-lease-broker-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0511") |
 | トピック | Device-cloud execution |
 | 関連 | [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability-ja.md)、[BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)、[BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease-ja.md) |
@@ -305,12 +305,12 @@ worker の capability token、route token、`_device_reader` を、上の routin
 > 作業分解（作業単位ごとに 1 項目）に対応します。ログには、何がいつ変わったかを古い順に、PR
 > へのリンクつきで記録します。
 
-- [ ] `worker.yaml` の leased environment
-- [ ] provider と端末リースの環境変数
-- [ ] 辞退 route
-- [ ] worker への組み込み
-- [ ] 孤児になった run の停止
-- [ ] ドキュメントと日本語ミラー
+- [x] `worker.yaml` の leased environment
+- [x] provider と端末リースの環境変数
+- [x] 辞退 route
+- [x] worker への組み込み
+- [x] 孤児になった run の停止
+- [x] ドキュメントと日本語ミラー
 
 ## 参考
 
