@@ -28,6 +28,8 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/runs/{run_id}/archive.zip"),
         ("GET", "/api/capture/screenshot"),
         ("GET", "/runs/{rel:path}"),
+        # --- POST: run import (off_loop) ---
+        ("POST", "/api/runs/import"),
         # --- GET: index (off_loop) ---
         ("GET", "/"),
         ("GET", "/index.html"),

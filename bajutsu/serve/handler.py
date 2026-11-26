@@ -39,6 +39,7 @@ from bajutsu.serve.uploads import (
     BoundedZipReceiver,
     UploadTooLarge,
 )
+from bajutsu.serve.uploads.run_bundle import MAX_RUN_IMPORT_BYTES
 
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
 _UPLOAD_CHUNK = 1024 * 1024
@@ -454,6 +455,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             if path == "/api/upload":
                 self._handle_upload()
                 return
+            if path == "/api/runs/import":
+                self._handle_run_import()
+                return
             if path in _ARTIFACT_UPLOAD_PATHS:
                 self._handle_artifact_upload(_ARTIFACT_UPLOAD_PATHS[path])
                 return
@@ -608,6 +612,25 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                         sha256=receiver.digest(),
                         actor=self._actor(),
                         session=self._session_id(),
+                    )
+                )
+            except Exception as exc:
+                self._respond_uncaught(exc)
+            finally:
+                receiver.cleanup()
+
+        def _handle_run_import(self) -> None:
+            """Stream a raw-body zip of one finished run to a temp file (bounded), then store and
+            record it (BE-0510: `ops.import_run`)."""
+            receiver = self._stream_bounded_body(cap=MAX_RUN_IMPORT_BYTES)
+            if receiver is None:
+                return
+            # Its own JSON-500 boundary, as `_handle_upload` explains (BE-0264).
+            try:
+                receiver.digest()  # closes the write handle before the zip is read back
+                self._json(
+                    *ops.import_run(
+                        state, receiver.path, actor=self._actor(), machine_org=self._machine_org
                     )
                 )
             except Exception as exc:

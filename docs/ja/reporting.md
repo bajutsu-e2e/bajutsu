@@ -420,6 +420,43 @@ def scenario_source_meta(scenarios, plan_sources=None) -> tuple[list[str | None]
 
 `bajutsu report <run>`（[cli](cli.md#report)）は、その render モデルを使って `report.html`、`junit.xml`、`ctrf.json` を書き直します。再描画は記録済みの outcome を再提示するだけで、assertion を再実行したり verdict を変えたりしません。古い run も、新しいバージョンにしかないセクションを捏造せず「not captured」と表示して描画します。
 
+## run をサーバへアップロードする
+
+`scripts/upload_run.py` は、完了した run を 1 件 `bajutsu serve` へ送り、レポートのアドレスを表示します
+（[BE-0510](../../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import-ja.md)）。スクリプトが使うのは
+Python の標準ライブラリだけで、Bajutsu からは何も import しません。そのため、ファイルをコピーすれば、
+run のディレクトリがあるどのマシンでも動きます。
+
+アップロードする前に、スクリーンショットと動画を確認してください。テキストは、run が各ファイルを書いた
+時点でマスクされています。しかし画像と動画の画素はマスクされず、サーバも run を再検査しません。
+
+```bash
+python3 scripts/upload_run.py runs/<runId> --server https://bajutsu.example.com
+```
+
+第 1 引数には、run のディレクトリか、`--runs-dir`（デフォルトは `runs`）の下の run id を指定します。成功すると、
+レポートと run の zip のアドレスを 2 行で表示します。
+
+```text
+https://bajutsu.example.com/runs/<runId>/report.html
+https://bajutsu.example.com/runs/<runId>/archive.zip
+```
+
+どちらのアドレスも、run を受け取った org のメンバーがサインインすれば開けます。org の外のレビュアーは
+開けません。キーしか持たないスクリプトも開けません。
+
+| 入力 | 挙動 |
+|---|---|
+| キー | `$BAJUTSU_SERVE_KEY` か、`--key-file` で指定したファイルから読みます。キーそのものを渡す引数はありません |
+| `--server` | `https://`、または loopback ホストへの `http://` を受け付けます。それ以外の `http://` は拒否します |
+| リダイレクト | 追従せず失敗にします。そのためキーは指定したホストにしか届きません |
+| `--dry-run` | 送るファイルを一覧するだけで、何も送りません |
+| 終了ステータス | 取り込みに成功すれば 0、それ以外は 1 です。run の判定は反映しません |
+
+サーバは受動的な種類のファイルだけを残し、取り除いたファイル名をスクリプトが標準エラー出力に表示します。
+サーバの検査内容と受け付ける認証情報は、
+[self-hosting の「完了した run の取り込み」](self-hosting.md#完了した-run-の取り込み)で説明します。
+
 ## プルリクエストへの証跡の投稿（BE-0504）
 
 コンポジット action の `post-evidence` は、完了した run をプルリクエストまたは issue に投稿します。読むのは `manifest.json` だけで、manifest がない run では `<sid>/result.json` を読みます。Bajutsu のインストールも Bajutsu のコマンド呼び出しも要らないため、run ディレクトリを生成するリポジトリならどこでも使えます。

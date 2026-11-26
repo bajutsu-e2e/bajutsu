@@ -1271,6 +1271,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   the run id is always in the key and runs never collide. Upload runs after the verdict, so a failure
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
+- **`POST /api/runs/import` takes a run that finished elsewhere.** The route needs the `editor` role.
+  It accepts a zip of one run, which `scripts/upload_run.py` builds and sends
+  ([BE-0510](../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import.md)).
+  [Self-hosting](self-hosting.md#importing-a-finished-run) covers the checks and the answers.
 - **Every job runs on a worker (BE-0449).** `serve` queues every kind of job for a
   `bajutsu worker`. The `serve` process runs none of them. A queued job waits for a worker. With
   no live worker able to take it, the job carries a notice that no worker is available. `make serve` starts a worker beside the server. A bare

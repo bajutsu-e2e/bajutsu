@@ -450,6 +450,10 @@ _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 # keeps it admin is not its reach but what it does: it materializes content the deployment does not
 # own and decides that content's build trust (BE-0121).
 _RESCAN_PATH = "/api/runs/rescan"
+# Importing a finished run (BE-0510) adds to the history, as triggering one does.
+_IMPORT_PATH = "/api/runs/import"
+# POSTs under `/api/runs/` that name no single run, so the path sets below decide their role.
+_RUN_COLLECTION_PATHS = (_RESCAN_PATH, _IMPORT_PATH)
 _ADMIN_PATHS = frozenset(
     {
         "/api/config",
@@ -495,6 +499,7 @@ _EDITOR_PATHS = frozenset(
         "/api/capture/start",
         "/api/capture/mark",
         "/api/capture/finish",
+        _IMPORT_PATH,
     }
 )
 
@@ -585,10 +590,11 @@ def required_role(method: str, path: str) -> str | None:
     # triggering a run. Permanent purge (``?purge=true``) is admin, but the query string isn't in the
     # `path` seen here, so that gate lives in the operation (`delete_run`/`bulk_delete_runs`). Handled
     # ahead of the POST-only guard because the soft-delete is a DELETE; the worker upload-urls POST
-    # keeps its own no-role handling (falls through to None). The rescan POST is no run's lifecycle,
-    # so it passes on to `_ADMIN_PATHS`; any other verb on that path stays a run's (an editor's).
-    rescan = method == "POST" and path == _RESCAN_PATH
-    if path.startswith(("/api/runs/", "/api/crawl/runs/")) and not rescan:
+    # keeps its own no-role handling (falls through to None). The rescan and import POSTs are no
+    # one run's lifecycle, so they pass on to `_ADMIN_PATHS` / `_EDITOR_PATHS`; any other verb on
+    # those paths stays a run's (an editor's).
+    collection = method == "POST" and path in _RUN_COLLECTION_PATHS
+    if path.startswith(("/api/runs/", "/api/crawl/runs/")) and not collection:
         if method == "DELETE":
             return "editor"
         if method == "POST" and (path == "/api/runs/bulk-delete" or path.endswith("/restore")):

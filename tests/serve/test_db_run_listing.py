@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -372,3 +372,82 @@ def test_crawl_runs_payload_is_scoped_to_the_actors_org(
 
     assert [r["id"] for r in crawl_runs_payload(state, actor="al")[0]] == ["20260621-a"]
     assert [r["id"] for r in crawl_runs_payload(state, actor="bo")[0]] == ["20260621-b"]
+
+
+def test_importing_run_is_not_listed_until_its_reservation_flips(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    # BE-0510: an import reserves its id before it places any file, so the row must stay out of every
+    # history reader until the files are there.
+    repo = _repo(serve_engine)
+    reserved_at = datetime.now(UTC)
+    repo.record_run(
+        RunRecord(id="r1", org_id="default", status="importing", created_at=reserved_at)
+    )
+
+    assert repo.list_runs(org_id="default") == []
+    assert repo.list_runs(org_id="default", include_deleted=True, limit=None) == []
+    assert not repo.finish_import("r1", org_id="other", reserved_at=reserved_at)
+    assert not repo.finish_import(
+        "r1", org_id="default", reserved_at=reserved_at + timedelta(seconds=1)
+    )
+
+    assert repo.finish_import("r1", org_id="default", reserved_at=reserved_at)
+    assert [r.status for r in repo.list_runs(org_id="default")] == ["done"]
+    # Only an `importing` row flips, so a second flip lands nothing.
+    assert not repo.finish_import("r1", org_id="default", reserved_at=reserved_at)
+
+
+def test_release_import_deletes_only_the_reservation_it_made(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    reserved_at = datetime.now(UTC)
+    repo.record_run(
+        RunRecord(id="r1", org_id="default", status="importing", created_at=reserved_at)
+    )
+
+    assert not repo.release_import("r1", org_id="other", reserved_at=reserved_at)
+    assert not repo.release_import(
+        "r1", org_id="default", reserved_at=reserved_at + timedelta(seconds=1)
+    )
+    assert repo.release_import("r1", org_id="default", reserved_at=reserved_at)
+    assert repo.get_run("r1") is None
+
+
+def test_only_the_first_claim_of_a_reservation_lands(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    reserved_at = datetime.now(UTC) - timedelta(hours=2)
+    repo.record_run(
+        RunRecord(id="r1", org_id="default", status="importing", created_at=reserved_at)
+    )
+    claimed_at = datetime.now(UTC)
+
+    assert repo.claim_import("r1", org_id="default", reserved_at=reserved_at, claimed_at=claimed_at)
+    # The row moved on, so a second purge of the same stale row claims nothing.
+    assert not repo.claim_import(
+        "r1", org_id="default", reserved_at=reserved_at, claimed_at=datetime.now(UTC)
+    )
+    assert repo.release_import("r1", org_id="default", reserved_at=claimed_at)
+
+
+def test_list_stale_imports_spans_orgs_and_skips_fresh_and_finished_rows(
+    serve_engine: Callable[..., Engine],
+) -> None:
+    repo = _repo(serve_engine)
+    repo.ensure_org("acme", slug="acme", name="Acme")
+    now = datetime.now(UTC)
+    old = now - timedelta(hours=2)
+    for run_id, org, status, created in (
+        ("stale-default", "default", "importing", old),
+        ("stale-acme", "acme", "importing", old),
+        ("fresh", "default", "importing", now),
+        ("finished", "default", "done", old),
+    ):
+        repo.record_run(RunRecord(id=run_id, org_id=org, status=status, created_at=created))
+
+    stale = repo.list_stale_imports(before=now - timedelta(hours=1))
+
+    assert sorted(r.id for r in stale) == ["stale-acme", "stale-default"]
