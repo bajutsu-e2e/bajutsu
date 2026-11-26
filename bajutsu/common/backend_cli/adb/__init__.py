@@ -24,7 +24,9 @@ from ._device_state import (
     set_app_locales_cmd,
     status_bar_demo_cmds,
     status_bar_exit_cmd,
+    status_bar_icons_cmd,
     status_bar_problems,
+    wifi_icon_unregistered,
 )
 from ._functions import _ABS_MT_POSITION_X as _ABS_MT_POSITION_X
 from ._functions import _ABS_MT_POSITION_Y as _ABS_MT_POSITION_Y
@@ -321,6 +323,7 @@ __all__ = [
     "shell_cmd",
     "status_bar_demo_cmds",
     "status_bar_exit_cmd",
+    "status_bar_icons_cmd",
     "status_bar_problems",
     "swipe_cmd",
     "tap_cmd",
@@ -331,6 +334,7 @@ __all__ = [
     "view_intent_cmd",
     "view_intent_rejection",
     "wait_for_device_cmd",
+    "wifi_icon_unregistered",
     "wm_density_cmd",
     "wm_size_cmd",
 ]
