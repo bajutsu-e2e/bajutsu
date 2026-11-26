@@ -43,6 +43,22 @@ Interval %Cpu(s): 60.0 us, 10.0 sy,  0.0 ni, 3.0 id, 25.0 wa,  0.0 hi,  0.0 si, 
 """
 
 
+def test_the_cpu_ranked_rows_leave_every_reading_unchanged() -> None:
+    # The sampler prints the two-sample top's processes after its interval CPU line. Those rows carry
+    # `%CPU` and `MEM` figures the parser must not read as load, CPU, or disk.
+    rows = (
+        "PID    COMMAND          %CPU TIME     MEM    STATE\n"
+        "1492   diskimagesiod    98.2 00:49.36 48M    running\n"
+        "1676   apsd             61.0 03:10.02 12M    running\n"
+    )
+    with_rows = MAC_TELEMETRY.replace(
+        "Interval CPU usage: 50.0% user, 46.0% sys, 4.0% idle\n",
+        "Interval CPU usage: 50.0% user, 46.0% sys, 4.0% idle\n" + rows,
+    )
+    assert with_rows != MAC_TELEMETRY
+    assert ct.parse_host_telemetry(with_rows) == ct.parse_host_telemetry(MAC_TELEMETRY)
+
+
 def test_parses_the_macos_sampler() -> None:
     load = ct.parse_host_telemetry(MAC_TELEMETRY)
     assert load["samples"] == 2

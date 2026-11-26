@@ -133,7 +133,7 @@ class Effective:
         """A copy with the relative path fields resolved against `root`.
 
         The common path fields — `scenarios` / `baselines` / `schemas` / `goldens` — the iOS or
-        Android sub-config's `app_path`, and an iOS or Android target's `seed_photos` are rebased; a future
+        Android sub-config's `app_path` / `source_root`, and an iOS or Android target's `seed_photos` are rebased; a future
         path field is rebased by adding it here. `build` (a shell command) is intentionally absent —
         it is not rewritten but run from `root`, recorded as `base_dir` — and a component the
         target's hooks call was already resolved against the config file when it loaded. Called
@@ -200,7 +200,11 @@ class Effective:
             android = self.platform_config
             return replace(
                 common,
-                platform_config=replace(android, app_path=at("subject.path", android.app_path)),
+                platform_config=replace(
+                    android,
+                    app_path=at("subject.path", android.app_path),
+                    source_root=at("subject.sourceRoot", android.source_root),
+                ),
                 seed_photos=[
                     at("runsOn.android.seedPhotos", photo) or photo for photo in self.seed_photos
                 ],
@@ -222,6 +226,9 @@ class Effective:
         return replace(
             common,
             platform_config=replace(
-                ios, app_path=at("subject.path", ios.app_path), xcuitest=rebased_xcuitest
+                ios,
+                app_path=at("subject.path", ios.app_path),
+                source_root=at("subject.sourceRoot", ios.source_root),
+                xcuitest=rebased_xcuitest,
             ),
         )

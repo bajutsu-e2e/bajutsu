@@ -8,6 +8,9 @@ header h1{font-size:1rem;margin:0;font-weight:600}
 .subtitle{font-size:.85rem;color:rgba(255,255,255,.62);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:64ch}
 .sfile{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.82)}
 .fdesc{font-size:.82rem;font-weight:400;color:rgba(255,255,255,.6);max-width:72ch}
+.build{display:flex;flex-wrap:wrap;gap:.6rem;font:.74rem/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.62)}
+.bname{color:rgba(255,255,255,.82);font-weight:600}
+.bdirty{color:#ffb454}
 .stats{display:flex;gap:.4rem;font-size:.82rem;align-items:center}
 .chip{display:inline-flex;align-items:center;padding:.12rem .55rem;border-radius:999px;background:#3a3a3c}
 .chip.ok{background:var(--ok)} .chip.ng{background:var(--ng)}

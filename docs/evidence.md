@@ -311,7 +311,7 @@ each line's time and pairs the markers into `appTrace.json`.
 | Kind | Start command (iOS / Android) | Stop signal | Filename |
 |---|---|---|---|
 | `video` | `simctl io <udid> recordVideo --codec h264` / `adb shell screenrecord` | **SIGINT** (a hard kill would corrupt the mp4) | `scenario.mp4` |
-| `deviceLog` | `simctl spawn <udid> log stream --level debug --style compact [--predicate ...]` / `adb logcat -b main,system,crash,events -T 1` | SIGTERM | `device.log` |
+| `deviceLog` | `simctl spawn <udid> log stream --level info --style compact [--predicate ...]` / `adb logcat -b main,system,crash,events -T 1` | SIGTERM | `device.log` |
 
 - `start_video` / `start_device_log` (iOS) and `start_screenrecord` / `start_logcat` (Android)
   return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file.
@@ -333,6 +333,10 @@ each line's time and pairs the markers into `appTrace.json`.
     a limit bajutsu tunes. An Android video of a longer scenario ends at that mark.
 - On iOS, `--predicate` (NSPredicate) narrows `deviceLog` to a subsystem, for example (the CLI's
   `--log-predicate`).
+  - The stream runs at the info level, which keeps info messages and leaves out debug ones.
+    A debug stream makes every process in the Simulator emit its debug messages.
+    On a loaded CI runner that ran to thousands of lines a second.
+    `run --log-level debug` brings debug messages back when an investigation needs them.
   - `adb logcat` has no tag or priority filter. A logcat filterspec is a different syntax, a later
     knob.
   - `adb logcat` starts the follow from the tail, so it reflects the scenario window, not the whole
@@ -616,7 +620,7 @@ The file is self-contained so a rerun-to-green does not discard it:
 |---|---|
 | `readiness` | Whether the post-launch readiness gate had passed, on which signal (`readyWhen`, the target's `subject.startWhen` condition / `namespace` / `count`, or `timeout`), and whether the screen had `settled` — separates "the gate returned before the content" from "the content rendered but the awaited element did not". A `settled: false` says the gate returned while the tree was still changing, which is when a synthesized touch is dropped: read it as "the actuation before this wait may never have landed", since a dropped tap is still reported as delivered. `null` on a lane that carried no readiness result. |
 | `trace` | The poll timeline: how many polls, when the tree first became non-empty (`firstNonemptySeconds`, `null` if it never did), and how many elements were present at the timeout — separating "nothing rendered / transient-empty" from "rendered, awaited element absent" from "slow cold-boot render". |
-| `provenance` | A [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) stamp (scenario hash, tool version, git revision), so the evidence stays identifiable independently of the run. Its `scenarioHash` fingerprints **this scenario alone**, without the file-level `description` the run manifest's `scenarioHash` folds in when present — so it can diverge from the manifest's hash even for a single-scenario run, not only for a suite/matrix run. |
+| `provenance` | A [BE-0049](../roadmaps/BE-0049-determinism-flakiness-audit/BE-0049-determinism-flakiness-audit.md) stamp (scenario hash, tool version, git revision, [build and source identity](reporting.md#build-and-source-identity)), so the evidence stays identifiable independently of the run. Its `scenarioHash` fingerprints **this scenario alone**, without the file-level `description` the run manifest's `scenarioHash` folds in when present — so it can diverge from the manifest's hash even for a single-scenario run, not only for a suite/matrix run. |
 | `elements` | The (redacted) element tree at the moment of timeout. |
 
 It is recorded as an `Artifact(kind="waitDiagnostic", provider="runner")` — written by the run loop,

@@ -150,6 +150,32 @@ def status_bar_demo_cmds(serial: str, fields: Mapping[str, str | int]) -> list[l
     return cmds
 
 
+def status_bar_icons_cmd(serial: str) -> list[str]:
+    """Dump System UI's status bar icon list, whose `(wifi)` line `wifi_icon_unregistered` reads."""
+    return _adb(
+        serial,
+        "shell",
+        "dumpsys",
+        "activity",
+        "service",
+        "com.android.systemui/.SystemUIService",
+        "StatusBarIconControllerImpl",
+    )
+
+
+_WIFI_ICON_UNREGISTERED = re.compile(r"^\s*\d+:\(wifi\)\s+holder=null\b", re.MULTILINE)
+
+
+def wifi_icon_unregistered(dump: str) -> bool:
+    """Whether System UI has yet to register its Wi-Fi icon, per a `status_bar_icons_cmd` dump.
+
+    Entering the demo mode in that state draws the Wi-Fi icon twice (issue #2555): `wifi show` makes
+    System UI register the icon for the first time, and registering it during the demo mode adds a
+    second demo view. A dump with no `(wifi)` line reads as registered, leaving the override as is.
+    """
+    return _WIFI_ICON_UNREGISTERED.search(dump) is not None
+
+
 def status_bar_exit_cmd(serial: str) -> list[str]:
     """Leave the demo mode, restoring the live status bar (`clearStatusBar`)."""
     return _demo_cmd(serial, "exit")

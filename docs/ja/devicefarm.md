@@ -90,7 +90,7 @@ uv run python scripts/devicefarm_submit.py \
 
 `showcase.devicefarm.ios.config.yaml` は `runsOn.ios.kind: device`（XCUITest バックエンドがシミュレーターではなく実機を操作します）を設定し、`subject.path` を持ちません（Device Farm がアップロードした `.ipa` を予約デバイスへ自分でインストールします）。`--package BajutsuKit/Runner/build/dd-device/Build/Products=.` は、デバイス署名済みの `.xctestrun` とテストバンドルをパッケージのルートに配置します。これは設定の `driver.runner.testRunner: BajutsuRunner.xctestrun` が参照する場所です。再署名と simctl に関する注意事項は[上記](#ios-再署名と実機のケーパビリティ)をご参照ください。
 
-Device Farm のジョブでは、`runsOn.ios.model` や `runsOn.ios.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前にデバイスを読み取り、条件を照合します。Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットが条件を宣言しているジョブを、アップロードの前に拒否します。宛先のブロックに入れずに `runsOn` のフィールドを直下に書いたままのジョブも同じです。拒否するときは、該当するフィールドを示します。`runsOn.ios.locale` と `runsOn.ios.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。
+Device Farm のジョブでは、`runsOn.ios.model` や `runsOn.ios.os` のようなデバイスの条件を使えません（[configuration](configuration.md#デバイスの条件runson)）。Bajutsu は run の前にデバイスを読み取り、条件を照合します。Device Farm が予約するデバイスには、事前に読み取るものがありません。そのため provider は、ターゲットが条件を宣言しているジョブを、アップロードの前に拒否します。宛先のブロックに入れずに `runsOn` のフィールドを直下に書いたままのジョブも同じです。拒否するときは、該当するフィールドを示します。`runsOn.ios.locale` と `runsOn.ios.seedPhotos` は条件ではなくデバイスの状態なので、引き続き使えます。`runsOn.ignoredSettings` も同様に使えます。これは照合する条件ではなく、この環境が適用できない設定を記録するものです。
 
 ## GitHub Actions ワークフロー
 

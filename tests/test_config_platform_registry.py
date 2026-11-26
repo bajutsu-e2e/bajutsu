@@ -340,6 +340,7 @@ def test_allowed_fields_spells_aliases() -> None:
         "id",
         "path",
         "build",
+        "sourceRoot",
         "reinstall",
         "launch",
         "grantPermissions",

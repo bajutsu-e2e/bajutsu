@@ -43,6 +43,7 @@ from bajutsu.common.platform_lifecycle import (
     environment_for,
 )
 from bajutsu.common.report import git_revision, run_provenance
+from bajutsu.common.run_identity.stamp import RunIdentity
 from bajutsu.common.runner.launch import await_ready, launch_driver
 from bajutsu.common.runner.recovery import guarded_teardown
 from bajutsu.common.runner.types import Lease, LeaseFn, _no_crash_artifacts
@@ -95,8 +96,10 @@ def device_pool(  # noqa: C901, PLR0915
     network: bool = False,
     log_predicate: str | None = None,
     log_subsystem: str | None = None,
+    log_level: str = "info",
     secret_values: list[str] | None = None,
     provision: ProvisionProfile | None = None,
+    identity: RunIdentity | None = None,
     available: Callable[[str], bool] = default_available,
     env_run: simctl.RunFn = simctl.real_run,
     make_driver: Callable[..., base.Driver] = _make_driver,
@@ -125,10 +128,13 @@ def device_pool(  # noqa: C901, PLR0915
             hooks the page per lease.
         log_predicate: An `os_log` predicate scoping captured device logs. None captures none.
         log_subsystem: The app log subsystem to capture. None captures none.
+        log_level: The `log stream --level` for captured device logs.
         secret_values: Raw secret values to redact from evidence.
         provision: The device provider's readiness report (BE-0236) — a cloud device handed over
             already booted / with the app installed lets the environment skip that setup. None (the
             local provider's inert profile) runs the full per-platform bring-up, unchanged.
+        identity: The run's build and source identity (BE-0506), folded into each lease's
+            provenance stamp. Read once by the caller, so a rebuild mid-run changes nothing.
         available: Actuator-availability probe, injectable for tests.
         env_run: The subprocess runner for simctl, injectable for tests.
         make_driver: Builds a backend's driver; injectable so a test can supply a read-only
@@ -480,6 +486,7 @@ def device_pool(  # noqa: C901, PLR0915
                 udid=udid,
                 log_predicate=log_predicate,
                 log_subsystem=log_subsystem,
+                log_level=log_level,
                 redact=eff.redact,
                 secrets=secret_values,
                 unavailable=frozenset(skipped),
@@ -502,7 +509,9 @@ def device_pool(  # noqa: C901, PLR0915
                 # even for a single-scenario run (see docs/evidence.md).
                 readiness=readiness,
                 provenance=run_provenance(
-                    dump_scenario_file([redact_totp_secrets(scenario)]), git_revision=git_rev
+                    dump_scenario_file([redact_totp_secrets(scenario)]),
+                    git_revision=git_rev,
+                    identity=identity,
                 ),
                 on_video_start_stall=note_video_start_stall,
             )
@@ -643,6 +652,7 @@ def device_pool(  # noqa: C901, PLR0915
                         udid=udid,
                         log_predicate=log_predicate,
                         log_subsystem=log_subsystem,
+                        log_level=log_level,
                         redact=member_eff.redact,
                         secrets=secret_values,
                         # The member shares the primary's device and driver, so the same route gaps.
@@ -651,7 +661,9 @@ def device_pool(  # noqa: C901, PLR0915
                         video_extension=getattr(member_driver, "video_extension", "mp4"),
                         readiness=member_readiness,
                         provenance=run_provenance(
-                            dump_scenario_file([redact_totp_secrets(member)]), git_revision=git_rev
+                            dump_scenario_file([redact_totp_secrets(member)]),
+                            git_revision=git_rev,
+                            identity=identity,
                         ),
                         # The device's one stall flag, which the member lease also forwards.
                         on_video_start_stall=note_video_start_stall,

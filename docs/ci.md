@@ -505,10 +505,26 @@ there.
   `top`, `vm_stat`, and `memory_pressure` to `runs/diagnostics/host-telemetry.log` every 20 seconds,
   and a one-shot render probe records how long a screenshot takes and whether a five-second
   `recordVideo` produces any bytes at all. The sampler is an observer outside every run loop, so its
-  interval is a sampling cadence and not a wait a verdict depends on. It ranks `top`'s rows by
-  resident size rather than CPU, because `top -l 1` differences nothing and so reports every process
-  at 0.0% — sorting by CPU there sorts on a constant, and the first collection's rows never once
-  included the app under test.
+  interval is a sampling cadence and not a wait a verdict depends on. Each sample holds two process
+  tables:
+  - **By resident size**, from a single-sample `top`.
+    A single sample has no interval to difference, so it reports every process at 0.0% CPU.
+    Sorting it by CPU would sort on a constant.
+    The first collection's CPU-sorted rows never once included the app under test.
+  - **By CPU over the last second**, from a two-sample `top`.
+    A busy process with a small footprint never reaches the first table.
+    This table names what is loading the machine.
+- **Less load on the runner**: the macOS runner has three cores.
+  Its CPU sat at 0% idle through whole `actuation` jobs, green ones included.
+  Three changes cut sources of that load:
+  - `setup-ios-toolchain` turns off Spotlight indexing before the boot. Its `mds_stores` competed
+    with the Simulator, and nothing a job runs searches the index.
+  - Every `deviceLog` capture streams at the info level rather than debug
+    ([evidence](evidence.md#interval-evidence-video--devicelog--apptrace)).
+  - The `actuation` job narrows its scenarios' `deviceLog` captures to the app, SpringBoard, and
+    `runningboardd`, through the `bajutsu-e2e` action's `log-predicate` input. Unfiltered,
+    `navigation.yaml` alone streamed 455,715 lines in 80 seconds, two thirds of them from one
+    system daemon. The other iOS jobs still capture every process.
 - **Before anything ran**, also from `start`: one bounded `ps aux` plus `vm_stat` land in
   `runs/diagnostics/ps-baseline.txt`. The stall captures snapshot `ps` at a stall, which answers what
   was resident when it broke and cannot answer whether that differed from normal — the first

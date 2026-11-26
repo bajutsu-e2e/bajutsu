@@ -189,7 +189,8 @@ run and matches the conditions against it. A reserved Device Farm device offers 
 beforehand. The provider thus refuses a job whose target declares a condition, or still writes a
 `runsOn` field flat, from before the destination blocks. It refuses before any upload, and names
 each field. `runsOn.ios.locale` and `runsOn.ios.seedPhotos` stay
-allowed: they are device state rather than conditions.
+allowed: they are device state rather than conditions. `runsOn.ignoredSettings` stays allowed too.
+It records the settings this environment cannot apply, not a condition to match against a device.
 
 ## The GitHub Actions workflow
 

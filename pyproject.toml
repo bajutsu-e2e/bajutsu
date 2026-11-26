@@ -366,6 +366,7 @@ source_modules = [
     "bajutsu.common.assertions",
     "bajutsu.common.evidence",
     "bajutsu.common.report",
+    "bajutsu.common.run_identity",
     "bajutsu.common.config",
     "bajutsu.common.scenario",
     "bajutsu.common.capability.preflight",
