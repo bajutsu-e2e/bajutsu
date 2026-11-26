@@ -1,6 +1,6 @@
 [English](BE-XXXX-parse-json-step.md) · **日本語**
 
-# BE-XXXX — JSON 文字列から値を取り出す `parseJson` ステップ
+# BE-XXXX — `JSON` 文字列から値を取り出す `parseJson` ステップ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
@@ -15,15 +15,15 @@
 
 ## はじめに
 
-本項目は `parseJson` ステップを追加します。このステップは、任意の Java Script Object Notation（JSON）文字列からパス指定で値を取り出し、変数に入れます。あわせて `http` ステップの `extractBody` を削除します。役割は新しいステップが引き継ぎます。
+本項目は `parseJson` ステップを追加します。このステップは、任意の JavaScript Object Notation（`JSON`）文字列からパス指定で値を取り出し、変数に入れます。あわせて `http` ステップの `extractBody` を削除します。役割は新しいステップが引き継ぎます。
 
 削除は既存のファイルを壊します。`extractBody` を使うシナリオは読み込めなくなります。
 
 ## 動機
 
-[BE-0440](../BE-0440-http-step-field-extraction/BE-0440-http-step-field-extraction-ja.md) の項目抽出は、`http` ステップ内の応答本文にしか使えません。`http` は Hyper Text Transfer Protocol（HTTP）のリクエストを送るステップです。変数に入った文字列を読む手段はありません。
+[BE-0440](../BE-0440-http-step-field-extraction/BE-0440-http-step-field-extraction-ja.md) の項目抽出は、`http` ステップ内の応答本文にしか使えません。`http` は Hypertext Transfer Protocol（`HTTP`）のリクエストを送るステップです。変数に入った文字列を読む手段はありません。
 
-`eval` ステップの `json` 操作は、JSON 配列をリストに変えます。オブジェクトの中は読めません。
+`eval` ステップの `json` 操作は、`JSON` 配列をリストに変えます。オブジェクトの中は読めません。
 
 変更の効果は、以前に保存した文字列から入れ子の値を読むシナリオが成功することで確認できます。
 
@@ -44,8 +44,8 @@
 | 観点 | 規則 |
 |---|---|
 | パスの文法 | 変更なし。オブジェクトのキーと、0 始まりの `[n]` 添字 |
-| 値の保存 | 文字列はそのまま。ほかの型は空白を詰めた JSON 文字列 |
-| 失敗 | JSON でない入力、不正なパス、解決できないパス |
+| 値の保存 | 文字列はそのまま。ほかの型は空白を詰めた `JSON` 文字列 |
+| 失敗 | `JSON` でない入力、不正なパス、解決できないパス |
 | 複数の指定 | すべて解決できたときに限り書き込む |
 | `var` の重複 | 読み込みエラー。置換後にも再検査 |
 | パスへの置換 | 値は 1 区間だけを埋め、`.`、`[`、`]` を含められない |
@@ -68,7 +68,7 @@
 
 | 原則 | 本設計での守り方 |
 |---|---|
-| 合否の判定にモデルを使わない | パスの解決は、解析した JSON をたどる固定の手順 |
+| 合否の判定にモデルを使わない | パスの解決は、解析した `JSON` をたどる固定の手順 |
 | 決定性 | 不正な入力やパスはステップを失敗させ、何も書き込まない |
 | アプリ非依存 | ステップとパスの文法はすべてのターゲットで共通 |
 
@@ -76,7 +76,7 @@
 
 | # | 作業 | 主なファイル | 完了条件 | 前提 |
 |---|---|---|---|---|
-| 1 | `parseJson` のモデル、ハンドラー、読み込み検査、秘密値の記録を追加 | `bajutsu/common/scenario/`、`bajutsu/common/orchestrator/` | 上記の規則をユニットテストで確認 | なし |
+| 1 | `parseJson` のモデル、ハンドラー、読み込み検査、秘密値の記録、コード生成のコメントを追加 | `bajutsu/common/scenario/`、`bajutsu/common/orchestrator/`、`bajutsu/codegen/` | 上記の規則をユニットテストで確認し、各コード生成器が `parseJson` を名指しした `TODO` コメントを出力 | なし |
 | 2 | `extractBody` を削除し、テストを `parseJson` へ移行 | `http_request.py`、`_http_extract.py`、`handlers/http.py`、`substitution.py` | 旧シナリオが移行の案内付きで読み込みに失敗 | 1 |
 | 3 | 日英の文書を更新 | `docs/scenarios.md`、`docs/dsl-grammar.md`、`docs/architecture.md` と日本語版 | `extractBody` を使える機能として説明するページがない | 2 |
 

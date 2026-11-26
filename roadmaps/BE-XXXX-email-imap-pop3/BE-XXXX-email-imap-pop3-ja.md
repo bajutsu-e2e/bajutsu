@@ -15,17 +15,17 @@
 
 ## はじめに
 
-`email` ステップは Hyper Text Transfer Protocol（HTTP）のエンドポイントからメールを読みます。応答の形式は Java Script Object Notation（JSON）です。本項目は、この取得方式を置き換えます。受信箱は Internet Message Access Protocol（IMAP）か Post Office Protocol version 3（POP3）で読みます。HTTP の受信箱は削除します。
+`email` ステップは Hypertext Transfer Protocol（`HTTP`）のエンドポイントからメールを読みます。応答の形式は JavaScript Object Notation（`JSON`）です。本項目は、この取得方式を置き換えます。受信箱は Internet Message Access Protocol（IMAP）か Post Office Protocol version 3（POP3）で読みます。`HTTP` の受信箱は削除します。
 
 本変更は既存のファイルを壊します。Uniform Resource Locator（URL）を指定した `mailbox:` の設定は読み込めなくなります。
 
 ## 動機
 
-現在の受信箱は JSON しか受け付けません。ランナーはすべての応答を JSON として解析します。そのため、平文を返すサービスでは最初の取得でステップが失敗します。
+現在の受信箱は `JSON` しか受け付けません。ランナーはすべての応答を `JSON` として解析します。そのため、平文を返すサービスでは最初の取得でステップが失敗します。
 
-返す JSON もサービスごとに違います。設定の `messages` と `fields` はキー名の違いを吸収できます。しかし、応答の構造そのものの違いは吸収できません。
+返す `JSON` もサービスごとに違います。設定の `messages` と `fields` はキー名の違いを吸収できます。しかし、応答の構造そのものの違いは吸収できません。
 
-HTTP のサービスは、もともと `http` ステップで呼び出せます。`email` の内側に 2 つ目の HTTP 読み取りを持つと機能が重複し、しかも対応できるサービスは少なくなります。一方、メールの取得には IMAP と POP3 という広く提供されている方式があります。
+`HTTP` のサービスは、もともと `http` ステップで呼び出せます。`email` の内側に 2 つ目の `HTTP` 読み取りを持つと機能が重複し、しかも対応できるサービスは少なくなります。一方、メールの取得には IMAP と POP3 という広く提供されている方式があります。
 
 [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) は、IMAP を需要が出るまで見送りました。[BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md) は、新しい取得方式を差し込むレジストリを用意しています。
 
@@ -56,11 +56,15 @@ services:
 | `imap` | 993 | 143 |
 | `pop3` | 995 | 110 |
 
-接続は常に Transport Layer Security（TLS）を使い、サーバー証明書を検証します。暗号化しない接続方式は用意しません。認証はユーザー名とパスワードで行います。POP3 の受信箱は 1 つだけなので、`kind: pop3` に `folder` を指定すると設定エラーになります。
+接続は常に Transport Layer Security（TLS）を使います。サーバー証明書は、ホスト名を含めて検証します。暗号化しない接続方式は用意しません。
+
+`security: starttls` では、暗号化への切り替えが成功するまで認証情報を送りません。サーバーが `STARTTLS`（IMAP）や `STLS`（POP3）に対応しない場合は、ステップを失敗にします。平文のまま接続を続けることはありません。
+
+認証はユーザー名とパスワードで行います。POP3 の受信箱は 1 つだけなので、`kind: pop3` に `folder` を指定すると設定エラーになります。
 
 設定項目の `url`、`headers`、`messages`、`fields` は削除します。いずれかが残った設定は読み込みに失敗します。エラーメッセージでは IMAP、POP3、`http` ステップを案内します。
 
-HTTP の受信箱を使っている場合は、`http` ステップへ移行します。遅れて届くメールを扱うには、`http` の状態コード待機も必要です。待機は別の提案で追加します。待機の提案は、本項目と同時か先にリリースします。BE-0186 のレジストリは残し、組み込みのアダプターを `imap` と `pop3` に置き換えます。どちらも Python の標準ライブラリで実装するので、依存は増えません。
+`HTTP` の受信箱を使っている場合は、`http` ステップへ移行します。遅れて届くメールを扱うには、`http` の状態コード待機も必要です。待機は別の提案で追加します。待機の提案は、本項目と同時か先にリリースします。BE-0186 のレジストリは残し、組み込みのアダプターを `imap` と `pop3` に置き換えます。どちらも Python の標準ライブラリで実装するので、依存は増えません。
 
 ### `email` ステップ
 
@@ -94,6 +98,8 @@ class MailboxReader(Protocol):
 | `body` | 添付ではない `text/plain` パートの連結。該当がなければ `text/html` パートのソース |
 | `received_at` | 協定世界時の時刻。書式は `ISO 8601`。使える日付がなければ空文字列 |
 
+一致したメールが 2 通以上あり、日付のないメールが含まれる場合は、ステップを失敗にします。最新のメールを決められないためです。識別子の順で選ぶことはしません。
+
 接続エラー、ログインの拒否、証明書エラーは、ステップの失敗になります。エラーメッセージには、パスワードとメール本文を含めません。
 
 ### 最優先原則との関係
@@ -108,8 +114,8 @@ class MailboxReader(Protocol):
 
 | # | 作業 | 主なファイル | 完了条件 | 前提 |
 |---|---|---|---|---|
-| 1 | メールのモデルと読み取りインタフェースを置換 | `bajutsu/common/mailbox.py`、`mailbox_reader.py`、`_do_email` | 生メールの固定データで解析と選択のテストが成功 | なし |
-| 2 | IMAP と POP3 のアダプターと新しい設定を追加し、HTTP の読み取りを削除 | `runner/mailbox.py`、`config/schema/mailbox.py` | `imaplib` と `poplib` の代役でテストが成功し、旧設定は読み込みに失敗 | 1 |
+| 1 | メールのモデル、読み取りインタフェース、選択規則を置換 | `bajutsu/common/mailbox.py`、`mailbox_reader.py`、`_do_email` | 日付のないメールを含む固定データで解析と選択のテストが成功 | なし |
+| 2 | IMAP と POP3 のアダプターと新しい設定を追加し、`HTTP` の読み取りを削除 | `runner/mailbox.py`、`config/schema/mailbox.py` | `imaplib` と `poplib` の代役でテストが成功し、旧設定は読み込みに失敗 | 1 |
 | 3 | 日英の文書を更新 | `docs/scenarios.md`、`docs/configuration.md`、`docs/architecture.md` と日本語版 | 削除した設定を説明するページがない | 2 |
 | 4 | 実際のテスト用メールサーバーで確認 | なし | IMAP と POP3 のそれぞれで `email` ステップが成功 | 2 |
 
@@ -119,9 +125,9 @@ class MailboxReader(Protocol):
 
 | 代替案 | 採用しなかった理由 |
 |---|---|
-| HTTP の受信箱を残し、平文形式を追加 | 応答の構造はサービスごとに違うため、形式の設定が増え続ける |
+| `HTTP` の受信箱を残し、平文形式を追加 | 応答の構造はサービスごとに違うため、形式の設定が増え続ける |
 | `email` を廃止し、すべて `http` で受信 | IMAP か POP3 しか提供しない受信箱を読めない |
-| IMAP、POP3 と `kind: http` の併存 | HTTP サービスを読む経路が 2 本になり、JSON の読み替え設定も残る |
+| IMAP、POP3 と `kind: http` の併存 | `HTTP` サービスを読む経路が 2 本になり、`JSON` の読み替え設定も残る |
 | メールのログインで OAuth 2.0 に対応 | トークンの発行と更新は独立した機能。OAuth 必須のサーバーは対象外 |
 | 暗号化しないメール接続を許可 | 認証情報が平文でネットワークを流れる |
 
@@ -131,11 +137,11 @@ class MailboxReader(Protocol):
 > 1 項目）、ログは変更内容と時期を（古い順に）記録して PR にリンクします。
 
 - [ ] メールのモデルと読み取りインタフェース
-- [ ] IMAP と POP3 のアダプター、新しい設定、HTTP 読み取りの削除
+- [ ] IMAP と POP3 のアダプター、新しい設定、`HTTP` 読み取りの削除
 - [ ] 日英の文書
 - [ ] メールサーバーでの手動確認
 
 ## 参考
 
-- [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)：One Time Password（OTP）と `email` ステップと HTTP 受信箱の起点
+- [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)：One Time Password（OTP）と `email` ステップと `HTTP` 受信箱の起点
 - [BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md)：新しいアダプターを差し込むレジストリ

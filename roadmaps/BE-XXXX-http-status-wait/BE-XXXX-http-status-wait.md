@@ -15,7 +15,7 @@
 
 ## Introduction
 
-The `http` step sends one request through the Hyper Text Transfer Protocol (HTTP) and moves on. This
+The `http` step sends one request through the Hypertext Transfer Protocol (`HTTP`) and moves on. This
 item adds an optional `timeout`. With it, the step repeats the request until the response carries the
 expected status.
 
@@ -81,7 +81,7 @@ for something unique to the run. The `generate` step can build such an address.
 |---|---|---|---|---|
 | 1 | Add `timeout` to the model with its load checks | `http_request.py` | A scenario that breaks a rule stops loading | none |
 | 2 | Add the wait to the step dispatch | `orchestrator/loop/`, `handlers/http.py` | Tests with a stub server and clock cover success, deadline, and cancellation | 1 |
-| 3 | Update the documents in both languages | `docs/scenarios.md`, `docs/dsl-grammar.md` | Both pages describe the option and its limits | 2 |
+| 3 | Update the documents in both languages | `docs/scenarios.md`, `docs/dsl-grammar.md`, `docs/architecture.md` | All three pages describe the option and its limits | 2 |
 
 ## Alternatives considered
 

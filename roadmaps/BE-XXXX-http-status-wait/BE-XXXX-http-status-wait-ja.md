@@ -15,7 +15,7 @@
 
 ## はじめに
 
-`http` ステップは、Hyper Text Transfer Protocol（HTTP）のリクエストを 1 回送って次へ進みます。本項目は任意の `timeout` を追加します。指定すると、期待する状態コードが返るまでリクエストを繰り返します。
+`http` ステップは、Hypertext Transfer Protocol（`HTTP`）のリクエストを 1 回送って次へ進みます。本項目は任意の `timeout` を追加します。指定すると、期待する状態コードが返るまでリクエストを繰り返します。
 
 ## 動機
 
@@ -70,7 +70,7 @@
 |---|---|---|---|---|
 | 1 | モデルに `timeout` と読み込み検査を追加 | `http_request.py` | 規則に反するシナリオが読み込みに失敗 | なし |
 | 2 | ステップの振り分けに待機を追加 | `orchestrator/loop/`、`handlers/http.py` | 代役のサーバーと時計で成功、期限切れ、キャンセルを確認 | 1 |
-| 3 | 日英の文書を更新 | `docs/scenarios.md`、`docs/dsl-grammar.md` と日本語版 | 指定方法と制約を両ページに記載 | 2 |
+| 3 | 日英の文書を更新 | `docs/scenarios.md`、`docs/dsl-grammar.md`、`docs/architecture.md` と日本語版 | 指定方法と制約を 3 ページに記載 | 2 |
 
 ## 検討した代替案
 
