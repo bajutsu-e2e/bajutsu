@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import re
 import signal
 import subprocess
@@ -17,6 +18,7 @@ from conftest import json_str
 from bajutsu.common import stall_diagnostics
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.evidence import intervals
+from bajutsu.common.evidence.core import FileSink
 
 
 class FakeProc:
@@ -26,6 +28,7 @@ class FakeProc:
         self.stopped_with: int | None = None
         self.stopped_timeout: float | None = None
         self.awaited: list[tuple[str, float]] = []
+        self.awaited_stdout: list[float] = []
         self._confirms = confirms
 
     def stop(self, sig: int, timeout: float) -> None:
@@ -34,6 +37,10 @@ class FakeProc:
 
     def await_stderr(self, needle: str, timeout: float) -> float | None:
         self.awaited.append((needle, timeout))
+        return time.monotonic() if self._confirms else None
+
+    def await_stdout(self, timeout: float) -> float | None:
+        self.awaited_stdout.append(timeout)
         return time.monotonic() if self._confirms else None
 
 
@@ -396,6 +403,138 @@ def test_start_device_log_lifecycle() -> None:
     assert (
         proc.stopped_timeout == intervals._STOP_TIMEOUT
     )  # a log stream ends at once — short grace
+
+
+@pytest.mark.parametrize("kind", ["deviceLog", "appTrace"])
+@pytest.mark.parametrize("confirms", [True, False])
+def test_a_log_stream_is_not_signalled_before_it_runs(
+    tmp_path: Path, kind: str, confirms: bool, caplog: pytest.LogCaptureFixture
+) -> None:
+    # Signalled earlier, `simctl spawn` exits and leaves the guest stream running in the Simulator.
+    proc = FakeProc(confirms=confirms)
+    if kind == "deviceLog":
+        interval = intervals.start_device_log(
+            "UDID", tmp_path / "d.log", spawn=lambda argv, out: proc
+        )
+    else:
+        interval = intervals.start_app_trace(
+            "UDID", tmp_path / "a.raw", tmp_path / "a.json", "com.x", spawn=lambda argv, out: proc
+        )
+    assert proc.awaited_stdout == [intervals._LOG_STREAM_START_TIMEOUT]
+    assert interval.start_confirmed is None  # the sink reads False as a video stall
+    interval.stop()
+    assert proc.stopped_with == signal.SIGTERM
+    waited_again = [] if confirms else [intervals._LOG_STREAM_STOP_GRACE]
+    assert proc.awaited_stdout[1:] == waited_again
+    assert ("exited or wrote nothing" in caplog.text) is not confirms
+
+
+@pytest.mark.parametrize("kind", ["deviceLog", "appTrace"])
+def test_an_interrupted_start_wait_stops_the_log_stream(tmp_path: Path, kind: str) -> None:
+    class Interrupted(FakeProc):
+        def await_stdout(self, timeout: float) -> float | None:
+            raise KeyboardInterrupt
+
+    proc = Interrupted()
+
+    def start() -> None:
+        if kind == "deviceLog":
+            intervals.start_device_log("UDID", tmp_path / "d.log", spawn=lambda argv, out: proc)
+        else:
+            intervals.start_app_trace(
+                "UDID", tmp_path / "a.raw", tmp_path / "a.json", "com.x", spawn=lambda a, o: proc
+            )
+
+    with pytest.raises(KeyboardInterrupt):
+        start()
+    assert proc.stopped_with == signal.SIGTERM
+
+
+@pytest.mark.parametrize("dies_on_term", [True, False])
+def test_a_process_still_writing_the_capture_is_ended(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dies_on_term: bool
+) -> None:
+    path = tmp_path / "device.log"
+    path.write_text("header")
+    signals: list[tuple[int, int]] = []
+
+    def kill(pid: int, sig: int) -> None:
+        if sig == 0 and dies_on_term:
+            raise ProcessLookupError
+        if sig != 0:
+            signals.append((pid, sig))
+
+    def run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        assert argv[-1] == str(path)
+        return subprocess.CompletedProcess(argv, 0, stdout="4242\n", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(os, "kill", kill)
+    monkeypatch.setattr(intervals._functions, "_ORPHAN_EXIT_TIMEOUT", 0.1)
+    interval = intervals.start_device_log("UDID", path, spawn=lambda argv, out: FakeProc())
+    interval.stop()
+    escalated = [] if dies_on_term else [(4242, signal.SIGKILL)]
+    assert signals == [(4242, signal.SIGTERM), *escalated]
+
+
+@pytest.mark.parametrize(
+    "failure", [FileNotFoundError("lsof"), subprocess.TimeoutExpired("lsof", 1)]
+)
+def test_an_unusable_lsof_never_fails_the_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    path = tmp_path / "device.log"
+    path.write_text("header")
+
+    def run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        raise failure
+
+    monkeypatch.setattr(subprocess, "run", run)
+    interval = intervals.start_device_log("UDID", path, spawn=lambda argv, out: FakeProc())
+    assert interval.stop() == path
+
+
+def test_a_later_starter_raising_stops_the_earlier_recordings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    proc = FakeProc()
+    video = intervals.Interval(
+        kind="video", path=tmp_path / "v.mp4", _proc=proc, measure_origin=False
+    )
+
+    def boom(*_: object, **__: object) -> intervals.Interval:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(intervals, "start_video", lambda *a, **k: video)
+    monkeypatch.setattr(intervals, "start_device_log", boom)
+    sink = FileSink(tmp_path, udid="UDID")
+    with pytest.raises(KeyboardInterrupt):
+        sink.start_scenario_intervals("s", ["video", "deviceLog"])
+    assert proc.stopped_with == signal.SIGTERM
+
+
+@pytest.mark.parametrize(
+    ("script", "wrote"),
+    [("echo header; exec sleep 30", True), ("true", False), ("exec sleep 30", False)],
+)
+def test_await_stdout_reports_whether_the_child_wrote(
+    tmp_path: Path, script: str, wrote: bool
+) -> None:
+    proc = intervals._SubprocessProc(["sh", "-c", script], tmp_path / "out.log")
+    try:
+        # A writer and an early exit both answer long before the deadline; a silent child runs it out.
+        timeout = 0.15 if script == "exec sleep 30" else 30.0
+        assert (proc.await_stdout(timeout) is not None) is wrote
+    finally:
+        proc.stop(signal.SIGKILL, 5.0)
+
+
+def test_await_stdout_is_none_without_a_stdout_file() -> None:
+    proc = intervals._SubprocessProc(["true"], None)
+    try:
+        assert proc.await_stdout(30.0) is None
+    finally:
+        proc.stop(signal.SIGKILL, 5.0)
 
 
 # --- adb (Android) interval providers ---
@@ -1263,6 +1402,9 @@ def test_the_end_instant_follows_where_the_recording_actually_stops(
             now += close_seconds
 
         def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return None
+
+        def await_stdout(self, timeout: float) -> float | None:
             return None
 
     def measured(*, stops_when_stop_returns: bool) -> float:

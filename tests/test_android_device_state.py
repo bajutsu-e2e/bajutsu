@@ -775,6 +775,9 @@ def test_logcat_app_trace_interval_parses_the_stream_on_stop(tmp_path: object) -
         def await_stderr(self, needle: str, timeout: float) -> float | None:
             return None
 
+        def await_stdout(self, timeout: float) -> float | None:
+            return None
+
     root = Path(str(tmp_path))
     raw, out = root / "appTrace.log", root / "appTrace.json"
     raw.write_text(_LOGCAT_SAMPLE, encoding="utf-8")

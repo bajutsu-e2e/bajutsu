@@ -316,6 +316,12 @@ each line's time and pairs the markers into `appTrace.json`.
 - `start_video` / `start_device_log` (iOS) and `start_screenrecord` / `start_logcat` (Android)
   return an `Interval`, and `Interval.stop()` sends the signal and finalizes the file.
   - `deviceLog` waits up to 10s, then sends a kill.
+  - On iOS, `deviceLog` and `appTrace` each wait up to 10s at their start for the first output of
+    `log stream`. A `simctl spawn` signalled during its startup can exit without passing the signal
+    on, which leaves the stream running in the Simulator and writing the capture file. If nothing
+    arrived at the start, the stop waits up to 30s more before it signals.
+  - After the stop, `lsof` names any `log` process still writing the capture file. The stop ends
+    that process with a warning. This check runs before anything reads or redacts the file.
   - `video` gets a generous 120s window to finish writing before the kill. `recordVideo` /
     `screenrecord` still has to flush and mux the whole clip to disk. A premature kill truncates the
     mp4 (no `moov` atom) and, on iOS, wedges the simulator's recording session.

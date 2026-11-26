@@ -45,7 +45,6 @@ from xcuitest_lease import xcuitest_lease_launch
 from bajutsu.common.backend_cli import simctl
 from bajutsu.common.config import Effective, ios_bundle_id, load_config, resolve
 from bajutsu.common.drivers import base
-from bajutsu.common.evidence import intervals
 from bajutsu.common.orchestrator.actions.handlers.scroll import (
     _AXIS,
     _STEP_FRACTION,
@@ -187,7 +186,7 @@ def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
         "conformance-xcuitest",
         request,
         start_video=ondevice_evidence.xcuitest_video,
-        start_log=intervals.start_device_log,
+        start_log=ondevice_evidence.xcuitest_device_log,
     )
 
 

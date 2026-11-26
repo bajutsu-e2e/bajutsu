@@ -82,11 +82,22 @@ class Interval:
     _stop_signal: int = signal.SIGTERM
     _stop_timeout: float = _STOP_TIMEOUT
     _transform: Callable[[Path], Path] | None = field(default=None, repr=False)
+    # How long `stop()` still waits for the child's first output before signalling it, for a
+    # `log stream` that had written nothing when its start wait gave up; zero otherwise. Separate
+    # from `start_confirmed`, which the sink reads as a video stall.
+    _output_wait_before_stop: float = 0.0
+    # Runs on the capture file once the child has stopped and before anything reads it: a
+    # `log stream` ends any guest process still writing there.
+    _after_stop: Callable[[Path], None] | None = field(default=None, repr=False)
 
     def stop(self) -> Path:
+        if self._output_wait_before_stop:
+            self._proc.await_stdout(self._output_wait_before_stop)
         before = time.monotonic()
         self._proc.stop(self._stop_signal, self._stop_timeout)
         ended_at = time.monotonic() if self.stops_when_stop_returns else before
+        if self._after_stop is not None:
+            self._after_stop(self.path)
         path = self._transform(self.path) if self._transform is not None else self.path
         if self.kind == "video" and self.measure_origin:
             # Imported in the method, not at module load: `_functions` builds intervals from this

@@ -310,6 +310,9 @@ class PlaywrightDriver:
                 # `new_page()` instead of confirming a recorder's own start line.
                 return None
 
+            def await_stdout(self, timeout: float) -> float | None:  # noqa: ARG002  # Driver shape
+                return None
+
         return intervals.Interval(
             kind="video",
             path=path,
@@ -381,6 +384,9 @@ class PlaywrightDriver:
             def await_stderr(self, needle: str, timeout: float) -> float | None:  # noqa: ARG002  # Driver shape
                 # No child process, so no stderr to wait on — and unlike the video capture, this
                 # interval carries no `true_start` at all: a console stream has no recorder start.
+                return None
+
+            def await_stdout(self, timeout: float) -> float | None:  # noqa: ARG002  # Driver shape
                 return None
 
         return intervals.Interval(

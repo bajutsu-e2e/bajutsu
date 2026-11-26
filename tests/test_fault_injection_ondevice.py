@@ -47,7 +47,6 @@ from xcuitest_lease import xcuitest_lease_launch
 from bajutsu.common.config import Effective, load_config, resolve
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestRunnerCrashError
-from bajutsu.common.evidence import intervals
 
 pytestmark = pytest.mark.ondevice
 
@@ -191,7 +190,7 @@ def _evidence(request: pytest.FixtureRequest) -> Iterator[None]:
         "fault-injection-xcuitest",
         request,
         start_video=ondevice_evidence.xcuitest_video,
-        start_log=intervals.start_device_log,
+        start_log=ondevice_evidence.xcuitest_device_log,
     )
 
 
