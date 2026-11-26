@@ -23,11 +23,12 @@ class MailboxReader(Protocol):
     mailbox every time. `timeout` (seconds) bounds a single call, so a slow server can't overrun the
     step's own `email.timeout`; the handler passes the time remaining in the poll."""
 
-    def list_ids(self, timeout: float) -> frozenset[str]: ...
+    def list_ids(self, timeout: float) -> frozenset[str]:
+        """The identifier of every message now in the inbox."""
 
-    def fetch(self, ids: Collection[str], timeout: float) -> list[MailboxMessage]: ...
+    def fetch(self, ids: Collection[str], timeout: float) -> list[MailboxMessage]:
+        """The messages behind `ids`; one that has vanished since the listing is left out."""
 
     def check_same_inbox(self, baseline: frozenset[str], current: frozenset[str]) -> None:
         """Raise `base.SelectorError` when `current`'s ids can't be compared with `baseline`'s —
         a rebuilt inbox renames old mail, which would then pass for mail that just arrived."""
-        ...
