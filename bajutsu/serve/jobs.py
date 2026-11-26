@@ -662,7 +662,7 @@ def persist_run(
         # `open_bytes` can be an object-storage round trip, so a second read per run would double the
         # cost `_run_summary` was written to avoid.
         manifest = _read_manifest(state, run_id, org)
-        _record_run(
+        record_run_row(
             state.repository,
             run_id=run_id,
             org=org,
@@ -675,7 +675,7 @@ def persist_run(
         logger.warning("failed to persist run %s to the system of record", run_id, exc_info=True)
 
 
-def _record_run(
+def record_run_row(
     repo: Repository,
     *,
     run_id: str,
@@ -686,10 +686,18 @@ def _record_run(
     manifest: dict[str, Any] | None,
     created_at: datetime | None = None,
     if_absent: bool = False,
+    status: str = "done",
 ) -> bool:
-    """Write one run row from its parsed manifest, returning whether a row was written:
-    `persist_run`'s body, shared with `index_run_trees` so a run recorded at completion and one
-    indexed from disk carry the same row. *if_absent* inserts only, never overwriting a row."""
+    """Write one run row from its parsed manifest, returning whether a row was written.
+
+    `persist_run`'s body, shared with `index_run_trees` and the run import (BE-0510), so a run
+    recorded at completion, indexed from disk, or imported carries the same row. Unlike
+    `persist_run` it lets every error through.
+
+    Args:
+        if_absent: Insert only, never overwriting a row.
+        status: The row's status; an import reserves its id with ``importing``.
+    """
     # Lazy import: only a server backend has a repository, where SQLAlchemy is already loaded, so
     # the default serve path never pulls server.db in (the import guard stays green).
     from bajutsu.serve.server.db import RunRecord
@@ -708,7 +716,7 @@ def _record_run(
     record = RunRecord(
         id=run_id,
         org_id=org,
-        status="done",
+        status=status,
         created_by=created_by,
         ok=ok,
         created_at=created_at,
@@ -781,7 +789,7 @@ def index_run_trees(state: ServeState, org: str = DEFAULT_ORG) -> int:
             if manifest is None:
                 logger.debug("not indexing %s: no readable manifest.json", run_id)
                 continue
-            recorded = _record_run(
+            recorded = record_run_row(
                 repo,
                 run_id=run_id,
                 org=org,

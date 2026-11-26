@@ -43,10 +43,35 @@ class Repository(Protocol):
     ) -> list[RunRecord]:
         """An org's runs, newest first, capped at *limit*; ``None`` means unbounded.
 
+        A run still being imported (`IMPORTING_STATUS`) is not history yet and is never listed.
+
         *label* and *target* narrow the result to that partition and that target when given
         (BE-0404 units 2 and 4); an unlabeled run matches every *label*, since it belongs to no
         partition. Soft-deleted runs are excluded unless *include_deleted* (BE-0239).
         """
+
+    def finish_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        """Flip the org's import reservation of *run_id* to ``done`` (BE-0510).
+
+        A compare-and-set: it lands only while the row is still ``importing`` with the
+        ``created_at`` the caller reserved it with. True when it landed.
+        """
+
+    def release_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        """Delete the org's import reservation of *run_id* (BE-0510), by the same compare as
+        `finish_import`, so a row another writer put there since is never removed. True when it
+        was deleted."""
+
+    def claim_import(
+        self, run_id: str, *, org_id: str, reserved_at: datetime, claimed_at: datetime
+    ) -> bool:
+        """Take over a stale import reservation (BE-0510) by moving its ``created_at`` to
+        *claimed_at*, by the same compare as `finish_import`. Of two purges of one row, True for
+        the one that may remove its files."""
+
+    def list_stale_imports(self, *, before: datetime) -> list[RunRecord]:
+        """Every org's import reservations made at or before *before* (BE-0510), for the sweep a
+        server start runs over the leftovers of a crash."""
 
     def soft_delete_run(
         self, run_id: str, *, org_id: str, deleted_by: str | None, at: datetime

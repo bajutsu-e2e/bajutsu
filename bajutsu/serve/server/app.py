@@ -73,6 +73,7 @@ from bajutsu.serve.uploads import (
     UploadTooLarge,
     bounded_zip_receiver,
 )
+from bajutsu.serve.uploads.run_bundle import MAX_RUN_IMPORT_BYTES
 
 # How long an idle SSE stream waits before sending a `:keepalive` comment (and rechecking for a
 # client disconnect). Short enough to stay under a reverse proxy's idle timeout (BE-0015).
@@ -700,6 +701,27 @@ def make_app(state: ServeState) -> FastAPI:  # noqa: C901, PLR0915
                     sha256=received.digest(),
                     actor=_actor(request),
                     session=_session(request),
+                )
+            )
+        finally:
+            received.cleanup()
+
+    @app.post("/api/runs/import")
+    async def run_import(request: Request) -> Response:
+        """Stream a raw-body zip of one finished run to a temp file (bounded), then store and record
+        it (BE-0510: `ops.import_run`) — the FastAPI mirror of `_handle_run_import`."""
+        received = await _stream_bounded_body(request, cap=MAX_RUN_IMPORT_BYTES)
+        if not isinstance(received, BoundedZipReceiver):
+            return _result(received)
+        try:
+            received.digest()  # closes the write handle before the zip is read back
+            return _result(
+                await run_in_threadpool(
+                    ops.import_run,
+                    state,
+                    received.path,
+                    actor=_actor(request),
+                    machine_org=_machine_org(request),
                 )
             )
         finally:

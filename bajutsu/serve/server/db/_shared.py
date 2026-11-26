@@ -6,6 +6,10 @@ from typing import Any
 
 DEFAULT_LEASE_MAX_ATTEMPTS = 3
 
+# A run row reserved by an import that has not finished placing its files (BE-0510). History readers
+# leave it out; the import flips it to ``done`` or a sweep purges it.
+IMPORTING_STATUS = "importing"
+
 # The job statuses no transition leaves (BE-0449 added ``cancelled``). One tuple, so every reader that
 # asks "has this job finished" — the cap-release probe, the post-completion log bus — agrees.
 TERMINAL_JOB_STATUSES = ("done", "failed", "cancelled")

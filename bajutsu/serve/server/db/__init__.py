@@ -16,6 +16,7 @@ from ._functions import engine_from_url, repository_from_env
 from ._shared import (
     DEFAULT_LEASE_MAX_ATTEMPTS,
     DEFAULT_RUN_LIMIT,
+    IMPORTING_STATUS,
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
     job_failed,
@@ -33,6 +34,7 @@ __all__ = [
     "DEFAULT_LEASE_MAX_ATTEMPTS",
     "DEFAULT_LEASE_TIMEOUT_SECONDS",
     "DEFAULT_RUN_LIMIT",
+    "IMPORTING_STATUS",
     "TERMINAL_JOB_STATUSES",
     "ConcurrencyCaps",
     "JobMetrics",

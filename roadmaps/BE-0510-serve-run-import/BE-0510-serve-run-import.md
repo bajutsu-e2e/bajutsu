@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0510](BE-0510-serve-run-import.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
 | Topic | Hosting the web UI |
 | Related | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md) |
@@ -202,12 +202,27 @@ and its mirror gain a section on the upload script.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] The route, receiving: the raw body, the cap, both backends, and the entry-list checks, including the extension allowlist with its dropped-entry list, the tombstone refusal, the artifact-path checks, and the `scenario.yaml` and `runId` checks.
-- [ ] The route, storing: the collision checks, the `importing` status with the `list_runs` filter, the compare-and-set flip, the stale purge of the caller's organization and the start-up sweep, the regeneration of the report files, the placement on a local and a hosted store, the rollback, and the recording.
+- [x] The route, receiving: the raw body, the cap, both backends, and the entry-list checks, including the extension allowlist with its dropped-entry list, the tombstone refusal, the artifact-path checks, and the `scenario.yaml` and `runId` checks.
+- [x] The route, storing: the collision checks, the `importing` status with the `list_runs` filter, the compare-and-set flip, the stale purge of the caller's organization and the start-up sweep, the regeneration of the report files, the placement on a local and a hosted store, the rollback, and the recording.
 - [ ] Authorization: the explicit editor case before the early branch, and the key allowlist.
-- [ ] The upload script: the zip, the key from the environment or a file, the transport rules, and the URL output.
-- [ ] Tests: the cases above, the route registry, and the stdlib import guard.
-- [ ] Documentation: the `docs/` pages and their `docs/ja/` mirrors.
+- [x] The upload script: the zip, the key from the environment or a file, the transport rules, and the URL output.
+- [x] Tests: the cases above, the route registry, and the stdlib import guard.
+- [x] Documentation: the `docs/` pages and their `docs/ja/` mirrors.
+
+Log:
+
+- Everything but the key allowlist shipped, and the editor case is in place. The allowlist waits for
+  [BE-0509](../BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md), which creates it. Until
+  then the script authenticates with the shared token. A server with OAuth refuses that token. The
+  table lists where the implementation differs from the design.
+
+| Point | What shipped, and why |
+|---|---|
+| Flip to `done` | A new `Repository.finish_import`, since the protocol had no compare-and-set |
+| Local start | A rename for the `default` organization alone, whose runs tree the store mounts. Other organizations go through the object store |
+| `--browsers` runs | The path check reads a `<sid>/result.json` from `<engine>/`, where its paths start |
+| Redirects | The script follows none. A followed redirect would turn the `POST` into a `GET` that imports nothing |
+| Start-up sweep | It removes staging directories more than an hour old, not every one |
 
 ## References
 

@@ -1536,6 +1536,77 @@ so runs never collide, and a caller can't escape the base prefix. The upload run
 so a failure is logged and never changes pass/fail. When `BAJUTSU_EVIDENCE_STORE` is unset the worker
 still asks and simply uploads nothing.
 
+### Importing a finished run
+
+`POST /api/runs/import` takes a run that finished elsewhere
+([BE-0510](../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import.md)). A run from a
+developer's laptop is one example. The server stores the run where it keeps runs. It also records
+the run in the run history. [`scripts/upload_run.py`](reporting.md#uploading-a-run-to-a-server)
+builds the request.
+
+The body is a zip sent as `application/zip`. The zip has one top-level directory, whose name is the
+run id. That directory holds `manifest.json` and `scenario.yaml`. A success answers with these
+fields:
+
+| Field | Content |
+|---|---|
+| `runId`, `ok` | The run and its verdict |
+| `url`, `archive` | The paths of the report and of the run's zip |
+| `dropped` | The files the server did not keep |
+
+A refusal answers with one of these codes:
+
+| Answer | Cause |
+|---|---|
+| `400` | The zip or the run breaks a rule below. Nothing is stored. |
+| `409` | The run id is taken, in any organization or by a trashed run. |
+| `413` | The body is over 2 GiB. |
+| `500` | Storing the run did not succeed. The history keeps no entry. |
+
+The server checks the upload before it stores anything:
+
+| Check | Rule |
+|---|---|
+| Size | At most 4 GiB uncompressed, and 32 MiB each for `manifest.json` and `scenario.yaml` |
+| Report size | At most 512 MiB embedded: each linked artifact but screenshots and videos, and each result's scenario |
+| Entries | No symlink, and no path that leaves the run's directory |
+| `scenario.yaml` | No YAML alias |
+| `manifest.json` | A boolean `ok`, a list `scenarios`, and a `runId` that matches the directory |
+| Artifact paths | Relative, inside the run, and naming a file the zip holds |
+| Trash marker | No entry named `.deleted` |
+
+The server serves a run's files from its own origin, so it keeps passive types alone:
+
+| Kind | Extensions kept |
+|---|---|
+| Images and video | `.png` `.jpg` `.jpeg` `.webp` `.gif` `.mp4` `.webm` |
+| Text | `.json` `.txt` `.log` `.yaml` `.yml` |
+
+The server drops every other file, and a report link to a dropped file answers `404`. It also
+replaces `report.html`, `junit.xml`, and `ctrf.json` with its own rendering. The stored manifest
+records `provenance.source: import`. That value says that the client asserted the verdict.
+
+The route needs the `editor` role. The credential the script can send depends on the server:
+
+| Server | Script sign-in |
+|---|---|
+| Shared token, no OAuth | Yes, with the shared token |
+| OAuth | Not yet: such a server accepts the shared token for worker routes alone |
+
+Organization-scoped API keys
+([BE-0509](../roadmaps/BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md)) will close that
+gap.
+
+The server reserves the run id before it writes any file. The history leaves out the reservation
+until the import finishes. An import that stops midway leaves the reservation behind. A retry from
+the same organization clears a reservation more than an hour old. A server start does the same.
+
+A job's run id stays unknown to the server until the job ends. An import can thus collide with a
+running job. Both ids come from the time in seconds.
+
+The server unpacks an upload in `.<runs>-import/`, beside the runs directory. That location needs
+free space.
+
 ### Multiple orgs
 
 To host more than one team on one backend, declare orgs in the mounted config — each with its member

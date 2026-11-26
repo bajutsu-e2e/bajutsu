@@ -12,6 +12,7 @@ from ._functions import _age_seconds, _as_utc, _rowcount, _to_org, _to_record
 from ._shared import (
     DEFAULT_LEASE_MAX_ATTEMPTS,
     DEFAULT_RUN_LIMIT,
+    IMPORTING_STATUS,
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
     job_failed,
@@ -163,7 +164,7 @@ class SqlRepository:
 
         from bajutsu.serve.server.models import Run
 
-        stmt = select(Run).where(Run.org_id == org_id)
+        stmt = select(Run).where(Run.org_id == org_id, Run.status != IMPORTING_STATUS)
         if label is not None:
             # An unlabeled run matches every label filter (BE-0404 unit 4): a run recorded before
             # the column existed, or one enqueued with no config bound, belongs to no partition, and
@@ -177,6 +178,77 @@ class SqlRepository:
                 Run.deleted_at.is_(None)
             )  # trashed runs drop out of history (BE-0239)
         stmt = stmt.order_by(Run.created_at.desc()).limit(limit)
+        with Session(self._engine) as session:
+            return [_to_record(row) for row in session.scalars(stmt)]
+
+    def finish_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = (
+            update(Run)
+            .where(
+                Run.id == run_id,
+                Run.org_id == org_id,
+                Run.status == IMPORTING_STATUS,
+                Run.created_at == reserved_at,
+            )
+            .values(status="done")
+        )
+        with Session(self._engine) as session:
+            result = session.execute(stmt)
+            session.commit()
+            return _rowcount(result) == 1
+
+    def release_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = delete(Run).where(
+            Run.id == run_id,
+            Run.org_id == org_id,
+            Run.status == IMPORTING_STATUS,
+            Run.created_at == reserved_at,
+        )
+        with Session(self._engine) as session:
+            result = session.execute(stmt)
+            session.commit()
+            return _rowcount(result) == 1
+
+    def claim_import(
+        self, run_id: str, *, org_id: str, reserved_at: datetime, claimed_at: datetime
+    ) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = (
+            update(Run)
+            .where(
+                Run.id == run_id,
+                Run.org_id == org_id,
+                Run.status == IMPORTING_STATUS,
+                Run.created_at == reserved_at,
+            )
+            .values(created_at=claimed_at)
+        )
+        with Session(self._engine) as session:
+            result = session.execute(stmt)
+            session.commit()
+            return _rowcount(result) == 1
+
+    def list_stale_imports(self, *, before: datetime) -> list[RunRecord]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = select(Run).where(Run.status == IMPORTING_STATUS, Run.created_at <= before)
         with Session(self._engine) as session:
             return [_to_record(row) for row in session.scalars(stmt)]
 

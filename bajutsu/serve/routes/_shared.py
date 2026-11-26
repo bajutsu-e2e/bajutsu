@@ -233,6 +233,8 @@ ROUTES: tuple[Route, ...] = (
     Route("GET", "/api/oauth/callback", off_loop=True),
     # --- POST: raw-body uploads (off_loop) ---
     Route("POST", "/api/upload", off_loop=True),
+    # A finished run a script uploads (BE-0510): a raw zip body, under its own larger cap.
+    Route("POST", "/api/runs/import", off_loop=True),
     Route("POST", "/api/artifacts/config", off_loop=True),
     Route("POST", "/api/artifacts/scenarios", off_loop=True),
     Route("POST", "/api/artifacts/binary", off_loop=True),
