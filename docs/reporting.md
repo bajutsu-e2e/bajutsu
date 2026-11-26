@@ -690,7 +690,8 @@ calls no Bajutsu command, so any repository that produces a run directory can us
 
 The comment names each failed scenario, its first failed step, and the reason. It links the evidence
 that the action uploads as GitHub Actions artifacts. A rerun updates the same comment. A hidden
-marker on the comment's first line identifies it, so each job keeps one comment.
+marker on the comment's first line identifies it, so each job keeps one comment. The comment's header
+shows when the action last wrote it, in coordinated universal time.
 
 ```yaml
 permissions:
