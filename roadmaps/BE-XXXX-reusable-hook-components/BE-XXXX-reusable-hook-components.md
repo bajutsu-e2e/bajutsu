@@ -120,7 +120,8 @@ Do not place it directly in the scenarios directory.
 Bajutsu loads every top-level `.yaml` file there as a scenario file.
 
 A sandboxed command sees the directory of the config and nothing else.
-Under a sandbox policy, a component outside that directory stops the check before device work.
+Under a sandbox policy, a component file outside the config directory stops the run.
+The check does so before any device work.
 
 ### 2. Applying a component
 
@@ -159,8 +160,9 @@ The load stops and names the field.
 A target template may carry `hooks.use`.
 A path in a template file resolves against that file, as its other paths do.
 The `use` lists of `defaults`, templates, and the target join in layer order.
-A later entry with the same `hook` and `as` replaces the earlier one.
-Other lists replace, but a replaced `use` list would drop shared components without notice.
+A later entry replaces an earlier one when its resolved `hook` path and `as` both match.
+Other lists replace rather than join.
+`use` joins because a replaced list would drop a shared component without notice.
 A `null` clears the whole list.
 
 ### 3. Names and aliases
