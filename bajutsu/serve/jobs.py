@@ -50,6 +50,8 @@ from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.state import Job, ServeState
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from bajutsu.common.capability.worker_capability import WorkerCapability
     from bajutsu.common.cloud.devicefarm import Interrupt, RunInterrupted
     from bajutsu.serve.batch_provider import BatchRequest
@@ -924,17 +926,52 @@ def _run_job(
     # job gets DEVNULL, so a subprocess that unexpectedly reads stdin sees EOF rather than blocking
     # forever on input that will never arrive.
     stdin = subprocess.PIPE if "--handoff" in job.cmd else subprocess.DEVNULL
-    proc = state.popen(
-        job.cmd,
-        cwd=str(job.cwd or state.binding.cwd),
-        env=_spawn_env(job),
+    with _spawned(
+        state,
+        job,
+        str(job.cwd or state.binding.cwd),
         stdin=stdin,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        start_new_session=True,  # own process group, so a cancel stops its children (e.g. `claude -p`)
-    )
+    ) as proc:
+        _follow_job(job, proc)
+
+
+@contextlib.contextmanager
+def _spawned(state: ServeState, job: Job, cwd: str, **streams: Any) -> Iterator[Any]:
+    """``job.cmd`` in a session of its own, watching this caller for as long as the block runs.
+
+    A session of its own means a `run` child outlives a caller that dies without a signal it can
+    catch (SIGKILL, an out-of-memory kill), still driving the device (BE-0449), which a lease broker
+    may by then have lent again (BE-0511). So for a `run` the caller holds the write end of a pipe,
+    and the internal run module reads the other end (`PARENT_FD_ENV`): end of file there means the
+    caller is gone, and the run cancels itself as on SIGTERM. The other kinds have no such reader,
+    so they get no pipe.
+    """
+    alive_r, alive_w = os.pipe() if job.kind == "run" else (None, None)
+    try:
+        env = _spawn_env(job)
+        extra: dict[str, Any] = {}
+        if alive_r is not None:
+            env[PARENT_FD_ENV] = str(alive_r)
+            extra["pass_fds"] = (alive_r,)
+        try:
+            proc = state.popen(
+                job.cmd, cwd=cwd, env=env, start_new_session=True, **streams, **extra
+            )
+        finally:
+            if alive_r is not None:
+                os.close(alive_r)
+        yield proc
+    finally:
+        if alive_w is not None:
+            os.close(alive_w)
+
+
+def _follow_job(job: Job, proc: Any) -> None:
+    """Relay a piped child's output into *job* until it exits, and record how it ended."""
     if not _register_proc(job, proc, graceful=job.graceful_cancel):
         proc.wait()
         with job.lock:
@@ -1002,32 +1039,13 @@ def _run_inherited(state: ServeState, job: Job) -> None:
     killing the run and its driver children before the run can write its manifest. A child in
     another session can still read the terminal it inherited, so `--step` keeps its prompt.
 
-    A session of its own also means a `run` child outlives a caller that dies without a signal it can
-    catch (SIGKILL, an out-of-memory kill), still driving the device. So for a `run` the caller holds
-    the write end of a pipe until the child exits, and the internal run module reads the other end
-    (`PARENT_FD_ENV`): end of file there means the caller is gone, and the run cancels itself as on
-    SIGTERM. The other kinds have no such reader, so they get no pipe.
+    A `run` child also watches this caller (`_spawned`).
     """
     cwd = Path(job.cwd or state.binding.cwd)
-    is_run = job.kind == "run"
-    runs = _runs_dir_of(job.cmd, cwd) if is_run else None
+    runs = _runs_dir_of(job.cmd, cwd) if job.kind == "run" else None
     before = _run_dir_names(runs)
-    alive_r, alive_w = os.pipe() if is_run else (None, None)
-    try:
-        env = _spawn_env(job)
-        extra: dict[str, Any] = {}
-        if alive_r is not None:
-            env[PARENT_FD_ENV] = str(alive_r)
-            extra["pass_fds"] = (alive_r,)
-        try:
-            proc = state.popen(job.cmd, cwd=str(cwd), env=env, start_new_session=True, **extra)
-        finally:
-            if alive_r is not None:
-                os.close(alive_r)
+    with _spawned(state, job, str(cwd)) as proc:
         _wait_inherited(job, proc, runs, before)
-    finally:
-        if alive_w is not None:
-            os.close(alive_w)
 
 
 # How long one slice of `_wait_in_slices` blocks before the main thread runs Python again.
