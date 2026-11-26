@@ -49,7 +49,7 @@ def test_tap_type_and_wait() -> None:
 
 def test_text_editing_steps_emit_web_peers() -> None:
     # BE-0265: clear -> Locator.clear(), select -> selectText(), delete -> focus + N backspaces,
-    # copy -> Control+c on the keyboard.
+    # copy -> ControlOrMeta+c on the keyboard (a bare Control+c copies nothing on macOS, #2404).
     code = _gen(
         "- name: x\n  steps:\n"
         "    - clear: { into: { id: form.note } }\n"
@@ -61,7 +61,8 @@ def test_text_editing_steps_emit_web_peers() -> None:
     assert "await page.getByTestId('form.note').focus();" in code
     assert code.count("await page.keyboard.press('Backspace');") == 2
     assert "await page.getByTestId('form.note').selectText();" in code
-    assert "await page.keyboard.press('Control+c');" in code
+    assert "await page.keyboard.press('ControlOrMeta+c');" in code
+    assert "press('Control+c')" not in code
 
 
 def test_paste_focuses_then_presses_the_paste_chord() -> None:

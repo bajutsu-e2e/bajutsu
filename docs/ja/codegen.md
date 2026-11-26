@@ -226,7 +226,7 @@ test.describe('Components', () => {
 | `clear` | `await loc.clear()`。ドライバ自身の全選択→バックスペースによる clear（BE-0265）を忠実に再現します |
 | `delete { count }` | フォーカス + `page.keyboard.press('Backspace')` を `count` 回（BE-0265） |
 | `select` | `await loc.selectText()`。web における全選択の対応物です（BE-0265） |
-| `copy` | `await page.keyboard.press('Control+c')` |
+| `copy` | `await page.keyboard.press('ControlOrMeta+c')` |
 | `paste` | フォーカス + `await page.keyboard.press('ControlOrMeta+v')` |
 | `back` | `await page.goBack()`。ブラウザ履歴で、ドライバの `back()` と同じ基本操作です（BE-0210） |
 | `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())`。ドライバが `baseUrl` を基準に解決するのと同じ規則で、値を `BASE_URL` を基準に解決します。`${...}` トークンを含む値は、生成したテストに展開元の値がないので `// TODO` になります（BE-0464） |

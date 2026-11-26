@@ -231,7 +231,7 @@ test.describe('Components', () => {
 | `clear` | `await loc.clear()` — the faithful peer of the driver's own select-all-then-backspace clear (BE-0265) |
 | `delete { count }` | focus + `count` × `page.keyboard.press('Backspace')` (BE-0265) |
 | `select` | `await loc.selectText()` — the web peer of select-all (BE-0265) |
-| `copy` | `await page.keyboard.press('Control+c')` |
+| `copy` | `await page.keyboard.press('ControlOrMeta+c')` |
 | `paste` | focus + `await page.keyboard.press('ControlOrMeta+v')` |
 | `back` | `await page.goBack()` — browser history, the same primitive the driver's `back()` uses (BE-0210) |
 | `navigate` | `await page.goto(new URL('<value>', BASE_URL).toString())` — resolves the value against `BASE_URL` exactly as the driver resolves it against `baseUrl`; a value with a `${...}` token becomes a `// TODO`, since the generated test has no binding to substitute (BE-0464) |
