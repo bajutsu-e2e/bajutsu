@@ -10,10 +10,13 @@ unaware of which is in use."""
 
 from .in_memory_session_store import InMemorySessionStore
 from .principal import (
+    API_KEY,
     HUMAN,
     MACHINE,
     Principal,
     PrincipalKind,
+    api_key_id,
+    api_key_identity,
     kind_from_stored,
     machine_identity,
     machine_repository,
@@ -22,12 +25,15 @@ from .principal import (
 from .session_store import SessionStore
 
 __all__ = [
+    "API_KEY",
     "HUMAN",
     "MACHINE",
     "InMemorySessionStore",
     "Principal",
     "PrincipalKind",
     "SessionStore",
+    "api_key_id",
+    "api_key_identity",
     "kind_from_stored",
     "machine_identity",
     "machine_repository",

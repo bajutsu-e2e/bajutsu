@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from urllib.parse import urlparse
 
+from bajutsu.serve.authz import required_role, role_allows
 from bajutsu.serve.sessions import Principal
 from bajutsu.serve.state import SessionManager
 
@@ -60,6 +61,11 @@ _MACHINE_PATHS = frozenset(
         ("GET", "/api/runs"),
     }
 )
+
+
+# Every endpoint an organization-scoped API key may reach (BE-0509), as `(method, path)` pairs.
+# Empty on purpose: each item that adds a key-callable route adds that route here.
+_API_KEY_PATHS: frozenset[tuple[str, str]] = frozenset()
 
 
 def _is_machine_job_route(path: str) -> bool:
@@ -244,3 +250,19 @@ def forbidden_for_machine(method: str, path: str, *, org: str | None) -> bool:
     return (method, path) not in _MACHINE_PATHS and not (
         method == "GET" and _is_machine_job_route(path)
     )
+
+
+def forbidden_for_api_key(method: str, path: str, *, role: str | None) -> bool:
+    """Whether an API key issued with *role* is refused this request (BE-0509).
+
+    Default deny, like `forbidden_for_machine`: a route not named in `_API_KEY_PATHS` is closed.
+    A named one is still bounded by the key's role, wherever `required_role` asks for one, so a
+    viewer key cannot call an editor route. A key with no role is refused outright.
+
+    Where `required_role` says nothing, only a read stays open to a viewer: it names no role for
+    several writes, and listing one of those must not quietly grant it to a read-only key.
+    """
+    if role is None or (method, path) not in _API_KEY_PATHS:
+        return True
+    required = required_role(method, path) or ("viewer" if method == "GET" else "editor")
+    return not role_allows(role, required)

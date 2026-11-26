@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0509](BE-0509-serve-org-api-keys.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0509") |
+| Implementing PR | [#2558](https://github.com/bajutsu-e2e/bajutsu/pull/2558) |
 | Topic | Hosting the web UI |
 | Related | [BE-0414](../BE-0414-ci-oidc-machine-identity/BE-0414-ci-oidc-machine-identity.md), [BE-0313](../BE-0313-github-org-team-rbac/BE-0313-github-org-team-rbac.md) |
 <!-- /BE-METADATA -->
@@ -145,12 +146,22 @@ The tests cover these cases:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Store: the Alembic migration, the `Repository` methods, the hashing, and the revocation when an organization is retired.
-- [ ] Gate: key recognition with the fall-through, the principal, the per-request organization slot, the role check, and the allowlist.
-- [ ] Routes: issue, list, and revoke under `/api/orgs/<slug>/keys`, with the admin gate, the `404` across organizations, and the `409` outside repository mode.
-- [ ] Audit: the events and the throttled last-used time.
-- [ ] Tests: the cases above.
-- [ ] Documentation: the `docs/` pages and their `docs/ja/` mirrors.
+- [x] Store: the Alembic migration, the `Repository` methods, the hashing, and the revocation when an organization is retired.
+- [x] Gate: key recognition with the fall-through, the principal, the per-request organization slot, the role check, and the allowlist.
+- [x] Routes: issue, list, and revoke under `/api/orgs/<slug>/keys`, with the admin gate, the `404` across organizations, and the `409` outside repository mode.
+- [x] Audit: the events and the throttled last-used time.
+- [x] Tests: the cases above.
+- [x] Documentation: the `docs/` pages and their `docs/ja/` mirrors.
+
+Log:
+
+- [#2558](https://github.com/bajutsu-e2e/bajutsu/pull/2558): the six units landed in one change. A revoked key keeps its row, so its identifier is still
+  recognized and answers `401` rather than falling through to the shared-token check. Every admitted
+  use is audited, and a refused one at most once a minute for each key. A write route that names no
+  role requires `editor` of a key. The admin's issue and revoke entries sit in the acting
+  admin's organization, like the other `/api/orgs/…` actions, and name the key's organization in
+  their detail. `docs/cli.md` has no section on the HTTP routes, so it carries a short pointer to
+  `docs/self-hosting.md`.
 
 ## References
 

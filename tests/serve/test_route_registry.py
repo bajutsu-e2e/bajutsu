@@ -28,6 +28,8 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/runs/{run_id}/archive.zip"),
         ("GET", "/api/capture/screenshot"),
         ("GET", "/runs/{rel:path}"),
+        # --- POST: run import (off_loop) ---
+        ("POST", "/api/runs/import"),
         # --- GET: index (off_loop) ---
         ("GET", "/"),
         ("GET", "/index.html"),
@@ -50,6 +52,7 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("GET", "/api/simulators"),
         ("GET", "/api/runs"),
         ("GET", "/api/orgs"),
+        ("GET", "/api/orgs/{slug}/keys"),
         ("GET", "/api/metrics/targets"),
         ("GET", "/api/crawl/runs"),
         ("GET", "/api/runs/trash"),
@@ -95,6 +98,8 @@ _EXPECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/api/orgs"),
         ("POST", "/api/orgs/{slug}/membership"),
         ("POST", "/api/orgs/{slug}/machine-sessions/revoke"),
+        ("POST", "/api/orgs/{slug}/keys"),
+        ("DELETE", "/api/orgs/{slug}/keys/{key_id}"),
         ("POST", "/api/record"),
         ("POST", "/api/crawl"),
         ("POST", "/api/triage"),

@@ -28,6 +28,10 @@ EVENTS: frozenset[str] = frozenset(
         "run.purged",
         # An admin indexed the run trees under `runs/` into the history (BE-0449).
         "runs.rescanned",
+        # A script uploaded a finished run, and a leftover of an upload that died was cleared
+        # (BE-0510).
+        "run.imported",
+        "run.import_purged",
         "oauth.login",
         "oauth.denied",
         # The OIDC exchange (BE-0414): a CI job traded its token for a machine session, or was
@@ -44,6 +48,10 @@ EVENTS: frozenset[str] = frozenset(
         # matched: zero is a legitimate answer, but it is also what a mistyped repository returns,
         # and an operator reaching for that endpoint is acting on a name that has just changed.
         "org.machineSessions.revoke",
+        "apikey.denied",
+        "apikey.issue",
+        "apikey.revoke",
+        "apikey.use",
         # An org's membership is seeded from `orgs:` once and then owned by the database (BE-0375);
         # this reports a config entry whose membership fields are consequently no longer read. It
         # fires at a config rebind as well as at boot, so it can't ride on `server.startup_warning`.
@@ -190,8 +198,15 @@ def bind_request(request_id: str) -> None:
     per-request context copy. The binding is overwritten at the next request's entry rather than
     explicitly reset, which is why every ``do_GET`` / ``do_POST`` and the middleware rebind first
     thing. Use ``request_context`` where one context is reused across calls and a reset is needed.
+    Clears the actor `bind_actor` may have left from the previous request.
     """
     _request_id.set(request_id)
+    _actor.set(None)
+
+
+def bind_actor(actor: str | None) -> None:
+    """Name *actor* on every later log line of this request; `bind_request` clears it."""
+    _actor.set(actor)
 
 
 @contextmanager

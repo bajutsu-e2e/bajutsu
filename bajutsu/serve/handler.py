@@ -20,7 +20,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from jinja2 import Environment, FileSystemLoader
 
-from bajutsu.serve import gate, oplog
+from bajutsu.serve import api_keys, gate, oplog
 from bajutsu.serve import operations as ops
 from bajutsu.serve._paths import TEMPLATES_DIR as _TEMPLATE_DIR
 from bajutsu.serve.helpers import (
@@ -39,6 +39,7 @@ from bajutsu.serve.uploads import (
     BoundedZipReceiver,
     UploadTooLarge,
 )
+from bajutsu.serve.uploads.run_bundle import MAX_RUN_IMPORT_BYTES
 
 # Stream an uploaded bundle to disk in 1 MiB chunks so a large app binary never loads into memory.
 _UPLOAD_CHUNK = 1024 * 1024
@@ -280,6 +281,16 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             path = urlparse(self.path).path
             if gate.is_open(self.command, path, oidc=state.auth.oidc is not None):
                 return True
+            # An API key (BE-0509) is judged ahead of both session gates below: it has no session
+            # to read and no user row for the role gate.
+            key = api_keys.admit(state, self.headers.get("Authorization", ""), self.command, path)
+            if isinstance(key, api_keys.Refusal):
+                return self._refuse(key.status, key.error)
+            if key is not None:
+                self._gate_actor = key.identity
+                # The same slot a machine session fills, so `state.org_for` answers the key's org.
+                self._machine_org = key.org
+                return True
             if self._authorized():
                 # Authenticated — but as which of the three caller shapes? A machine session
                 # (BE-0414) carries an identity like a human one, so it would otherwise fall into
@@ -294,11 +305,7 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                 if is_machine and gate.forbidden_for_machine(
                     self.command, path, org=principal.org if principal is not None else None
                 ):
-                    length = int(self.headers.get("Content-Length") or 0)
-                    if length:
-                        self.rfile.read(length)
-                    self._json({"error": "forbidden"}, 403)
-                    return False
+                    return self._refuse(403, "forbidden")
                 if principal is not None:
                     # The identity the gate admitted this request on, for every caller shape.
                     self._gate_actor = principal.identity
@@ -322,18 +329,18 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                     and state.repository is not None
                     and ops.forbidden_for_role(state, login, self.command, path)
                 ):
-                    length = int(self.headers.get("Content-Length") or 0)
-                    if length:
-                        self.rfile.read(length)
-                    self._json({"error": "forbidden"}, 403)
-                    return False
+                    return self._refuse(403, "forbidden")
                 return True
+            return self._refuse(401, "unauthorized")
+
+        def _refuse(self, status: int, error: str) -> bool:
+            """Answer a request the gate turns away, and return False for `_gate` to pass on."""
             # Drain any request body before replying, so a keep-alive connection isn't left with
             # unread bytes that would corrupt the next request on it.
             length = int(self.headers.get("Content-Length") or 0)
             if length:
                 self.rfile.read(length)
-            self._json({"error": "unauthorized"}, 401)
+            self._json({"error": error}, status)
             return False
 
         def _qs(self, key: str) -> str | None:
@@ -447,6 +454,9 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
             # a single independently-uploaded artifact (BE-0268).
             if path == "/api/upload":
                 self._handle_upload()
+                return
+            if path == "/api/runs/import":
+                self._handle_run_import()
                 return
             if path in _ARTIFACT_UPLOAD_PATHS:
                 self._handle_artifact_upload(_ARTIFACT_UPLOAD_PATHS[path])
@@ -602,6 +612,25 @@ def _make_handler(state: ServeState) -> type[BaseHTTPRequestHandler]:  # noqa: C
                         sha256=receiver.digest(),
                         actor=self._actor(),
                         session=self._session_id(),
+                    )
+                )
+            except Exception as exc:
+                self._respond_uncaught(exc)
+            finally:
+                receiver.cleanup()
+
+        def _handle_run_import(self) -> None:
+            """Stream a raw-body zip of one finished run to a temp file (bounded), then store and
+            record it (BE-0510: `ops.import_run`)."""
+            receiver = self._stream_bounded_body(cap=MAX_RUN_IMPORT_BYTES)
+            if receiver is None:
+                return
+            # Its own JSON-500 boundary, as `_handle_upload` explains (BE-0264).
+            try:
+                receiver.digest()  # closes the write handle before the zip is read back
+                self._json(
+                    *ops.import_run(
+                        state, receiver.path, actor=self._actor(), machine_org=self._machine_org
                     )
                 )
             except Exception as exc:

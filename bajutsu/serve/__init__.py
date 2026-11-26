@@ -73,6 +73,7 @@ from bajutsu.serve.operations.config import (
     restore_persisted_provider_settings,
     seed_orgs_from_bound_config,
 )
+from bajutsu.serve.operations.run_import import sweep_stale_imports
 from bajutsu.serve.orgs import DEFAULT_ORG
 from bajutsu.serve.provider_store import LocalProviderSettingsStore, ProviderSettingsStore
 from bajutsu.serve.scenarios import (
@@ -855,6 +856,8 @@ def serve(
     # After `_configure_oplog`, the same placement `restore_persisted_provider_settings` below uses,
     # and for the same reason: a warning from before logging was live must still reach the live sink.
     _emit_startup_warnings(state)
+    # What a run import that died mid-way left behind (BE-0510), swept before any request can hit it.
+    sweep_stale_imports(state)
     # Restore the operator's last-saved provider/model/effort before the first request, so a restart
     # reflects it rather than resetting to the launch environment (BE-0184). After `_configure_oplog`
     # so a malformed-file warning reaches the live log sink; a no-op when nothing is persisted (BE-0101).

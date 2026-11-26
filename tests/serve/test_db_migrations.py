@@ -450,3 +450,18 @@ def test_0027_adds_an_unset_fail_fast_flag_and_cancel_reason_to_existing_rows(
             ]
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("migration_db_url", _DIALECTS, indirect=True)
+def test_0028_adds_the_api_keys_table_and_drops_it_again(migration_db_url: str) -> None:
+    from alembic import command
+
+    cfg = _alembic_config()
+    command.upgrade(cfg, "0028")
+    engine = create_engine(migration_db_url)
+    try:
+        assert "api_keys" in inspect(engine).get_table_names()
+        command.downgrade(cfg, "0027")
+        assert "api_keys" not in inspect(engine).get_table_names()
+    finally:
+        engine.dispose()

@@ -582,6 +582,43 @@ from that model. Re-rendering only re-presents recorded outcomes. It never re-ru
 changes a verdict. An older run renders with any newer-only section shown as "not captured"
 rather than invented.
 
+## Uploading a run to a server
+
+`scripts/upload_run.py` sends one finished run to a `bajutsu serve`
+([BE-0510](../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import.md)). It then prints the
+address of the run's report. The script uses the Python standard library alone and imports nothing
+from Bajutsu. A copy of the file works on any machine that holds a run directory.
+
+Check the screenshots and videos before the upload. The run masked its text when it wrote each file.
+Pixels carry no masking, and the server does not scan the run again.
+
+```bash
+python3 scripts/upload_run.py runs/<runId> --server https://bajutsu.example.com
+```
+
+The first argument is a run directory, or a run id under `--runs-dir` (default `runs`). A successful
+upload prints two lines, the report and then the zip of the run:
+
+```text
+https://bajutsu.example.com/runs/<runId>/report.html
+https://bajutsu.example.com/runs/<runId>/archive.zip
+```
+
+A signed-in member of the organization that received the run can open both addresses. People outside
+that organization cannot. A script that holds a key alone cannot either.
+
+| Input | Behavior |
+|---|---|
+| Key | Read from `$BAJUTSU_SERVE_KEY`, or from the file `--key-file` names. No argument takes the key itself. |
+| `--server` | `https://`, or `http://` to a loopback address. Any other `http://` address is refused. |
+| Redirect | Not followed, and the upload stops. The key stays with the named server. |
+| `--dry-run` | Lists the files and sends nothing. |
+| Exit status | 0 when the import succeeded, 1 otherwise. It never reflects the run's verdict. |
+
+The server keeps passive file types alone. The script names the dropped files on standard error.
+[Self-hosting → Importing a finished run](self-hosting.md#importing-a-finished-run) covers the
+server's checks and the credential it accepts.
+
 ## Posting evidence to a pull request (BE-0504)
 
 The `post-evidence` composite action posts a finished run to a pull request or an issue. It reads

@@ -196,7 +196,8 @@ def test_the_sampler_ranks_by_cpu_only_over_an_interval(tmp_path: Path) -> None:
     # app zero times. So the single sample ranks by memory, and only the two-sample `top`, which has an
     # interval to difference, ranks by CPU. Asserted against the emitted script because the sampler
     # runs detached, so its own output is not this step's to observe.
-    _run("start", tmp_path, hangs=False)
+    done = _run("start", tmp_path, hangs=False)
+    assert done.returncode == 0, done.stderr
     sampler = (tmp_path / "bajutsu-host-telemetry.sh").read_text()
     # One invocation per line, judged by its own flags rather than by their order in the script.
     tops = [line.strip() for line in sampler.splitlines() if "/usr/bin/top" in line]
