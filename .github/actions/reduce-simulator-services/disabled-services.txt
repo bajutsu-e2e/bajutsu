@@ -154,7 +154,7 @@ com.apple.ap.adprivacyd
 com.apple.ap.promotedcontentd
 com.apple.tipsd
 
-# Wallet, payments, and identity documents.
+# Wallet, payments, and identity documents. No scenario pays, or presents a pass or an ID.
 com.apple.passd
 com.apple.merchantd
 com.apple.financed
