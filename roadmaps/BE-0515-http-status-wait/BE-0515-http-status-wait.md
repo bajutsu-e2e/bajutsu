@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0515](BE-0515-http-status-wait.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0515") |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) |
@@ -97,9 +97,13 @@ for something unique to the run. The `generate` step can build such an address.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Model and load checks
-- [ ] The wait itself
-- [ ] Documents in both languages
+- [x] Model and load checks
+- [x] The wait itself
+- [x] Documents in both languages
+
+Log:
+
+- 2026-11-27: Added the optional `timeout` with its load checks, the status wait, and the documents.
 
 ## References
 

@@ -258,7 +258,7 @@ Action    ::=
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs ペイロード 例 {aps:{alert:"…"}}。`aps` オブジェクトが必須、`aps.alert` は文字列か {title?: string, body?: string}、既定の json.dumps テキストで 4,096 バイト以内（BE-0498）
-  | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method 既定 GET; saveBody → vars.<name>; extractBody → JSON path ごとに vars.<var>（BE-0440）
+  | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, timeout?: number, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method 既定 GET; saveBody → vars.<name>; extractBody → JSON path ごとに vars.<var>（BE-0440）。timeout は status が返るまで繰り返す（BE-0515）
   | { totp:        { secret: string, into?: { var: string }, name?: string, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var>（secret は base32）。name は otp 向けにシークレットを登録する（into と name の少なくとも一方が必要）。minRemaining は 1〜30（into が必要）で、残りがそれ未満なら次の 30 秒ウィンドウを待つ（BE-0474）
   | { otp:         { from: string, into: { var: string }, minRemaining?: integer } }  # totp ステップが from の名前で登録したジェネレータの現在のコード → vars.<var>。minRemaining は totp と同じ
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # メールボックスをポーリング → vars.<var>
@@ -481,6 +481,7 @@ MockResponse ::= { status?: integer, headers?: map(string,string), body?: string
 | `Pinch` | `scale` **> 0** | `scenario/models/actions.py` |
 | `HandleSystemAlert` | `sel` を `label` / `labelMatches` / `index` に限定（`id`/`idMatches`/`traits`/`value`/`within` を拒否） | `scenario/models/actions.py` |
 | `Wait` | `for` / `until` の **どちらか一方** | `scenario/models/assertions.py` |
+| `HttpRequest.timeout` | **0 より大きい**有限の数値。`status` と、`GET` か `HEAD` と書いた `method` が必要 | `scenario/models/actions/http_request.py` |
 | `Assertion` | 種類（`exists` … `request` … `visual`）**ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `TextMatch`（`value`/`label`） | `equals` / `contains` / `matches` の **ちょうど 1 つ** | `scenario/models/assertions.py` |
 | `CountMatch`（`count`） | `equals` / `atLeast` / `atMost` の **ちょうど 1 つ** | `scenario/models/assertions.py` |

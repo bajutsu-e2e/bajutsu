@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
 
@@ -40,6 +40,9 @@ class HttpRequest(_Model):
     ``vars.<saveBody>`` for subsequent ``${vars.*}`` interpolation. ``extractBody`` (BE-0440) pulls
     one or more named fields out of a JSON response body, by path, into ``vars.*`` — independent of
     ``saveBody``, which a step may set alongside it, neither, or both.
+
+    ``timeout`` (BE-0515), in seconds, turns the step into a condition wait: the request repeats until
+    the response carries ``status`` or the deadline passes.
     """
 
     method: str = "GET"
@@ -47,8 +50,24 @@ class HttpRequest(_Model):
     headers: dict[str, str] | None = None
     body: str | None = None
     status: int | None = None
+    timeout: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     save_body: str | None = Field(default=None, alias="saveBody")
     extract_body: list[ExtractField] | None = Field(default=None, alias="extractBody")
+
+    @model_validator(mode="after")
+    def _check_timeout(self) -> HttpRequest:
+        # Safe as model validation, unlike the `var` collision check: a literal GET/HEAD survives
+        # `${...}` substitution unchanged, so rebuilding a loaded step can never newly fail it.
+        if self.timeout is None:
+            return self
+        if self.status is None:
+            raise ValueError("http: timeout requires status (the response status to wait for)")
+        if self.method.upper() not in ("GET", "HEAD"):
+            raise ValueError(
+                f"http: timeout requires method GET or HEAD, got {self.method!r} "
+                "(repeating another method can create data twice)"
+            )
+        return self
 
     def duplicate_extract_var(self) -> str | None:
         """The first `var` that collides — repeated in `extractBody`, or equal to `saveBody` — or None."""
