@@ -17,7 +17,7 @@ import subprocess
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import IO
+from typing import IO, cast
 
 from bajutsu.common.capability.worker_capability import DEVICE_PLACEHOLDER, PLATFORM_PLACEHOLDER
 from bajutsu.common.config import Effective
@@ -121,8 +121,8 @@ def borrow_device(
         target=_keep_tail, args=(proc.stderr, stderr_tail), daemon=True, name="lease-stderr"
     )
     errors.start()
-    released = threading.Event()
-    release = _releaser(proc, release_timeout, released)
+    released, granted = threading.Event(), threading.Event()
+    release = _releaser(proc, release_timeout, released, granted)
 
     try:
         if not answered.wait(acquire_timeout):
@@ -130,6 +130,7 @@ def borrow_device(
         if not line or not line[0].endswith(b"\n"):
             raise _ended_early(proc, errors, stderr_tail, release_timeout)  # noqa: TRY301  # same
         address, env = _parse_answer(line[0])
+        granted.set()
     except BaseException:
         release()
         raise
@@ -192,7 +193,10 @@ def _keep_tail(stream: IO[bytes], tail: bytearray) -> None:
 
 
 def _releaser(
-    proc: subprocess.Popen[bytes], release_timeout: float, released: threading.Event
+    proc: subprocess.Popen[bytes],
+    release_timeout: float,
+    released: threading.Event,
+    granted: threading.Event,
 ) -> Callable[[], None]:
     """End the lease once: a termination signal, a bounded wait, then a forced end."""
     lock = threading.Lock()
@@ -204,12 +208,17 @@ def _releaser(
             if done:
                 return
             done = True
+        # The program alone: a later argument may carry the operator's broker credential.
+        program = cast("list[str]", proc.args)[0]
         if proc.poll() is not None:
-            _logger.warning(
-                "the lease command %s had already exited (status %s) when its lease was released",
-                proc.args,
-                proc.returncode,
-            )
+            # Before an answer this is an ordinary decline, which the caller already reports.
+            if granted.is_set():
+                _logger.warning(
+                    "the lease command %s had already exited (status %s) when its lease was "
+                    "released",
+                    program,
+                    proc.returncode,
+                )
         else:
             released.set()
             proc.send_signal(signal.SIGTERM)
@@ -219,7 +228,7 @@ def _releaser(
                 # One wedged command must not hold the job's `finally` open.
                 _logger.warning(
                     "the lease command %s ignored the termination signal for %g seconds; killing it",
-                    proc.args,
+                    program,
                     release_timeout,
                 )
                 proc.kill()
@@ -227,7 +236,7 @@ def _releaser(
                     proc.wait(timeout=release_timeout)
                 except subprocess.TimeoutExpired:
                     _logger.warning(
-                        "the lease command %s survived a kill; its device may stay lent", proc.args
+                        "the lease command %s survived a kill; its device may stay lent", program
                     )
         # Also ends the lease of a helper the command left behind (contract point 4).
         if proc.stdin is not None:

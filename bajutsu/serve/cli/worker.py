@@ -92,8 +92,8 @@ _logger = logging.getLogger("bajutsu.worker")
 
 # The key of a result that is not one: the job goes back to the queue (BE-0511).
 _DECLINED = "declined"
-# Tries of the decline post, well inside the lease timeout.
-_DECLINE_ATTEMPTS, _DECLINE_RETRY_SECONDS = 3, 1.0
+# Tries of the decline post, together well inside the lease timeout.
+_DECLINE_ATTEMPTS, _DECLINE_RETRY_SECONDS, _DECLINE_TIMEOUT_SECONDS = 3, 1.0, 20.0
 
 # Heartbeat well under the control plane's default lease timeout (DEFAULT_LEASE_TIMEOUT_SECONDS) so
 # a legitimately long run is never mistaken for a dead worker and reclaimed (BE-0016).
@@ -1880,9 +1880,7 @@ def _run_with_heartbeat(
             batch_checkpoint=checkpoint,
             lease_lost=lost,
             batch_dir=group.path if group is not None else None,
-            # Written before the run tree uploads, so console.log travels with it and is the
-            # durable copy the server's log stream falls back to (BE-0449).
-            before_upload=functools.partial(_write_job_console_log, job_work, bus),
+            before_upload=functools.partial(_finish_job_log, job_work, bus, devices),
         )
         holder["result"] = _job_result(
             execute,
@@ -1914,6 +1912,14 @@ def _run_with_heartbeat(
         return None, abandoned, holder["work"]
     result = holder.get("result", {"ok": False, "error": "worker produced no result"})
     return result, abandoned, holder["work"]
+
+
+def _finish_job_log(work: Path, bus: InMemoryLogBus, devices: JobDevices | None, job: Job) -> None:
+    """Complete the job's log before the run tree uploads: console.log travels with it and is the
+    durable copy the server's log stream falls back to (BE-0449)."""
+    if devices is not None:
+        devices.report_problems()
+    _write_job_console_log(work, bus, job)
 
 
 def _job_result(
@@ -2202,11 +2208,17 @@ def _post_decline(
         if attempt:
             time.sleep(_DECLINE_RETRY_SECONDS)
         try:
-            code, body = _post_json(f"{url}/api/worker/decline", request, token=auth_token)
+            code, body = _post_json(
+                f"{url}/api/worker/decline",
+                request,
+                token=auth_token,
+                timeout=_DECLINE_TIMEOUT_SECONDS,
+            )
         except (URLError, OSError) as e:
             failure = str(e)
             continue
-        if code == 200:
+        # A 409 after a try that got no answer means that try most likely declined the job already.
+        if code == 200 or (code == 409 and failure):
             return
         failure = f"HTTP {code}: {body}"
         if code < 500:  # a refusal a retry cannot change, an older server's 404 included

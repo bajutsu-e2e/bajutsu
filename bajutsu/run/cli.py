@@ -3050,7 +3050,7 @@ def device_demand(params: Mapping[str, Any]) -> dict[str, Any]:
         params: The parsed flags of `bajutsu run`, keyed by `run_body`'s parameter names.
 
     Returns:
-        ``{"pools": [{"platform", "count", "models"}], "workers": N}``.
+        ``{"pools": [{"platform", "count", "models", "unnamed"}], "workers": N}``.
 
     Raises:
         typer.Exit: The config or the scenarios do not load, as the run itself would report.
@@ -3112,16 +3112,27 @@ def device_demand(params: Mapping[str, Any]) -> dict[str, Any]:
         if platform is None or platform not in (worker.platforms or ()):
             continue
         pool_effs = [target_effs[n] for n in used if actuators[n] == actuator]
-        models: list[str | None] = list(
-            dict.fromkeys(m for e in pool_effs for m in declared_models(e))
-        )
+        models = list(dict.fromkeys(m for e in pool_effs for m in declared_models(e)))
         # A target that names no model takes any borrowed device, unless another condition of its
-        # own (a family, an OS range) may rule the named ones out: then the broker chooses one more.
-        if models and any(
-            not declared_models(e) and set(e.conditions) - {"kind"} for e in pool_effs
-        ):
-            models.append(None)
-        pools[platform] = {"platform": platform, "count": count, "models": models}
+        # own (a family, an OS range) may rule the named ones out: the broker then chooses one more
+        # for each such device a scenario holds at once.
+        unnamed = {
+            n
+            for n in used
+            if actuators[n] == actuator
+            and not declared_models(target_effs[n])
+            and set(target_effs[n].conditions) - {"kind"}
+        }
+        extra = max(
+            (sum(g[0] in unnamed for g in s.device_groups or [[primary]]) for s in scenarios),
+            default=0,
+        )
+        pools[platform] = {
+            "platform": platform,
+            "count": count,
+            "models": models,
+            "unnamed": extra if models else 0,
+        }
     return {"pools": list(pools.values()), "workers": max(1, params["workers"])}
 
 

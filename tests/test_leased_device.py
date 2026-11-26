@@ -428,10 +428,36 @@ def test_the_demand_re_infers_the_primary_a_filter_or_the_worker_removed(
         *("--config", str(tmp_path / "c.yaml"), "--scenario", str(scenarios)),
         *("--worker-config", str(worker_file)),
     ]
-    only_droid = {"pools": [{"platform": "android", "count": 1, "models": []}], "workers": 1}
+    only_droid = {
+        "pools": [{"platform": "android", "count": 1, "models": [], "unnamed": 0}],
+        "workers": 1,
+    }
     monkeypatch.setattr(run_cli, "_worker_capability_failures", lambda *_a: {})
     assert run_demand([*flags, "--exclude", "skip"]) == only_droid
     monkeypatch.setattr(run_cli, "_worker_capability_failures", lambda *_a: {0: "cannot"})
     assert run_demand(flags) == only_droid
     monkeypatch.setattr(run_cli, "_worker_capability_failures", lambda *_a: {0: "no", 1: "no"})
     assert run_demand(flags) == {"pools": [], "workers": 1}
+
+
+def test_a_decline_logs_no_lost_lease_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    command, _ = lease_command(tmp_path, "decline")
+    with pytest.raises(broker.LeaseDeclinedError):
+        _borrow(command)
+    assert "already exited" not in caplog.text
+
+
+def test_a_granted_lease_that_exited_is_warned_about_by_program_alone(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    command, _ = lease_command(tmp_path, "dies")
+    borrowed = _borrow(command)
+    for _ in range(200):
+        if borrowed.problem() is not None:
+            break
+        threading.Event().wait(0.05)
+    borrowed.release()
+    assert "already exited" in caplog.text
+    assert "broker_stub.py" not in caplog.text

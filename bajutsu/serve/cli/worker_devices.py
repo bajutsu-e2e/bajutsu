@@ -46,13 +46,8 @@ class _Held:
     devices: list[tuple[str, BorrowedDevice]] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
 
-    def release(self, log: Callable[[str], None]) -> None:
+    def release(self) -> None:
         for platform, device in self.devices:
-            # A broker may have lent this device again while the run drove it, so the job's own log
-            # carries the cause of what that run then saw.
-            if (problem := device.problem()) is not None:
-                _logger.warning("%s", problem)
-                log(problem)
             try:
                 device.release()
             except Exception:
@@ -120,9 +115,20 @@ class JobDevices:
             job.lease_env = dict(self._held.env)
         return True
 
+    def report_problems(self) -> None:
+        """Say which leases ended while the run held them.
+
+        A broker may have lent such a device again while the run drove it, so the job's own log
+        carries the cause of what that run then saw. Called before that log is uploaded.
+        """
+        for _platform, device in self._held.devices:
+            if (problem := device.problem()) is not None:
+                _logger.warning("%s", problem)
+                self._log(problem)
+
     def release(self) -> None:
         """End every lease held; safe to call more than once."""
-        self._held.release(self._log)
+        self._held.release()
 
     def _demand(self, job: Job, flags: list[str]) -> tuple[list[dict[str, Any]], int]:
         """The run's pools and `--workers`, counted in the run's own directory and environment."""
@@ -155,6 +161,7 @@ class JobDevices:
             for model in (pool["models"] or [None])
             for _ in range(pool["count"])
         ]
+        lane += [(pool["platform"], None) for pool in pools for _ in range(pool.get("unnamed", 0))]
         if not lane:
             return True
         deadline = time.monotonic() + self._budget
@@ -178,7 +185,7 @@ class JobDevices:
                 self._held.env = more.env
                 more = _Held()
             finally:
-                more.release(self._log)
+                more.release()
         return True
 
     def _take(

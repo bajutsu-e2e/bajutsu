@@ -268,8 +268,8 @@ def test_demand_counts_each_platform_pool_and_leaves_the_web_out(
     answer = _demand(tmp_path, scenarios, "--workers", "3")
     assert answer == {
         "pools": [
-            {"platform": "ios", "count": 2, "models": ["iPhone 16"]},
-            {"platform": "android", "count": 1, "models": []},
+            {"platform": "ios", "count": 2, "models": ["iPhone 16"], "unnamed": 0},
+            {"platform": "android", "count": 1, "models": [], "unnamed": 0},
         ],
         "workers": 3,
     }
@@ -280,7 +280,9 @@ def test_demand_gives_a_targetless_scenario_one_device(
 ) -> None:
     _stub_host(monkeypatch)
     answer = _demand(tmp_path, "- name: solo\n  steps: []\n", "--target", "app")
-    assert answer["pools"] == [{"platform": "ios", "count": 1, "models": ["iPhone 16"]}]
+    assert answer["pools"] == [
+        {"platform": "ios", "count": 1, "models": ["iPhone 16"], "unnamed": 0}
+    ]
 
 
 # --- the device count the worker asks for ---------------------------------------------------
@@ -371,7 +373,9 @@ def test_a_condition_the_named_models_may_miss_gets_one_more_device(
         "- name: named\n  targets: [app]\n  steps: []\n- name: any\n  targets: [pad]\n  steps: []\n"
     )
     answer = _demand(tmp_path, scenarios)
-    assert answer["pools"] == [{"platform": "ios", "count": 1, "models": ["iPhone 16", None]}]
+    assert answer["pools"] == [
+        {"platform": "ios", "count": 1, "models": ["iPhone 16"], "unnamed": 1}
+    ]
 
 
 def test_a_lease_lost_mid_run_is_named_in_the_job_log(
@@ -384,6 +388,7 @@ def test_a_lease_lost_mid_run_is_named_in_the_job_log(
         if devices._held.devices[0][1].problem() is not None:
             break
         threading.Event().wait(0.05)
+    devices.report_problems()
     devices.release()
     assert any("ended before the run released it" in line for line in lines)
 
@@ -452,3 +457,51 @@ def test_a_cancel_during_the_borrow_records_the_job_cancelled(tmp_path: Path) ->
         log=lambda _line: None,
     )
     assert result["cancelled"] is True
+
+
+def test_an_unnamed_target_adds_one_device_per_held_target_not_per_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_host(monkeypatch)
+    (pool,) = _demand(tmp_path, "- name: both\n  targets: [app, pad]\n  steps: []\n")["pools"]
+    assert (pool["count"], pool["models"], pool["unnamed"]) == (2, ["iPhone 16"], 1)
+    worker_file, log = _worker_file(tmp_path, "limit:9")
+    devices, job, _ = _devices(worker_file, monkeypatch, [pool])
+    assert devices.prepare(job)
+    assert _asked(log) == [
+        "--platform ios --device iPhone 16",
+        "--platform ios --device iPhone 16",
+        "--platform ios",
+    ]
+    devices.release()
+
+
+def test_a_409_after_an_unanswered_decline_is_not_a_refusal(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    answers: list[Any] = [OSError("reset"), (409, {})]
+
+    def post(_url: str, _body: dict[str, Any], **_kwargs: Any) -> Any:
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(worker_mod, "_post_json", post)
+    monkeypatch.setattr(worker_mod, "_DECLINE_RETRY_SECONDS", 0)
+    declined = {"declined": "busy", "environment": "leased"}
+    worker_mod._post_decline("http://cp", "j1", "w1", declined, None)
+    assert answers == []
+    assert "could not decline" not in caplog.text
+
+
+def test_a_lost_lease_is_in_the_job_log_before_it_uploads(tmp_path: Path) -> None:
+    reported: list[None] = []
+
+    class _Devices:
+        def report_problems(self) -> None:
+            reported.append(None)
+
+    devices: Any = _Devices()
+    worker_mod._finish_job_log(tmp_path, InMemoryLogBus(), devices, Job(id="j1", cmd=list(_RUN)))
+    assert reported == [None]
