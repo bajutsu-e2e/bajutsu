@@ -65,7 +65,8 @@ _ANCHOR_UNCORRECTED_MSG = (
 # `simctl spawn … log stream` forwards a stop signal to the guest only once the guest process is
 # running. Signalled before that, simctl exits and the stream stays behind in the Simulator, loading
 # the host until it shuts down. The stream's first output (its header line, about 0.4s after the
-# spawn on an idle host) is the proof it is running, so the start waits for it, and a stop whose
+# spawn on an idle host; a filtered stream's `Filtering the log data` preamble, flushed even into a
+# plain file, so a silent one does not wait out the deadline) is the proof it is running, so the start waits for it, and a stop whose
 # start gave up waits once more, longer, before signalling.
 _LOG_STREAM_START_TIMEOUT = 10.0
 _LOG_STREAM_STOP_GRACE = 30.0
@@ -320,7 +321,11 @@ def start_video(
 def start_device_log(
     udid: str, path: Path, predicate: str | None = None, spawn: Spawn = spawn
 ) -> Interval:
-    """Begin streaming the device log to `path`; stop() (SIGTERM) ends the stream."""
+    """Begin streaming the device log to `path`; stop() (SIGTERM) ends the stream.
+
+    Blocks for up to `_LOG_STREAM_START_TIMEOUT` waiting for the stream's first output, so the
+    stop can signal a stream `simctl spawn` will actually forward the signal to.
+    """
     proc = spawn(device_log_cmd(udid, predicate), path)
     return Interval(
         kind="deviceLog",
@@ -830,7 +835,10 @@ def start_logcat_app_trace(
 def start_app_trace(
     udid: str, raw_path: Path, json_path: Path, subsystem: str, spawn: Spawn = spawn
 ) -> Interval:
-    """Stream the app's logs to raw_path; on stop, write the parsed trace to json_path."""
+    """Stream the app's logs to raw_path; on stop, write the parsed trace to json_path.
+
+    Blocks at the start for the stream's first output, as `start_device_log` does.
+    """
     proc = spawn(app_trace_cmd(udid, subsystem), raw_path)
 
     def transform(raw: Path) -> Path:
