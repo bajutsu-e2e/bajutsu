@@ -21,7 +21,7 @@ from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.evidence import media
 
 from ._subprocess_proc import _SubprocessProc
-from .interval import Interval
+from .interval import _STOP_TIMEOUT, Interval
 from .proc import Proc
 
 _logger = logging.getLogger(__name__)
@@ -62,15 +62,18 @@ _ANCHOR_UNCORRECTED_MSG = (
 )
 
 
-# `simctl spawn … log stream` forwards a stop signal to the guest only once the guest process is
-# running. Signalled before that, simctl exits and the stream stays behind in the Simulator, loading
-# the host until it shuts down. The stream's first output is the proof it is running: its header
-# line, about 0.4s after the spawn on an idle host, or a filtered stream's `Filtering the log data`
-# preamble, which reaches a plain file just as promptly, so a silent stream does not wait out the
-# deadline. The start waits for it, and a stop whose start gave up waits once more, longer, before
-# signalling.
+# A `simctl spawn … log stream` signalled during its startup can die without passing the signal on,
+# leaving the guest process running and still writing the capture file; seen only before the stream's
+# first output (its header line, or a filtered stream's `Filtering the log data` preamble). So the
+# start waits for that output, and a stop whose start gave up waits once more before signalling. The
+# guest writes the output itself, so it does not prove `simctl` is ready to forward: after every stop,
+# whatever still holds the capture file open is ended (`_end_orphaned_log_stream`).
 _LOG_STREAM_START_TIMEOUT = 10.0
 _LOG_STREAM_STOP_GRACE = 30.0
+# Ceilings for finding an orphan (`lsof`) and for it to exit once signalled.
+_LSOF_TIMEOUT = 10.0
+_ORPHAN_EXIT_TIMEOUT = 5.0
+_ORPHAN_EXIT_POLL = 0.05
 
 
 # spawn(argv, stdout_path) -> a running process (stdout written to the file if given)
@@ -349,12 +352,22 @@ def start_device_log(
         _proc=proc,
         _stop_signal=signal.SIGTERM,
         _output_wait_before_stop=_log_stream_stop_grace(proc, path),
+        _after_stop=_end_orphaned_log_stream,
     )
 
 
 def _log_stream_stop_grace(proc: Proc, path: Path) -> float:
-    """Wait for a just-spawned `log stream` to run; the extra wait its stop still owes it."""
-    if proc.await_stdout(_LOG_STREAM_START_TIMEOUT) is not None:
+    """Wait for a just-spawned `log stream` to run; the extra wait its stop still owes it.
+
+    An interrupt during the wait stops the stream before propagating: no caller holds it yet.
+    """
+    try:
+        started = proc.await_stdout(_LOG_STREAM_START_TIMEOUT)
+    except BaseException:
+        proc.stop(signal.SIGTERM, _STOP_TIMEOUT)
+        _end_orphaned_log_stream(path)
+        raise
+    if started is not None:
         return 0.0
     _logger.warning(
         "log stream for %s exited or wrote nothing within %ss; the evidence may miss its start",
@@ -362,6 +375,41 @@ def _log_stream_stop_grace(proc: Proc, path: Path) -> float:
         _LOG_STREAM_START_TIMEOUT,
     )
     return _LOG_STREAM_STOP_GRACE
+
+
+def _end_orphaned_log_stream(path: Path) -> None:
+    """End any guest `log` process still writing `path` after its `simctl spawn` has stopped.
+
+    The guest holds the capture file itself, so `lsof` names exactly this capture's process, never
+    another capture's or another device's. Best-effort: a host without `lsof` only loses the check.
+    """
+    if not path.exists():
+        return
+    # `-c /^log$/` keeps a reader of the file (a `tail`, an indexer) out of what gets signalled.
+    argv = ["lsof", "-t", "-a", "-c", "/^log$/", "--", str(path)]
+    try:
+        found = subprocess.run(
+            argv, capture_output=True, text=True, timeout=_LSOF_TIMEOUT, check=False
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        _logger.warning("could not check %s for an orphaned log stream: %s", path, exc)
+        return
+    pids = [int(token) for token in found.split() if token.isdigit()]
+    for pid in pids:
+        _logger.warning("ending an orphaned log stream (pid %s) still writing %s", pid, path)
+        _end_process(pid)
+
+
+def _end_process(pid: int) -> None:
+    """SIGTERM `pid` and wait for it to go, killing it at the deadline; it is not our child."""
+    deadline = time.monotonic() + _ORPHAN_EXIT_TIMEOUT
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        os.kill(pid, signal.SIGTERM)
+        # Signal 0 only probes: it raises once the pid is gone, which ends the wait.
+        while time.monotonic() < deadline:
+            os.kill(pid, 0)
+            time.sleep(_ORPHAN_EXIT_POLL)
+        os.kill(pid, signal.SIGKILL)
 
 
 # --- adb (Android) interval providers: the twins of the simctl starters above ---
@@ -862,11 +910,13 @@ def start_app_trace(
         json_path.write_text(json.dumps(parse_app_trace(text), indent=2), encoding="utf-8")
         return json_path
 
+    grace = _log_stream_stop_grace(proc, raw_path)
     return Interval(
         kind="appTrace",
         path=raw_path,
         _proc=proc,
         _stop_signal=signal.SIGTERM,
         _transform=transform,
-        _output_wait_before_stop=_log_stream_stop_grace(proc, raw_path),
+        _output_wait_before_stop=grace,
+        _after_stop=_end_orphaned_log_stream,
     )

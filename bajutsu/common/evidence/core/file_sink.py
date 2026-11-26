@@ -166,31 +166,23 @@ class FileSink:
         if not (self._prestarted or self.driver_interval is not None or self.udid is not None):
             return []  # no lane can record: skip without creating an empty scenario dir
         started: list[intervals.Interval] = []
-        for token in kinds:
-            kind = token.partition(".")[0]
-            if kind in self.unavailable:
-                continue
-            # An external recorder (simctl, screenrecord, Playwright) writes the file itself, so the
-            # sink reserves the path; `finish_scenario_intervals` below closes the loop (BE-0331).
-            target = self._writer.reserve(
-                f"{scenario_id}/{_interval_filename(kind, self.video_extension)}"
-            )
-            pre = self._prestarted.get(kind)
-            if pre is not None:
-                started.append(intervals.adopt(pre, target))
-            elif self.driver_interval is not None:
-                # A driver-supplied lane owns every kind it records; one it declines (None) is simply
-                # absent — it must never fall through to the simctl starters (they would run against a
-                # non-simctl device, e.g. an Android serial).
-                interval = self._start_driver_interval(
-                    self.driver_interval, kind, target, scenario_id
-                )
+        try:
+            for token in kinds:
+                kind = token.partition(".")[0]
+                if kind in self.unavailable:
+                    continue
+                interval = self._start_interval(kind, scenario_id)
                 if interval is not None:
                     started.append(interval)
-            elif self.udid is not None:
-                interval = self._start_simctl_interval(kind, target, scenario_id)
-                if interval is not None:
-                    started.append(interval)
+        except BaseException:
+            # No caller holds `started` yet, so a later starter raising would leave the earlier
+            # recordings running on the device.
+            for interval in started:
+                try:
+                    interval.stop()
+                except Exception:
+                    _logger.warning("could not stop %s capture", interval.kind, exc_info=True)
+            raise
         # A recording that was asked to confirm its start and never did says the device's capture
         # pipeline is not producing — the earliest symptom of the wedge whose recovery rung the crash
         # retry picks from it (BE-0354). Reported once per scenario, after every kind has started.
@@ -199,6 +191,25 @@ class FileSink:
         ):
             self.on_video_start_stall()
         return started
+
+    def _start_interval(self, kind: str, scenario_id: str) -> intervals.Interval | None:
+        """Start one recording on whichever lane owns `kind`, or None for a kind none records."""
+        # An external recorder (simctl, screenrecord, Playwright) writes the file itself, so the
+        # sink reserves the path; `finish_scenario_intervals` below closes the loop (BE-0331).
+        target = self._writer.reserve(
+            f"{scenario_id}/{_interval_filename(kind, self.video_extension)}"
+        )
+        pre = self._prestarted.get(kind)
+        if pre is not None:
+            return intervals.adopt(pre, target)
+        if self.driver_interval is not None:
+            # A driver-supplied lane owns every kind it records; one it declines (None) is simply
+            # absent — it must never fall through to the simctl starters (they would run against a
+            # non-simctl device, e.g. an Android serial).
+            return self._start_driver_interval(self.driver_interval, kind, target, scenario_id)
+        if self.udid is not None:
+            return self._start_simctl_interval(kind, target, scenario_id)
+        return None
 
     def _start_driver_interval(
         self, driver_interval: DriverInterval, kind: str, target: Path, scenario_id: str
