@@ -853,7 +853,7 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 - **Organization-scoped API keys** (BE-0509): an admin issues a key for one org through `/api/orgs/<slug>/keys`, and a script sends it as a bearer token.
   - A key is a fourth caller shape with no session. Both backends judge it ahead of the session gates, against its own empty-by-default endpoint allowlist in `gate.py` and its role (`viewer` or `editor`).
   - The database holds the identifier and a SHA-256 hash of the secret. Issuing, revoking, and each use are audited by identifier.
-- **Importing a run finished elsewhere into the run history** (BE-0510): `POST /api/runs/import` takes a zip of one run, built and sent by the standalone `scripts/upload_run.py`, and answers with the run's URL.
+- **Importing a run finished elsewhere into the run history** (BE-0510): `POST /api/runs/import` takes a zip of one run and answers with the path of the run's report. The standalone `scripts/upload_run.py` builds and sends that zip.
   - The route refuses a malformed zip, a traversal path, or a symlink outright. It also refuses an artifact path that points outside the zip's own entries.
   - It drops every entry whose extension is absent from a fixed allowlist of passive file types. `serve` thus never hands an uploaded HTML, SVG, or XML page back from its own origin. The viewer's sign-in Cookie applies on that origin.
   - It reserves the run id before placing any file, and refuses a run id collision.
