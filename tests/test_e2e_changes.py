@@ -333,6 +333,9 @@ def test_ios_lane_surface() -> None:
     # The retrying `ios-build` download every build-artifact consumer starts from (issue #2266).
     assert is_relevant([".github/actions/download-ios-build/action.yml"]) is True
     assert is_relevant([".github/actions/download-ios-build/action.yml"], "android") is False
+    # The BE-0517 service list: editing it changes what the `run` and `actuation` jobs turn off.
+    assert is_relevant([".github/actions/reduce-simulator-services/disabled-services.txt"]) is True
+    assert is_relevant([".github/actions/reduce-simulator-services/apply.sh"], "android") is False
     # The deterministic check the `network (xcuitest)` job runs over the persisted network.json
     # (BE-0282). iOS-only: no other lane invokes it, and it must fire *this* lane — otherwise editing
     # the checker fires nothing, the job never runs on the PR that changed it, and `E2E (iOS)` reports

@@ -1,0 +1,206 @@
+# launchd labels the reduce-simulator-services action turns off inside the iOS Simulator (BE-0517).
+# One label per line; `#` starts a comment. A label stays here only under a category whose reason
+# says why no showcase scenario needs it. The experiment named 173 labels; the four left out
+# (`swcd`: universal links, `assetsd`: the photo library behind the photo picker, `ind`,
+# `storagedatad`: no reason we could write) stay on. So do SpringBoard, `backboardd`, notification
+# delivery, privacy permissions (TCC), the pasteboard, and location services, which no category
+# below names.
+
+# Push delivery from Apple's servers. `simctl push` hands a payload to the device directly.
+com.apple.apsd
+
+# Diagnostics, analytics, and reporting uploads. Nothing in a run reads them.
+com.apple.diagnosticextensionsd
+com.apple.feedbackd
+com.apple.geoanalyticsd
+com.apple.rtcreportingd
+com.apple.securityuploadd
+com.apple.proactiveeventtrackerd
+com.apple.parsec-fbf
+
+# Accounts, iCloud, and sync. The CI Simulator is never signed in.
+com.apple.akd
+com.apple.amsaccountsd
+com.apple.amsengagementd
+com.apple.amsondevicestoraged
+com.apple.appleaccountd
+com.apple.appleaccounttransparencyd
+com.apple.appleidsetupd
+com.apple.bird
+com.apple.cdpd
+com.apple.ckdiscretionaryd
+com.apple.cloudd
+com.apple.cloudphotod
+com.apple.cloudsettingssyncagent
+com.apple.assetsd.nebulad
+com.apple.icloudmailagent
+com.apple.icloudsubscriptionoptimizerd
+com.apple.protectedcloudstorage.protectedcloudkeysyncing
+com.apple.SafariBookmarksSyncAgent
+com.apple.SecureBackupDaemon
+com.apple.syncdefaultsd
+com.apple.TrustedPeersHelper
+com.apple.purplebuddy.budd
+com.apple.followupd
+com.apple.familycircled
+com.apple.familynotification
+com.apple.FamilyControlsAgent
+com.apple.askpermissiond
+com.apple.asktod
+
+# Messages, FaceTime, calls, and device pairing. No scenario places a call or pairs a device.
+com.apple.identityservicesd
+com.apple.ids_simd
+com.apple.imautomatichistorydeletionagent
+com.apple.imcore.imtransferagent
+com.apple.imdpersistence.IMDPersistenceAgent
+com.apple.facetimemessagestored
+com.apple.telephonyutilities.callservicesd
+com.apple.communicationtrustd
+com.apple.companiond
+com.apple.rapportd
+com.apple.wcd
+com.apple.carkitd
+com.apple.tvremoted
+com.apple.deviceaccessd
+com.apple.StatusKitAgent
+com.apple.sosd
+
+# Siri, Apple Intelligence, machine learning, and on-device indexing. No scenario speaks to Siri or
+# searches system-wide; these run model and index work in the background.
+com.apple.assistant_cdmd
+com.apple.assistant_service
+com.apple.corespeechd
+com.apple.siri.acousticsignature
+com.apple.siri.context.service
+com.apple.siriactionsd
+com.apple.siriinferenced
+com.apple.siriknowledged
+com.apple.sirittsd
+com.apple.speechmodeltrainingd
+com.apple.voicebankingd
+com.apple.voiced
+com.apple.announced
+com.apple.generativeexperiencesd
+com.apple.intelligencecontextd
+com.apple.intelligenceflowd
+com.apple.intelligenceplatformd
+com.apple.intelligencetasksd
+com.apple.knowledgeconstructiond
+com.apple.mlhostd
+com.apple.mlruntimed
+com.apple.modelcatalogd
+com.apple.modelmanagerd
+com.apple.naturallanguaged
+com.apple.textunderstandingd
+com.apple.suggestd
+com.apple.peopled
+com.apple.linkd
+com.apple.corespotlightservice
+com.apple.searchd
+com.apple.searchtoold
+com.apple.spotlightknowledged
+com.apple.spotlightknowledged.updater
+com.apple.parsecd
+com.apple.mediaanalysisd
+com.apple.mediaanalysisd.service
+com.apple.photoanalysisd
+com.apple.photosface
+com.apple.triald
+
+# Health and Fitness. The showcase app reads no health data.
+com.apple.activityawardsd
+com.apple.activitysharingd
+com.apple.fitcore
+com.apple.fitcore.session
+com.apple.fitnesscoachingd
+com.apple.fitnessintelligenced
+com.apple.healthappd
+com.apple.healthcontentd
+com.apple.healthd
+com.apple.healtheventsd
+com.apple.healthrecordsd
+
+# Maps, navigation, and weather. `setLocation` goes through `simctl location`, not these.
+com.apple.findmy.findmylocated
+com.apple.MapKit.SnapshotService
+com.apple.Maps.geocorrectiond
+com.apple.Maps.mapspushd
+com.apple.Maps.mapssyncd
+com.apple.maps.destinationd
+com.apple.navd
+com.apple.countryd
+com.apple.weatherd
+
+# Stores, media libraries, and background asset downloads. No scenario buys, streams, or plays media.
+com.apple.appstorecomponentsd
+com.apple.appstored
+com.apple.storekitd
+com.apple.itunescloudd
+com.apple.itunesstored
+com.apple.jetpackassetd
+com.apple.managedassetsd
+com.apple.mobileassetd
+com.apple.assetsubscriptiond
+com.apple.accessibility.axassetsd
+com.apple.medialibraryd
+com.apple.mediastream.mstreamd
+com.apple.musicd
+com.apple.newsd
+com.apple.videosubscriptionsd
+com.apple.gamesaved
+com.apple.GameController.gamecontrollerd
+com.apple.ap.adprivacyd
+com.apple.ap.promotedcontentd
+com.apple.tipsd
+
+# Wallet, payments, and identity documents.
+com.apple.passd
+com.apple.merchantd
+com.apple.financed
+com.apple.finhealthd
+com.apple.coreidvd
+com.apple.businessservicesd
+
+# Personal data apps: mail, contacts, calendar, reminders, and home. The showcase app requests none
+# of these permissions.
+com.apple.email.maild
+com.apple.exchangesyncd
+com.apple.dataaccess.dataaccessd
+com.apple.contactsd
+com.apple.contacts.postersyncd
+com.apple.calaccessd
+com.apple.remindd
+com.apple.homed
+com.apple.homeeventsd
+com.apple.avatarsd
+com.apple.stickersd
+com.apple.sociallayerd
+
+# Safari and WebKit background services. The web view scenario loads a page and needs none of
+# bookmarks, history sync, safe browsing, ad attribution, or web push.
+com.apple.Safari.History
+com.apple.Safari.SafeBrowsing.Service
+com.apple.Safari.passwordbreachd
+com.apple.safarifetcherd
+com.apple.WebBookmarks.webbookmarksd
+com.apple.webkit.adattributiond
+com.apple.webkit.webpushd
+com.apple.webprivacyd
+
+# Device management, Screen Time, and integrity checks. The CI Simulator is unmanaged.
+com.apple.RemoteManagementAgent
+com.apple.remotemanagementd
+com.apple.managedconfiguration.passcodenagd
+com.apple.ScreenTimeAgent
+com.apple.ScreenTimeSettingsAgent
+com.apple.UsageTrackingAgent
+com.apple.devicecheckd
+
+# Home Screen extras: widgets, Live Activities, wallpapers, and clips. Scenarios drive the app in
+# front, not the Home Screen.
+com.apple.chronod
+com.apple.replicatord
+com.apple.liveactivitiesd
+com.apple.PosterBoard
+com.apple.ClipServices.clipserviced

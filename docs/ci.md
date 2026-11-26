@@ -516,7 +516,7 @@ there.
     This table names what is loading the machine.
 - **Less load on the runner**: the macOS runner has three cores.
   Its CPU sat at 0% idle through whole `actuation` jobs, green ones included.
-  Three changes cut sources of that load:
+  Four changes cut sources of that load:
   - `setup-ios-toolchain` turns off Spotlight indexing before the boot. Its `mds_stores` competed
     with the Simulator, and nothing a job runs searches the index.
   - Every `deviceLog` capture streams at the info level rather than debug
@@ -525,6 +525,13 @@ there.
     `runningboardd`, through the `bajutsu-e2e` action's `log-predicate` input. Unfiltered,
     `navigation.yaml` alone streamed 455,715 lines in 80 seconds, two thirds of them from one
     system daemon. The other iOS jobs still capture every process.
+  - The `run` and `actuation` jobs turn off Simulator services that no scenario needs, through the
+    [`reduce-simulator-services`](../.github/actions/reduce-simulator-services/action.yml) action
+    ([BE-0517](../roadmaps/BE-0517-ios-ci-simulator-service-reduction/BE-0517-ios-ci-simulator-service-reduction.md)).
+    After the boot, the action runs `launchctl disable` for each label in its list and reboots the
+    Simulator. The list groups the labels by category, with the reason each category can stay off.
+    Each job logs the count of disabled services and of Simulator processes at its start and end. A
+    manual run can pick `simulator-services: stock`, which reboots without turning anything off.
 - **Before anything ran**, also from `start`: one bounded `ps aux` plus `vm_stat` land in
   `runs/diagnostics/ps-baseline.txt`. The stall captures snapshot `ps` at a stall, which answers what
   was resident when it broke and cannot answer whether that differed from normal — the first

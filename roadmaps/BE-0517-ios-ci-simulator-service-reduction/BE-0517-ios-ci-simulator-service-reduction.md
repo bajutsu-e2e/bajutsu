@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0517](BE-0517-ios-ci-simulator-service-reduction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
 | Topic | CI / build infrastructure |
 | Related | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) |
@@ -176,11 +176,22 @@ item would design how to apply the list again from configuration.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Choose the service list
-- [ ] Apply the change before the first boot, or after it with a reboot
-- [ ] Wire the `run` and `actuation` jobs
+- [x] Choose the service list
+- [x] Apply the change before the first boot, or after it with a reboot
+- [x] Wire the `run` and `actuation` jobs
 - [ ] Measure and decide adoption
 - [ ] Extend to other lanes and decide on applying again after an erase
+
+Log:
+
+- PR_LINK: units 1 to 3 shipped. The table lists where the implementation differs from the design.
+
+| Point | What shipped, and why |
+|---|---|
+| Service list | 169 labels in 13 categories, each with its reason. `swcd` (universal links) and `assetsd` (the photo library) stay on, as do `ind` and `storagedatad`, for which no reason could be written |
+| Route | The fallback: `launchctl disable` after the boot, then a reboot. The offline write into the private launchd store stays untried |
+| Where it runs | Its own step after `bootstatus`, the same on a reused device as on a fresh one, so the boot action is unchanged |
+| Control arm | A manual run picks `simulator-services: stock`, which reboots without turning anything off |
 
 ## References
 

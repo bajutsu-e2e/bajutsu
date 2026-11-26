@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0517](BE-0517-ios-ci-simulator-service-reduction-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming-ja.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md) |
@@ -119,11 +119,22 @@ BE-0494 の空きメモリは、アプリのインストール後の 1 回の値
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 無効化するサービスの一覧を決める
-- [ ] 最初の起動の前、または再起動を伴う方法で無効化を適用する
-- [ ] `run` と `actuation` のジョブに組み込む
+- [x] 無効化するサービスの一覧を決める
+- [x] 最初の起動の前、または再起動を伴う方法で無効化を適用する
+- [x] `run` と `actuation` のジョブに組み込む
 - [ ] 測定して導入を判定する
 - [ ] 対象のレーンを広げ、消去後の再適用の要否を決める
+
+ログ：
+
+PR_LINK で作業単位 1 から 3 を実装しました。実装が設計と異なる点は、次の表のとおりです。
+
+| 項目 | 実装した内容と理由 |
+|---|---|
+| サービスの一覧 | 169 個のラベルを 13 のカテゴリに分け、カテゴリごとに理由を書きました。`swcd`（ユニバーサルリンク）と `assetsd`（写真ライブラリ）は止めません。`ind` と `storagedatad` も、止めてよい理由を書けなかったので止めません |
+| 適用の方法 | 代替案の方法を採りました。起動後に `launchctl disable` を実行し、再起動します。非公開の launchd ストアへ起動前に書き込む方法は、まだ試していません |
+| 実行する位置 | `bootstatus` の後に独立したステップとして実行します。起動済みの端末を再利用した場合も新しく起動した場合も同じなので、起動のアクションは変えていません |
+| 比較のための条件 | 手動で実行するときに `simulator-services: stock` を選ぶと、何も止めずに再起動だけを行います |
 
 ## 参考
 

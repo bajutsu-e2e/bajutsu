@@ -324,6 +324,8 @@ _LANE_PATHS: dict[str, str] = {
         r"|\.github/actions/collect-ios-diagnostics/"
         # The retrying `ios-build` download every build-artifact consumer starts from (issue #2266).
         r"|\.github/actions/download-ios-build/"
+        # The BE-0517 service reduction the `run` and `actuation` jobs apply before installing.
+        r"|\.github/actions/reduce-simulator-services/"
     ),
     "android": (
         # Only the adb driver and the Python side of the resident UI Automator channel (BE-0245) this

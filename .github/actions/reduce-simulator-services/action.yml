@@ -1,0 +1,32 @@
+name: Reduce Simulator services
+description: >-
+  Turn off the launchd services listed in disabled-services.txt inside a booted Simulator, then
+  reboot it so they stay off (BE-0517). The Simulator daemons those services start competed for the
+  hosted runner's three cores through whole jobs. `mode: stock` reboots the same way without turning
+  anything off, so a measured comparison differs only in the list. Call it after the job has waited
+  for `bootstatus`; it returns once the rebooted device is booted again. It applies the same way to a
+  device the boot action reused as to one it booted fresh.
+
+inputs:
+  udid:
+    description: The booted Simulator's UDID.
+    required: true
+  mode:
+    description: >-
+      'reduced' turns the listed services off before the reboot. 'stock' only reboots, the control
+      arm of BE-0517's adoption measurement.
+    required: false
+    default: reduced
+
+runs:
+  using: composite
+  steps:
+    - name: Reboot the Simulator with fewer services
+      shell: bash
+      # Inputs go through env: so the shell reads them as data (BE-0123).
+      env:
+        UDID: ${{ inputs.udid }}
+        MODE: ${{ inputs.mode }}
+      run: |
+        "$GITHUB_ACTION_PATH/apply.sh" "$UDID" "$MODE"
+        "$GITHUB_ACTION_PATH/counts.sh" "$UDID" start
