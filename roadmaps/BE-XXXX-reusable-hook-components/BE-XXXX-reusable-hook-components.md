@@ -197,7 +197,68 @@ An `as` on one application resolves it.
 The check covers every scenario with commands of its own, whatever they read.
 Bajutsu never picks one of the two values, and never drops a variable without an error.
 
-Applying one component twice within a scope needs an `as` on one of the two.
+#### When an application needs `as`
+
+Write an `as` when two entries would otherwise answer to one name.
+
+| Situation | Where to write `as` |
+|---|---|
+| One target or one scenario applies the same component twice | On one of the two entries |
+| A target applies a component, and a scenario that drives it applies the same one | On either side |
+| Two applications in one scope declare the same command name | On one of the two entries |
+| A component declares a name that a direct entry already uses | On the application, or rename the direct entry |
+| A scenario with its own commands drives two targets that hold one component name | On the application of one target |
+
+The first row holds even for a component with no named command.
+The pair of `hook` and `as` identifies an application, also when layers join.
+A later layer that repeats the pair replaces the earlier entry instead of adding one.
+A template can thus change the values of an application without an `as`.
+To keep both, the later layer writes an `as`.
+
+The other rows concern command names.
+A component with no named command meets none of them.
+
+These cases work without an `as`:
+
+- two targets apply the same component, and no scenario command meets both names
+- two separate scenarios each apply the same component
+- one scope applies two components whose command names differ
+
+An `as` renames the names of a component alone.
+Two direct entries with one name still need a new name for one of them.
+
+The second row looks like this.
+Here the component creates and deletes a user, with no steps.
+Its command name is `user`.
+The target applies it for a free user.
+One scenario needs a premium user as well:
+
+```yaml
+# config
+targets:
+  web:
+    hooks:
+      use:
+        - hook: ./hooks/account.hook.yaml
+          with: { plan: free }
+```
+
+```yaml
+# scenario
+- name: invite a premium user
+  hooks:
+    use:
+      - hook: ../hooks/account.hook.yaml
+        with: { plan: premium }
+        as: premium
+  steps:
+    - type: { text: "${hooks.premium.user.userId}", into: { id: invite.userId } }
+```
+
+Without the `as`, both applications declare `user`, and the load stops.
+
+#### What `as` changes
+
 Take `as: premium` as an example.
 Outside the component, a step writes `${hooks.premium.user.userId}`.
 An outside command reads `BAJUTSU_HOOK__premium__user__userId`.
