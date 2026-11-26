@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0514](BE-0514-email-imap-pop3-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
+| 実装 PR | [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)、[BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md) |
 <!-- /BE-METADATA -->
@@ -136,10 +137,16 @@ class MailboxReader(Protocol):
 > 作業の進行に合わせて更新します。チェックリストは *詳細設計* の MECE な作業分解に対応し（作業単位ごとに
 > 1 項目）、ログは変更内容と時期を（古い順に）記録して PR にリンクします。
 
-- [ ] メールのモデルと読み取りインタフェース
-- [ ] IMAP と POP3 のアダプター、新しい設定、`HTTP` 読み取りの削除
-- [ ] 日英の文書
+- [x] メールのモデルと読み取りインタフェース
+- [x] IMAP と POP3 のアダプター、新しい設定、`HTTP` 読み取りの削除
+- [x] 日英の文書
 - [ ] メールサーバーでの手動確認
+
+ログは次のとおりです。
+
+[#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) で単位 1 から 3 をまとめて実装しました。`HTTP` の受信箱は削除し、手動の確認が残っています。本設計は、BE-0515 を本項目と同時か、それより先に出すことを求めています。BE-0515 はまだリリースしていません。
+
+レビューで 2 つの厳しい規則を加えました。同じ回の問い合わせで、最新の受信時刻を複数の一致が共有する場合は失敗にします。読み取りには `check_same_inbox` も加え、IMAP のフォルダーが作り直されたらステップを止めます。
 
 ## 参考
 

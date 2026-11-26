@@ -137,8 +137,11 @@ def test_cancel_inside_an_email_poll_ends_the_poll() -> None:
     # runs to a minute or more — long enough that a cancelled run stuck here would outlive the grace
     # window and be killed before it wrote its manifest.
     class _EmptyMailbox:
-        def fetch(self, timeout: float) -> list[object]:
-            return []
+        def list_ids(self, timeout: float) -> frozenset[str]:
+            return frozenset()
+
+        def check_same_inbox(self, baseline: frozenset[str], current: frozenset[str]) -> None:
+            pass
 
     driver = FakeDriver([el("a", "A", ["button"])])
     clock = FakeClock()
