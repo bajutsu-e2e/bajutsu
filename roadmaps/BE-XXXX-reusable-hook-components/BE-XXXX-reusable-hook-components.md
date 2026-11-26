@@ -192,8 +192,10 @@ A command of a target receives the component outputs of that target alone.
 Bajutsu keeps run-level outputs per target in the same way.
 
 A command of a scenario can meet one name that two driven targets hold.
-Such a command receives no variable for that name.
-Bajutsu never picks one of the two values.
+The load stops on that name and names both targets.
+An `as` on one application resolves it.
+The check covers every scenario with commands of its own, whatever they read.
+Bajutsu never picks one of the two values, and never drops a variable without an error.
 
 Applying one component twice within a scope needs an `as` on one of the two.
 Take `as: premium` as an example.
@@ -265,12 +267,14 @@ For such a scenario, the parts of a target behave as follows.
 |---|---|---|
 | `setup` | Skipped | Skipped |
 | `beforeScenario`, `afterScenario` | Skipped | Skipped |
-| `cleanup` | Runs, as today | Skipped |
+| `cleanup` | Runs, as today | Skipped if the application adds `setup` or `beforeScenario` |
 | `beforeRun`, `afterRun` | Run | Run, and outputs stay readable |
 
-The one difference is `cleanup`.
-A component's teardown reads what its own preparation made.
+The one difference is the `cleanup` of an application that also prepares.
+Such a teardown reads what its own preparation made.
 A teardown without its preparation would stop with an error.
+An application with no `setup` and no `beforeScenario` has no such dependency.
+Its `cleanup` runs, so moving a direct rule into a component changes nothing.
 Components that the scenario applies itself still run.
 
 ### 6. Reports and command policy
