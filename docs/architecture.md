@@ -854,6 +854,13 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 - **Organization-scoped API keys** (BE-0509): an admin issues a key for one org through `/api/orgs/<slug>/keys`, and a script sends it as a bearer token.
   - A key is a fourth caller shape with no session. Both backends judge it ahead of the session gates, against its own empty-by-default endpoint allowlist in `gate.py` and its role (`viewer` or `editor`).
   - The database holds the identifier and a SHA-256 hash of the secret. Issuing, revoking, and each use are audited by identifier.
+- **Importing a run finished elsewhere into the run history** (BE-0510). `POST /api/runs/import` takes a zip of one run and answers with the path of the run's report. The standalone `scripts/upload_run.py` builds and sends that zip.
+  - The route refuses a malformed zip, a traversal path, or a symlink outright. It also refuses an artifact path that points outside the zip's own entries.
+  - It drops every entry whose extension is absent from a fixed allowlist of passive file types. `serve` thus never hands an uploaded HTML, SVG, or XML page back from its own origin. The viewer's sign-in Cookie applies on that origin.
+  - It reserves the run id before placing any file, and refuses a run id collision.
+  - It regenerates `report.html` / `junit.xml` / `ctrf.json` from the stored `manifest.json` and `scenario.yaml`, stamps the manifest's `provenance.source` as `import`, and records the run under the caller's organization.
+  - The route needs the editor role. The organization-API-key allowlist above does not name it yet. The BE-0414 machine allowlist omits it too.
+  - On a server with OAuth, a signed-in user alone can call it. A server without OAuth accepts the shared token. `scripts/upload_run.py` works there with that token as its key.
 - **Per-job artifact overrides, independent of the active config binding** ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)): on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the sha256 of an already-stored artifact (BE-0268).
   - A named leg resolves against that artifact alone: the binary placed at the job's own target `subject.path`, or a `scenarios` zip replacing that target's scenarios directory.
   - An unnamed leg keeps resolving through the org's active config binding, untouched. Two concurrent CI dispatches against one deployment thus no longer contend for the deployment's fallback binding or write the org's remembered configuration.
