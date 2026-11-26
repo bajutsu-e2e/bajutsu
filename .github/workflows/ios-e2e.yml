@@ -83,6 +83,14 @@ name: iOS E2E (Simulator)
 
 on:
   workflow_dispatch:
+    inputs:
+      # BE-0517 unit 4 measures the `run` and `actuation` jobs with and without the reduced service
+      # list, alternating arms. Every other trigger takes the default.
+      simulator-services:
+        description: Simulator services on the run and actuation jobs (BE-0517)
+        type: choice
+        options: [reduced, stock]
+        default: reduced
   # Trigger on every PR so the `e2e` gate job always reports a status (required checks
   # that never run stay pending and block merges). The metered macOS jobs themselves are
   # path-gated by the `changes` job below — docs-only PRs skip them and the gate passes.
@@ -507,6 +515,13 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # BE-0517: turn off the Simulator services no scenario needs, then reboot so they stay off.
+      - name: Reduce Simulator services
+        uses: ./.github/actions/reduce-simulator-services
+        with:
+          udid: ${{ steps.toolchain.outputs.udid }}
+          mode: ${{ inputs.simulator-services || 'reduced' }}
+
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
@@ -561,6 +576,11 @@ jobs:
           uv run --no-sync python scripts/assert_doctor_env.py --expect ok
           --target showcase-swiftui --backend xcuitest
           --config demos/showcase/showcase.config.yaml --udid "$UDID"
+
+      # BE-0517: the end-of-job figures, read beside the start figures the reduce step logged.
+      - name: Log Simulator service counts
+        if: always() && steps.toolchain.outputs.udid != ''
+        run: .github/actions/reduce-simulator-services/counts.sh "${{ steps.toolchain.outputs.udid }}" end
 
   # The lane's non-gating landing pad: real on-device XCUITest behavior that has not yet earned a place
   # in the gating `run` job above — `back`, device control, and text editing that the `golden` /
@@ -658,6 +678,13 @@ jobs:
       - name: Wait for the Simulator
         run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
 
+      # BE-0517: turn off the Simulator services no scenario needs, then reboot so they stay off.
+      - name: Reduce Simulator services
+        uses: ./.github/actions/reduce-simulator-services
+        with:
+          udid: ${{ steps.toolchain.outputs.udid }}
+          mode: ${{ inputs.simulator-services || 'reduced' }}
+
       - name: Install the app
         run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
@@ -736,6 +763,11 @@ jobs:
       # on-device coverage earns its stability first. After the scenarios step, which synced the venv.
       - name: Attach the REPL to the running app (BE-0455)
         run: scripts/repl_attach_e2e.sh "${{ steps.toolchain.outputs.udid }}"
+
+      # BE-0517: the end-of-job figures, read beside the start figures the reduce step logged.
+      - name: Log Simulator service counts
+        if: always() && steps.toolchain.outputs.udid != ''
+        run: .github/actions/reduce-simulator-services/counts.sh "${{ steps.toolchain.outputs.udid }}" end
 
   # The BE-0006 element-tree golden over XCUITest: pins the normalized accessibility tree for the
   # Stable catalog's list rows, reached on the launch tab. Runs golden.yaml per PR — the iOS twin of

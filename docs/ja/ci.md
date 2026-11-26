@@ -578,7 +578,7 @@ Protocol（HTTP）チャネルで駆動します。Android の失敗はもう少
   - **直近1秒の CPU の順**：2回採取する `top` の表です。メモリは小さくても CPU を使うプロセスは
     1つ目の表に入らないので、ホストの負荷の出どころはこの表でわかります。
 - **ホストの負荷を下げる工夫。** macOS のランナーは3コアです。`actuation` ジョブでは、成功した回も
-  含めて、ホストの CPU の空きがジョブを通して0%でした。次の3つの負荷源を減らします。
+  含めて、ホストの CPU の空きがジョブを通して0%でした。次の4つの負荷源を減らします。
   - `setup-ios-toolchain` が、シミュレータの起動前に Spotlight の索引作成を止めます。索引を作る
     `mds_stores` がシミュレータと CPU を取り合っていました。ジョブの中で索引を検索する処理はありません。
   - すべての `deviceLog` の取得を、デバッグではなく info レベルで流します
@@ -587,6 +587,13 @@ Protocol（HTTP）チャネルで駆動します。Android の失敗はもう少
     絞ります。絞り込みの条件は `bajutsu-e2e` の `log-predicate` 入力で渡します。絞らない場合、`navigation.yaml` だけで80秒に
     455,715行を流し、その3分の2は1つのシステムデーモンの出力でした。ほかの iOS ジョブは、引き続き
     全プロセスのログを取得します。
+  - `run` と `actuation` のジョブが、どのシナリオも使わないシミュレータのサービスを止めます。
+    止めるのは [`reduce-simulator-services`](../../.github/actions/reduce-simulator-services/action.yml)
+    アクションです（[BE-0517](../../roadmaps/BE-0517-ios-ci-simulator-service-reduction/BE-0517-ios-ci-simulator-service-reduction-ja.md)）。
+    アクションは起動後に、一覧の各ラベルに `launchctl disable` を実行してからシミュレータを再起動します。
+    一覧はラベルをカテゴリに分け、カテゴリごとに止めてよい理由を書いています。各ジョブは開始時と終了時に、
+    止めたサービスの数とシミュレータのプロセス数をログに出します。手動で実行するときは
+    `simulator-services: stock` を選べます。この場合は何も止めずに再起動だけを行います。
 - **何も走る前のホスト。** これも `start` が担います。上限付きの `ps aux` と `vm_stat` を一度だけ
   `runs/diagnostics/ps-baseline.txt` へ書きます。ストール時の捕捉が撮る `ps` は、壊れた時点で何が
   常駐していたかには答えますが、それが平常と違うのかには答えられません。最初の収集では、この問いを
