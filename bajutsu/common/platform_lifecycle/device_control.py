@@ -7,11 +7,21 @@ rather than in the per-platform environment modules.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 
 from bajutsu.common.backend_cli import adb, simctl
 from bajutsu.common.drivers import base
 from bajutsu.common.orchestrator import DeviceControl
+
+_logger = logging.getLogger(__name__)
+
+# How long `overrideStatusBar` waits for System UI to register its Wi-Fi icon (issue #2555). The
+# registration lands within a second of `wifi show`; a System UI that never registers one (an older
+# icon pipeline) cannot draw the duplicate, so the wait ends without failing the step.
+_WIFI_ICON_TIMEOUT = 5.0
+_WIFI_ICON_POLL = 0.1
+_WIFI_ICON_POLL_MAX = 0.5
 
 
 def device_control(
@@ -127,6 +137,8 @@ def android_device_control(
     bring_forward = _android_foreground(foreground)
     send_home = background or e.home
     set_location = _AndroidLocation(e, package, record_mock_location)
+    # The status bar fields pinned since the last clear, which a demo mode re-entry has to restore.
+    pinned: dict[str, str | int] = {}
 
     class _Control:
         def set_location(self, lat: float, lon: float) -> None:
@@ -155,9 +167,11 @@ def android_device_control(
 
         def override_status_bar(self, **kwargs: str | int) -> None:
             _require_showable_status_bar(kwargs)
-            e.override_status_bar(**kwargs)
+            pinned.update(kwargs)
+            _android_override_status_bar(e, kwargs, pinned)
 
         def clear_status_bar(self) -> None:
+            pinned.clear()
             e.clear_status_bar()
 
     return _Control()
@@ -194,6 +208,32 @@ def _require_showable_status_bar(fields: dict[str, str | int]) -> None:
     """
     if problems := adb.status_bar_problems(fields):
         raise base.UnsupportedAction(f"overrideStatusBar: {'; '.join(problems)}")
+
+
+def _android_override_status_bar(
+    e: adb.Env, fields: dict[str, str | int], pinned: dict[str, str | int]
+) -> None:
+    """Enter the demo mode, then enter it again if the first entry doubled the Wi-Fi icon.
+
+    System UI draws a second Wi-Fi icon when it registers the real one during the demo mode (see
+    `adb.wifi_icon_unregistered`, issue #2555). Leaving the demo mode drops both, and the icon stays
+    registered, so a second entry draws one. Leaving also drops what earlier steps pinned, so the
+    second entry sends all of *pinned*, not this step's *fields* alone.
+    """
+    may_double = "wifi_bars" in fields and e.wifi_icon_unregistered()
+    e.override_status_bar(**fields)
+    if not may_double:
+        return
+    for _ in base.deadline_ticks(_WIFI_ICON_TIMEOUT, _WIFI_ICON_POLL, _WIFI_ICON_POLL_MAX):
+        if not e.wifi_icon_unregistered():
+            e.clear_status_bar()
+            e.override_status_bar(**pinned)
+            return
+    _logger.warning(
+        "overrideStatusBar: System UI registered no Wi-Fi icon within %gs, so the demo mode was "
+        "not re-entered; a registration after this would draw the icon twice",
+        _WIFI_ICON_TIMEOUT,
+    )
 
 
 def _android_foreground(foreground: Callable[[], None] | None) -> Callable[[], None]:

@@ -598,6 +598,9 @@ def _non_default(option: Any) -> Any:
     if option.is_bool_flag:
         # A flag pair whose default is unset or on is sent its `--no-` side, so both sides are tried.
         return not (option.secondary_opts and option.default in (None, True))
+    # A choice (typer's own vendored type, not click's) takes one of its values, never free text.
+    if choices := getattr(option.type, "choices", None):
+        return next(c for c in choices if c != option.default)
     kind = option.type.name
     if kind == "integer":
         return 3

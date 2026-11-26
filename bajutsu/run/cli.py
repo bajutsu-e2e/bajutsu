@@ -9,12 +9,14 @@ import sys
 import time
 import typing
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
 
 if TYPE_CHECKING:
     from bajutsu.common.doctor import Score
+
+from enum import StrEnum
 
 import typer
 
@@ -65,6 +67,7 @@ from bajutsu.common.cancellation import (
 )
 from bajutsu.common.capability import capability_preflight
 from bajutsu.common.capability.command_gate import CommandGate
+from bajutsu.common.capability.command_policy import OPERATOR
 from bajutsu.common.capability.worker_capability import WorkerCapability
 from bajutsu.common.config import (
     AndroidConfig,
@@ -88,6 +91,7 @@ from bajutsu.common.platform_lifecycle import ProvisionProfile, environment_for
 from bajutsu.common.report import ScenarioPlanSource
 from bajutsu.common.report.archive import archive_run_dir
 from bajutsu.common.report.manifest import MAX_LABEL_LENGTH, _run_backend
+from bajutsu.common.run_identity.stamp import RunIdentity, read_run_identity
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import (
@@ -2289,6 +2293,7 @@ class _RunPlan:
     network: bool
     log_predicate: str
     log_subsystem: str
+    log_level: str
     progress: bool
     zip_run: bool
     evidence_store: str
@@ -2326,6 +2331,8 @@ class _RunPlan:
     # The runs `runsOn` conditions formed (BE-0452), indexed into `scenarios`; None when no scenario
     # runs any target under a condition, which keeps the single-engine and `--browsers` paths.
     matrix: DeviceMatrix | None = None
+    # Which app builds and sources this run exercises (BE-0506), read once by `_dispatch`.
+    identity: RunIdentity = field(default_factory=RunIdentity)
 
 
 def _finish_hooks(plan: _RunPlan) -> None:
@@ -2460,6 +2467,16 @@ def _dispatch(plan: _RunPlan) -> tuple[list[RunResult], Path, list[dict[str, str
             before.reason,
         )
     try:
+        # Read once, here: after every build and `beforeRun` entry, either of which may write an
+        # app, and before the first lease. Each binary hashes once, so a rebuild mid-run changes
+        # nothing. Inside the `try`, so the `afterRun` backstop covers it too.
+        plan = replace(
+            plan,
+            identity=read_run_identity(
+                {name: setup.eff for name, setup in plan.targets.items()},
+                trusted=plan.command_gate.policy.source == OPERATOR,
+            ),
+        )
         if plan.matrix is not None:
             return _dispatch_runs(plan, plan.matrix, progress_fn)
         if len(plan.engines) > 1:
@@ -2555,8 +2572,10 @@ def _open_pools(plan: _RunPlan) -> dict[str, tuple[LeaseFn, Callable[[], None]]]
                 network=plan.network,
                 log_predicate=plan.log_predicate or None,
                 log_subsystem=plan.log_subsystem or _log_subsystem_default(setup.eff),
+                log_level=plan.log_level,
                 secret_values=plan.secret_values,
                 provision=setup.device.provision,
+                identity=plan.identity,
             )
     except BaseException:
         # `mid_run=True`: a pool that came up before a later one failed to must not have its own
@@ -2636,6 +2655,7 @@ def _dispatch_single(
             resolve_actuator=lambda s: select_actuator_for_scenario(plan.backends, s),
             worker_failures=plan.worker_failures,
             config_source=plan.config_source,
+            identity=plan.identity,
             command_executions=plan.command_gate.records,
             label=plan.label or None,
             golden_context=plan.golden_context,
@@ -2676,8 +2696,10 @@ def _dispatch_matrix(
             network=plan.network,
             log_predicate=plan.log_predicate or None,
             log_subsystem=plan.log_subsystem or _log_subsystem_default(eff_e),
+            log_level=plan.log_level,
             secret_values=plan.secret_values,
             provision=plan.provision,
+            identity=plan.identity,
         )
         try:
             return run_all(
@@ -2723,6 +2745,7 @@ def _dispatch_matrix(
         secret_values=plan.secret_values,
         label=plan.label or None,
         config_source=plan.config_source,
+        identity=plan.identity,
         command_executions=plan.command_gate.records,
         cancelled=plan.cancelled,
         worker_failures=plan.worker_failures,
@@ -2808,6 +2831,7 @@ def _dispatch_runs(
         plan_sources=plan.plan_sources,
         secret_values=plan.secret_values,
         config_source=plan.config_source,
+        identity=plan.identity,
         command_executions=plan.command_gate.records,
         label=plan.label or None,
         worker_failures=plan.worker_failures,
@@ -2870,8 +2894,10 @@ def _run_cell(
                 network=plan.network,
                 log_predicate=plan.log_predicate or None,
                 log_subsystem=plan.log_subsystem or _log_subsystem_default(effs[name]),
+                log_level=plan.log_level,
                 secret_values=plan.secret_values,
                 provision=setup.device.provision,
+                identity=plan.identity,
             )
         # Each worker holds one device per participant on a pool for the scenario's whole length.
         demand: dict[tuple[str, tuple[str, ...], str], int] = {}
@@ -3023,6 +3049,14 @@ def _finish(
         typer.echo(f"afterRun failed: {teardown.reason}")
         raise typer.Exit(2)
     raise typer.Exit(0 if ok else 1)
+
+
+class DeviceLogLevel(StrEnum):
+    """The `--log-level` choices, which are `log stream --level`'s own values."""
+
+    DEFAULT = "default"
+    INFO = "info"
+    DEBUG = "debug"
 
 
 def _check_label(value: str) -> str:
@@ -3207,6 +3241,11 @@ def run_body(
     ),
     log_subsystem: str = typer.Option(
         "", "--log-subsystem", help="os_log subsystem for appTrace (defaults to the app's bundleId)"
+    ),
+    # The enum is what makes typer offer and enforce the three choices; ruff's B008 only exempts an
+    # option whose annotation it knows to be immutable, which an enum is to typer but not to ruff.
+    log_level: DeviceLogLevel = typer.Option(  # noqa: B008  # typer reads options from defaults
+        DeviceLogLevel.INFO, "--log-level", help="`log stream --level` for the iOS deviceLog"
     ),
     network: bool | None = typer.Option(
         None,
@@ -3709,6 +3748,7 @@ def run_body(
                 network=network,
                 log_predicate=log_predicate,
                 log_subsystem=log_subsystem,
+                log_level=log_level.value,
                 progress=progress,
                 zip_run=zip_run,
                 label=label,

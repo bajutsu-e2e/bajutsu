@@ -93,7 +93,7 @@ targets:
 
 | グループ | iOS | Android | Web |
 |---|---|---|---|
-| `subject` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`、`startWhen`、`idNamespaces` | `id`、`path`、`build`、`reinstall`、`launch.env`、`launch.deeplink`、`grantPermissions`、`startWhen`、`idNamespaces` | `url`、`launch.env`、`startWhen`、`idNamespaces` |
+| `subject` | `id`、`path`、`build`、`sourceRoot`、`reinstall`、`launch.env`、`launch.args`、`launch.deeplink`、`startWhen`、`idNamespaces` | `id`、`path`、`build`、`sourceRoot`、`reinstall`、`launch.env`、`launch.deeplink`、`grantPermissions`、`startWhen`、`idNamespaces` | `url`、`launch.env`、`startWhen`、`idNamespaces` |
 | `runsOn` | `ios.model`、`ios.os`、`ios.kind`、`ios.family`、`ios.locale`、`ios.seedPhotos` | `android.avd`、`android.apiLevel`、`android.locale`、`android.seedPhotos` | `browser.kind`、`browser.version`、`browser.emulate` |
 | `driver` | `runner.testRunner`、`runner.build`、`runner.hostAddress` | `nativeZ`、`residentRecovery.readRetries`、`residentRecovery.restart` | `headless` |
 
@@ -183,7 +183,7 @@ targets:
 
 - パスは、その `extends` を書いたファイルのディレクトリを基準に解決します。
 - ファイルはスイートのルートの内側になければなりません。
-- ファイル内の相対的な値は、そのファイル自身のディレクトリを基準に解決します。対象は、入れ子の `extends` の要素、パスのフィールド、`hooks` が `use` で呼ぶコンポーネントです。パスのフィールドは `subject.path`、`runsOn.ios.seedPhotos`、`driver.runner.testRunner`、`paths.*` です。
+- ファイル内の相対的な値は、そのファイル自身のディレクトリを基準に解決します。対象は、入れ子の `extends` の要素、パスのフィールド、`hooks` が `use` で呼ぶコンポーネントです。パスのフィールドは `subject.path`、`subject.sourceRoot`、`runsOn.ios.seedPhotos`、`driver.runner.testRunner`、`paths.*` です。
 - ビルドのコマンド（`subject.build`、`driver.runner.build`）は書き換えません。ターゲット自身のコマンドと同じく、config ファイルのディレクトリで実行します。ビルドのコマンドと、それが作るパスは同じ場所に書いてください。分けると、ビルドの出力先とパスの指す先が食い違います。
 - テンプレートファイルは自前の `templates:` を持たないので、ファイルの `extends` にはファイルだけを書けます。
 
@@ -355,6 +355,7 @@ targets:
 | `platform_config.base_url`（`WebConfig`） | `subject.url` | web のターゲット URL（Playwright backend）です |
 | `platform_config.package`（`AndroidConfig`） | `subject.id` | Android のターゲット識別子です |
 | `platform_config.app_path` / `.build`（`IosConfig`、`AndroidConfig`） | `subject.path` / `subject.build` | run が各シナリオの前に（未インストールなら）インストールするビルド済みアプリと、それを必要なときにビルドするシェルコマンドです |
+| `platform_config.source_root`（`IosConfig`、`AndroidConfig`） | `subject.sourceRoot` | 任意です。アプリのソースリポジトリで、そのコミットを manifest に記録します（[reporting](reporting.md#ビルドとソースの識別情報)） |
 | `platform_config.xcuitest`（`IosConfig`） | `driver.runner` と `runsOn.ios.kind` | XCUITest の runner です。`testRunner`（ビルド済みの `.xctestrun`）、`build`（それをビルドするコマンド）、`hostAddress`（[後述](#実機のホストアドレスdriverrunnerhostaddress)）、接続先の `kind` を持ちます |
 | `platform_config.grant_permissions`（`AndroidConfig`） | `subject.grantPermissions` | Android のみ: 起動前に付与する実行時の権限です（`pm grant`）。権限のプロンプトがシナリオを止めないようにします |
 | `platform_config.native_z`（`AndroidConfig`） | `driver.nativeZ` | Android のみ: `nativeZ: true` は、opt-in した各ビュー自身の `View.getZ()` を端末に要求します。`elements.json` は診断用フィールド `nativeZ` として報告します（[BE-0355](../../roadmaps/BE-0355-native-z-position/BE-0355-native-z-position-ja.md)）。指定しなければ off です。値を返すノード走査は画面の読み取りごとに走り、20 ミリ秒から 100 ミリ秒かかるうえ、テスト対象のアプリが `BajutsuAndroid` をリンクしてビューを opt-in していなければ何も報告しないためです。on にしたターゲットは、確認が取れたジェスチャの応答が省いてくれるはずだった往復も手放します。その応答は `nativeZ` の値を運べないため、位置がすべて未計測になるツリーを受け取る代わりに、そもそも作らないよう端末へ要求します（[BE-0407](../../roadmaps/BE-0407-step-latency-driver-internal-tuning/BE-0407-step-latency-driver-internal-tuning-ja.md) の作業単位 18〜19）。iOS に対応するフラグはありません。レスポンダは BajutsuKit をリンクしたアプリにだけ応答するためです |

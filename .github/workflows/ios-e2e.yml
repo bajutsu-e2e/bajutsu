@@ -723,6 +723,12 @@ jobs:
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
           udid: ${{ steps.toolchain.outputs.udid }}
+          # The app, plus the two system processes a failure here needs: SpringBoard, which the alert and
+          # banner scenarios drive, and runningboardd, which logs why an app was terminated. Unfiltered,
+          # the scenarios' `deviceLog` captures streamed the whole Simulator: 455,715 lines in
+          # navigation.yaml's 80s window, two thirds of them from apsd, while the three-core host
+          # already sat at 0% idle.
+          log-predicate: process IN {"BajutsuShowcaseSwiftUI", "SpringBoard", "runningboardd"}
           artifact-name: actuation-run
 
       # `bajutsu repl --attach` (BE-0455): launch the app, attach the shell, and compare the app's pid

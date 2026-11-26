@@ -17,5 +17,7 @@ class IosConfig:
     # Shell command that builds `app_path`; `bajutsu serve` runs it on demand if the binary is
     # missing. None = no on-demand build.
     build: str | None = None
+    # Source repository of the app, read for the provenance stamp (BE-0506). None = not recorded.
+    source_root: str | None = None
     # XCUITest runner config (BE-0019), built from `driver.runner` and `runsOn.ios.kind` (BE-0452).
     xcuitest: XcuitestConfig | None = None
