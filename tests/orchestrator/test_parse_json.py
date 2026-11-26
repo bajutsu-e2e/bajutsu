@@ -13,12 +13,15 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
 from bajutsu.common.orchestrator import run_scenario
 from bajutsu.common.orchestrator.actions import _do_action
+from bajutsu.common.orchestrator.actions.handlers import parse_json
 from bajutsu.common.orchestrator.actions.handlers.parse_json import (
     ParseJsonError,
     evaluate,
+    record_parse_json,
     target_names,
 )
 from bajutsu.common.orchestrator.substitution import _interp_step
+from bajutsu.common.orchestrator.types import DerivedSecrets
 from bajutsu.common.scenario import ParseJson, Step
 
 
@@ -94,7 +97,9 @@ def test_a_substituted_segment_may_not_carry_path_structure_and_is_not_quoted(va
     assert not value or value not in str(caught.value).replace("'.', '[', or ']'", "")
 
 
-@pytest.mark.parametrize("text", ["not json s3cret", "[" * 100_000])
+@pytest.mark.parametrize(
+    "text", ["not json s3cret", "[" * 100_000, '{"a": NaN}', '{"a": -Infinity}']
+)
 def test_text_that_is_not_json_fails_without_quoting_it(text: str) -> None:
     with pytest.raises(ParseJsonError, match="not valid JSON") as caught:
         _eval_over(_spec(("v", "a")), text)
@@ -216,3 +221,23 @@ def test_a_public_value_written_over_a_secret_variable_clears_the_mark() -> None
     )
     assert result.ok, result.failure
     assert result.derived_secrets == ["hunter2"]
+
+
+def test_a_step_with_no_var_scope_does_nothing() -> None:
+    _do_action(FakeDriver([]), Step.model_validate(_step("v", "a", "not json")), bindings=None)
+
+
+def test_a_value_too_deep_to_serialize_fails_the_step(monkeypatch: pytest.MonkeyPatch) -> None:
+    def too_deep(_value: object) -> str:
+        raise RecursionError
+
+    monkeypatch.setattr(parse_json, "json_text", too_deep)
+    with pytest.raises(ParseJsonError, match="nested too deeply"):
+        _eval_over(_spec(("v", "a")), {"a": {}})
+
+
+def test_a_step_that_wrote_nothing_records_no_secret() -> None:
+    derived = DerivedSecrets()
+    spec = _spec(("v", "a"), source="${secrets.BLOB}")
+    record_parse_json(spec, ["v"], {}, derived, completed=False)
+    assert derived.values == [] and derived.secret_vars == set()

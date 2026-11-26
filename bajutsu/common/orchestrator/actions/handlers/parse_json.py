@@ -134,6 +134,11 @@ def target_names(spec: ParseJson, bindings: Mapping[str, str]) -> list[str]:
     return [str(interpolate(field.var, bindings)) for field in spec.extract]
 
 
+def _not_json(_constant: str) -> object:
+    # `json` accepts `NaN` and `Infinity` by default; neither is JSON.
+    raise ValueError
+
+
 def _where(position: int, field: ParseJsonField) -> str:
     return f"extract entry {position} (path {field.path!r})"
 
@@ -173,7 +178,7 @@ def evaluate(spec: ParseJson, bindings: Mapping[str, str]) -> dict[str, str]:
         where = _where(position, field)
         paths.append(_parse_path(_substitute_path(field.path, where, bindings), where))
     try:
-        data = json.loads(text)
+        data = json.loads(text, parse_constant=_not_json)
     except (ValueError, RecursionError):
         # Chained from None: the decoder's own error object holds the whole text.
         raise ParseJsonError("from: the text is not valid JSON") from None

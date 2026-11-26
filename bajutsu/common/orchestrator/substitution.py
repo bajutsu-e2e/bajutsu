@@ -67,7 +67,7 @@ def _restore_authored(interpolated: object, authored: object) -> None:
             keys = _AUTHORED_ACTIONS.get(key)
             if keys is not None and isinstance(original, dict) and original.keys() == keys:
                 interpolated[key] = original
-            elif key in authored:
+            else:
                 _restore_authored(value, original)
     elif isinstance(interpolated, list) and isinstance(authored, list):
         for item, original in zip(interpolated, authored, strict=False):
