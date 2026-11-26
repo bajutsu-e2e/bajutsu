@@ -195,7 +195,8 @@ def test_the_sampler_ranks_processes_by_memory_not_cpu(tmp_path: Path) -> None:
     # constant. Measured: across a whole failing job's telemetry, the rows it kept included the 1.2 GB
     # app zero times. Asserted against the emitted script because the sampler runs detached, so its own
     # output is not this step's to observe.
-    _run("start", tmp_path, hangs=False)
+    done = _run("start", tmp_path, hangs=False)
+    assert done.returncode == 0, done.stderr
     sampler = (tmp_path / "bajutsu-host-telemetry.sh").read_text()
     assert "-o mem" in sampler, sampler
     assert "-o cpu" not in sampler, sampler
