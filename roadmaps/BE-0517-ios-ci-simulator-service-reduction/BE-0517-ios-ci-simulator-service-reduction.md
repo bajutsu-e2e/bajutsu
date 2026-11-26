@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
+| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) |
 <!-- /BE-METADATA -->
@@ -184,7 +185,7 @@ item would design how to apply the list again from configuration.
 
 Log:
 
-- PR_LINK: units 1 to 3 shipped. The table lists where the implementation differs from the design.
+- [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584): units 1 to 3 shipped. The table lists where the implementation differs from the design.
 
 | Point | What shipped, and why |
 |---|---|

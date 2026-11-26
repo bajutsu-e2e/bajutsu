@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
+| 実装 PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584)（単位 1〜3） |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming-ja.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md) |
 <!-- /BE-METADATA -->
@@ -127,7 +128,7 @@ BE-0494 の空きメモリは、アプリのインストール後の 1 回の値
 
 ログ：
 
-PR_LINK で作業単位 1 から 3 を実装しました。実装が設計と異なる点は、次の表のとおりです。
+[#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) で作業単位 1 から 3 を実装しました。実装が設計と異なる点は、次の表のとおりです。
 
 | 項目 | 実装した内容と理由 |
 |---|---|
