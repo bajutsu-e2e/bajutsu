@@ -36,6 +36,7 @@ from bajutsu.common.scenario.models.actions import (
     OpenUrl,
     Otp,
     OverrideStatusBar,
+    ParseJson,
     Paste,
     Pinch,
     Push,
@@ -124,6 +125,7 @@ class Step(_Model):
     generate: Generate | None = None
     # `eval_` (alias `eval`) for the same reason as `copy_`: the Python name would shadow a builtin.
     eval_: Eval | None = Field(default=None, alias="eval")
+    parse_json: ParseJson | None = Field(default=None, alias="parseJson")
     email: Email | None = None
     clear_keychain: ClearKeychain | None = Field(default=None, alias="clearKeychain")
     clear_clipboard: ClearClipboard | None = Field(default=None, alias="clearClipboard")

@@ -119,3 +119,18 @@ def test_eval_is_a_labeled_todo_on_every_generator(module: str) -> None:
     )
     assert emit(one) == ["// TODO: eval(into: v) — runner-computed value; not generated"]
     assert emit(spread) == ["// TODO: eval(into: a, b) — runner-computed value; not generated"]
+
+
+@pytest.mark.parametrize("module", ["xcuitest", "uiautomator", "playwright"])
+def test_parse_json_is_a_labeled_todo_on_every_generator(module: str) -> None:
+    # `parseJson` writes variables inside the bajutsu runner (BE-0516), which no generated test has.
+    emit = importlib.import_module(f"bajutsu.codegen.{module}")._emit_step
+    step = Step.model_validate(
+        {
+            "parseJson": {
+                "from": "${vars.body}",
+                "extract": [{"var": "a", "path": "x"}, {"var": "b", "path": "y"}],
+            }
+        }
+    )
+    assert emit(step) == ["// TODO: parseJson(into: a, b) — runner-computed values; not generated"]

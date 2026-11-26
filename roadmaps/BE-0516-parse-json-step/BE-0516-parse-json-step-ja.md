@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0516](BE-0516-parse-json-step-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0516") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0440](../BE-0440-http-step-field-extraction/BE-0440-http-step-field-extraction-ja.md)、[BE-0472](../BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations-ja.md) |
@@ -93,9 +93,16 @@
 > 作業の進行に合わせて更新します。チェックリストは *詳細設計* の MECE な作業分解に対応し（作業単位ごとに
 > 1 項目）、ログは変更内容と時期を（古い順に）記録して PR にリンクします。
 
-- [ ] `parseJson` ステップ
-- [ ] `extractBody` の削除
-- [ ] 日英の文書
+- [x] `parseJson` ステップ
+- [x] `extractBody` の削除
+- [x] 日英の文書
+
+ログ：
+
+- `parseJson` ステップを追加し、`http` から `extractBody` を削除しました。設計に加えて、次の 2 点を決めました。
+  取り出した値は、ステップの manifest エントリに記録しません。どのマスクも対象にしていないレスポンスから読むことが
+  多いためです。過去の実行を読み直す処理は、保存された `extractBody` を取り除き、その実行のレポートを引き続き
+  描画できるようにします。
 
 ## 参考
 

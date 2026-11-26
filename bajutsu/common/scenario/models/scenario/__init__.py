@@ -4,7 +4,6 @@ Preconditions, the scenario and its reusable component, and the
 scenario-file wrapper that ties them together.
 """
 
-from ._http_extract import _check_http_extract_vars as _check_http_extract_vars
 from ._open_urls import _check_open_urls as _check_open_urls
 from ._targets import _check_target_requirements as _check_target_requirements
 from ._targets import _expand_target_groups as _expand_target_groups

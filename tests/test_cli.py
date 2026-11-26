@@ -1119,12 +1119,9 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
     assert "declares no targets" in r.output
 
 
-def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_path: Path) -> None:
-    # BE-0440: `with_lifecycle_phases` folds a target config's `hooks.setup`/`cleanup` in via
-    # `model_copy`, which never re-runs `Scenario`'s own model_validator — and `_hooks_for` reads
-    # those hooks as a bare `list[Step]` straight off the target config, never through a full
-    # `Scenario.model_validate`. A duplicate `extractBody`/`saveBody` var inside one of a hook's own
-    # `http` steps must still fail at load time, the same as one written directly into the scenario.
+def test_run_rejects_extract_body_in_a_target_config_hook(tmp_path: Path) -> None:
+    # A target config's hooks are read as bare steps, so the BE-0516 removal message has to reach
+    # an author through that path too, not only through a scenario file.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         (
@@ -1138,7 +1135,6 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
             "          url: https://api.test/data\n"
             "          extractBody:\n"
             "          - {var: a, path: p1}\n"
-            "          - {var: a, path: p2}\n"
         ),
         encoding="utf-8",
     )
@@ -1161,9 +1157,8 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
             str(tmp_path / "runs"),
         ],
     )
-    assert r.exit_code == 2
-    assert "'a'" in r.output
-    assert "extractBody" in r.output
+    assert r.exit_code == 1  # refused while the config loads
+    assert "extractBody was removed" in str(r.exception)
 
 
 def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(

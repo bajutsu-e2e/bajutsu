@@ -553,11 +553,17 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - The vocabulary is `split`, `join`, `filter`, `pick`, `count`, `sort`, `unique`, `reverse`, `json`, `regex`, `replace`, `substring`, `trim`, and `case`.
   - `into: { var }` stores the result in one variable. `into: { vars: [...] }` spreads a list result over several variables in order.
   - The loader type-checks the pipeline (string in, string or list at each step) before the run starts. It rejects an operation applied to the wrong type.
-  - A list result is stored as compact JSON array text, the same `json_text` rendering that `extractBody` uses.
+  - A list result is stored as compact JSON array text, the same `json_text` rendering that `parseJson` uses.
   - When any input traces back to `${secrets.*}` or to a variable that an earlier step marked secret, the result is registered as a new secret value before the step is recorded. A derived value is thus masked in every later artifact. The result of `count` is exempt, since it carries no character of the input.
   - The masking is scenario-scoped. Under `--workers > 1`, a value derived in one scenario does not mask matching text in another scenario's evidence.
   - `eval` has no XCUITest/Playwright/UI Automator equivalent, so every codegen target emits a labeled `// TODO`.
   - Despite the name, `eval` runs no code. `ops` draws from the vocabulary above alone, and a scenario cannot extend it. The step stays local and deterministic, with no model and no network.
+- DSL `parseJson` step (BE-0516): reads JSON text from `from` and copies the values at the `extract` paths into `${vars.*}`.
+  - A `path` is a fixed grammar of object keys and zero-based `[n]` indexes. A string value is stored as it stands, any other as compact JSON text.
+  - All entries resolve together. Text that is not JSON, a malformed or unresolved path, or text over 1,048,576 characters fails the step and writes nothing. No failure message quotes the text or a substituted value.
+  - A value read from a secret input is registered as a secret, under the same rules as `eval`. The extracted values are not recorded on the step's manifest entry.
+  - Every codegen target emits a labeled `// TODO`.
+  - It replaces the `extractBody` option of `http`, which no longer loads.
 - DSL `sleep` step (BE-0451) is the one sanctioned exception to condition waits. It is a fixed pause for a wait that no condition on the screen, the tree, or the network log can observe, such as a server-side throttle or an animation that outlives `until: settled`.
   - `seconds` (strict, `0 < seconds ≤ 30`) and a non-blank `reason` are both required. The loader rejects a longer or unexplained pause and points at `wait` instead.
   - The run loop executes the step beside `wait`, through the injected `Clock`, in quarter-second slices. A cancelled run leaves promptly, and a fake-clock test advances time with no wall-clock wait. The step touches no driver and needs no capability token.
@@ -639,7 +645,7 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 - DSL device and system actions (iOS):
   - `background`, `clearKeychain`, `clearClipboard`.
   - `overrideStatusBar` / `clearStatusBar` (deterministic status bar).
-  - The `http` action for test-data setup and webhooks. `saveBody` stores the whole response body. `extractBody` (BE-0440) pulls one or more named fields out of a JSON body by a fixed key/index `path` grammar, straight into `${vars.*}`.
+  - The `http` action for test-data setup and webhooks. `saveBody` stores the whole response body.
 - DSL `setPickerValue` (BE-0356) moves a wheel-style picker to a named row. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` in a wheel mode. The step calls XCUITest's own `adjust(toPickerWheelValue:)` on the resolved wheel.
   - On Android (BE-0480) the picker is an `android.widget.NumberPicker`, spinner-mode `DatePicker` and `TimePicker` included. The adb driver resolves the wheel as it resolves a tap target. It sends the wheel's identity to the resident server's `/setPickerValue` endpoint. The server steps the wheel one row at a time through `NumberPicker`'s accessibility scroll actions. It reads the row back after each step. A 400-row cap and a deadline bound the walk. The step has no coordinate fallback.
   - The step is handle-based like `tap`, not coordinate-based like `swipe`/`drag`/`scroll`. A wheel's rows are not separately addressable elements that a coordinate drag could reliably stop on.

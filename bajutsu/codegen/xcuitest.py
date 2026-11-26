@@ -32,6 +32,7 @@ from bajutsu.codegen.common import (
     is_plain_substring,
     manual_todo,
     network_unsupported,
+    parse_json_todo,
     permissions_setup_lines,
     render_test_file,
     sleep_comment,
@@ -409,6 +410,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
     if (todo := device_group_todo(step)) is not None:
         return [todo]
     if (todo := eval_todo(step)) is not None:
+        return [todo]
+    if (todo := parse_json_todo(step)) is not None:
         return [todo]
     if step.relaunch is not None:
         return ["app.terminate()", "app.launch()"]
