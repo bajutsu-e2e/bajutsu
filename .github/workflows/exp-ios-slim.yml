@@ -1,0 +1,200 @@
+# EXPERIMENT ONLY, not for merge. Runs the run / actuation / golden lanes of ios-e2e.yml three times
+# each with and without a set of Simulator services disabled, and prints load figures into the logs.
+name: iOS slim Simulator experiment
+
+on:
+  push:
+    branches: [claude/exp-ios-slim-sim]
+
+permissions:
+  contents: read
+env:
+  BAJUTSU_XCUITEST_RUNNER_LOG: ${{ github.workspace }}/runs/runner-logs
+  BAJUTSU_XCUITEST_RESULT_BUNDLES: ${{ github.workspace }}/runs/runner-logs
+  BAJUTSU_STALL_DIAGNOSTICS: ${{ github.workspace }}/runs/diagnostics/stalls
+  BAJUTSU_XCUITEST_STARTUP_TIMEOUT: "300"
+  BAJUTSU_XCUITEST_RESPAWN_TIMEOUT: "90"
+  BAJUTSU_XCUITEST_RECOVERY_TIMEOUT: "180"
+  BAJUTSU_XCUITEST_MAX_WARM_REUSES: "1"
+  BAJUTSU_CRASH_RETRIES: "2"
+  BAJUTSU_CRASH_RECOVERY_BUDGET: "300"
+  BAJUTSU_RUN_CRASH_RECOVERY_BUDGET: "900"
+
+jobs:
+  build:
+    name: build (app + runner)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+        with:
+          boot: "false"
+
+      - name: Cache DerivedData (app)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/swiftui/build/dd
+          key: xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'demos/showcase/ios/swiftui/**/*.swift', 'demos/showcase/ios/swiftui/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-app-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Cache DerivedData (runner)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: BajutsuKit/Runner/build/dd
+          key: xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'BajutsuKit/Runner/project.yml', 'Package.resolved', 'BajutsuKit/Sources/BajutsuRunner/openapi.yaml', 'BajutsuKit/Sources/BajutsuRunner/openapi-generator-config.yaml') }}
+          restore-keys: |
+            xcode-dd-runner-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Cache DerivedData (uikit)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: demos/showcase/ios/uikit/build/dd
+          key: xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-${{ hashFiles('Package.swift', 'BajutsuKit/**/*.swift', 'demos/showcase/ios/uikit/**/*.swift', 'demos/showcase/ios/uikit/**/project.yml') }}
+          restore-keys: |
+            xcode-dd-uikit-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.xcode-version }}-
+
+      - name: Build the apps + runner
+        run: |
+          make -C demos/showcase swiftui-build
+          make -C demos/showcase uikit-build
+          make runner-bundle
+
+      - name: Package the build products
+        run: |
+          tar -cf ios-build.tar \
+            demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app \
+            demos/showcase/ios/uikit/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseUIKit.app \
+            BajutsuKit/Runner/build/dd/Build/Products \
+            bajutsu/_xcuitest_runner
+
+      - name: Upload the build products
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: ios-build
+          path: ios-build.tar
+          retention-days: 1
+          if-no-files-found: error
+
+  lane:
+    name: ${{ matrix.lane }} (slim=${{ matrix.slim }}, trial ${{ matrix.trial }})
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      BAJUTSU_MIN_WAIT_TIMEOUT: "20"
+    # Three at a time, so the experiment does not take every macOS runner from other work.
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        trial: [1, 2, 3]
+        lane: [run, actuation, golden]
+        slim: [false, true]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up the iOS toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-ios-toolchain
+
+      - name: Download the prebuilt app + runner
+        uses: ./.github/actions/download-ios-build
+
+      - name: Unpack the build products
+        run: tar -xpf ios-build.tar
+
+      - name: Wait for the Simulator
+        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+
+      - name: Reboot the Simulator
+        uses: ./.github/actions/slim-simulator
+        with:
+          udid: ${{ steps.toolchain.outputs.udid }}
+          slim: ${{ matrix.slim }}
+
+      - name: Install the app
+        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+
+      - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
+        if: matrix.lane == 'run'
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: >-
+            demos/showcase/scenarios/smoke.yaml
+            demos/showcase/scenarios/gestures_multitouch.yaml
+            demos/showcase/scenarios/picker_wheel.yaml
+            demos/showcase/scenarios/webview.yaml
+            demos/showcase/scenarios/search.yaml
+            demos/showcase/scenarios/notices.yaml
+            demos/showcase/scenarios/open_url.yaml
+            demos/showcase/scenarios/alert.yaml
+            demos/showcase/scenarios/permission.yaml
+            demos/showcase/scenarios/permission_system_alert.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: run-${{ matrix.slim }}-${{ matrix.trial }}
+
+      - name: Onboarding gate (bajutsu doctor environment — BE-0304)
+        if: matrix.lane == 'run'
+        env:
+          UDID: ${{ steps.toolchain.outputs.udid }}
+        run: >-
+          uv run --no-sync python scripts/assert_doctor_env.py --expect ok
+          --target showcase-swiftui --backend xcuitest
+          --config demos/showcase/showcase.config.yaml --udid "$UDID"
+
+      - name: Run the actuation + authoring scenarios (xcuitest)
+        if: matrix.lane == 'actuation'
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: >-
+            demos/showcase/scenarios/navigation.yaml
+            demos/showcase/scenarios/extract.yaml
+            demos/showcase/scenarios/foreach.yaml
+            demos/showcase/scenarios/data_driven.yaml
+            demos/showcase/scenarios/relaunch.yaml
+            demos/showcase/scenarios/device.yaml
+            demos/showcase/scenarios/push.yaml
+            demos/showcase/scenarios/push_banner.yaml
+            demos/showcase/scenarios/paste.yaml
+            demos/showcase/scenarios/text_editing.yaml
+            demos/showcase/scenarios/system_alert_handling.yaml
+            demos/showcase/scenarios/paste_system_alert.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.toolchain.outputs.udid }}
+          log-predicate: process IN {"BajutsuShowcaseSwiftUI", "SpringBoard", "runningboardd"}
+          artifact-name: actuation-run-${{ matrix.slim }}-${{ matrix.trial }}
+
+      - name: Attach the REPL to the running app (BE-0455)
+        if: matrix.lane == 'actuation'
+        run: scripts/repl_attach_e2e.sh "${{ steps.toolchain.outputs.udid }}"
+
+      - name: Run golden scenarios (BE-0006)
+        if: matrix.lane == 'golden'
+        uses: ./.github/actions/bajutsu-e2e
+        with:
+          scenarios: >-
+            demos/showcase/scenarios/golden/golden.yaml
+            demos/showcase/scenarios/golden/golden_xcuitest.yaml
+          target: showcase-swiftui
+          backend: xcuitest
+          config: demos/showcase/showcase.config.yaml
+          udid: ${{ steps.toolchain.outputs.udid }}
+          artifact-name: ios-golden-run-${{ matrix.slim }}-${{ matrix.trial }}
+
+      - name: Load figures at the end
+        if: always()
+        env:
+          UDID: ${{ steps.toolchain.outputs.udid }}
+        run: |
+          .github/actions/slim-simulator/metrics.sh "$UDID" end
+          echo "EXPMETRIC telemetry $(jq -c '{host_load, runs_ok, scenarios: [.scenarios[] | {scenario, ok, duration_s}]}' runs/diagnostics/ci-telemetry/ci-telemetry.json || echo missing)"

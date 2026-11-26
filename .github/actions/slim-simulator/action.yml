@@ -1,0 +1,29 @@
+name: Reboot the Simulator with fewer services (experiment)
+description: >-
+  EXPERIMENT ONLY, not for merge. Reboots the booted Simulator, with the listed launchd services
+  disabled when `slim` is 'true', then prints load figures into the job log.
+inputs:
+  udid:
+    description: Simulator UDID.
+    required: true
+  slim:
+    description: "'true' disables the listed services before the reboot."
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Reboot the Simulator
+      shell: bash
+      env:
+        UDID: ${{ inputs.udid }}
+        SLIM: ${{ inputs.slim }}
+      run: |
+        start=$(date +%s)
+        "$GITHUB_ACTION_PATH/disable.sh" "$UDID" "$SLIM"
+        echo "EXPMETRIC reboot slim=$SLIM seconds=$(( $(date +%s) - start ))"
+    - name: Load figures after the reboot
+      shell: bash
+      env:
+        UDID: ${{ inputs.udid }}
+      run: |
+        "$GITHUB_ACTION_PATH/metrics.sh" "$UDID" start
