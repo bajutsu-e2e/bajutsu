@@ -19,3 +19,7 @@ class DeviceProvider(_Model):
 
     kind: str = "local"
     endpoint: str | None = None
+    # The lease broker's command and its two bounds, filled by a `leased` environment (BE-0511).
+    command: tuple[str, ...] | None = None
+    acquire_timeout: float | None = None
+    release_timeout: float | None = None

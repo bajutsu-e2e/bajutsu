@@ -28,7 +28,6 @@ from bajutsu.run.cli import (
     _acquire_targets,
     _close_pools,
     _declared_targets_in,
-    _pool_demand,
     _reject_incompatible_actuator_sharing,
     _reject_preinstalled_group_builds,
     _reject_self_declaring_in_dir,
@@ -40,6 +39,7 @@ from bajutsu.run.cli import (
     _resolve_target_effs,
     _TargetSetup,
 )
+from bajutsu.run.pool_demand import pool_demand
 
 _CONFIG = (
     "targets:\n"
@@ -399,7 +399,7 @@ def test_two_targets_on_one_pool_demand_two_devices() -> None:
             }
         )
     ]
-    assert _pool_demand(scenarios, setups) == {"fake": 2}
+    assert pool_demand(scenarios, {n: s.actuator for n, s in setups.items()}) == {"fake": 2}
 
 
 def test_a_device_group_demands_one_device_however_many_members() -> None:
@@ -419,7 +419,7 @@ def test_a_device_group_demands_one_device_however_many_members() -> None:
             }
         )
     ]
-    assert _pool_demand(scenarios, setups) == {"fake": 1}
+    assert pool_demand(scenarios, {n: s.actuator for n, s in setups.items()}) == {"fake": 1}
     assert _resolve_multi_target_workers(scenarios, setups, 4) == 1
 
 
@@ -438,7 +438,7 @@ def test_two_targets_on_two_pools_demand_one_device_each() -> None:
             }
         )
     ]
-    assert _pool_demand(scenarios, setups) == {"fake": 1, "playwright": 1}
+    assert pool_demand(scenarios, {n: s.actuator for n, s in setups.items()}) == {"fake": 1, "playwright": 1}
 
 
 def test_a_pool_with_too_few_devices_is_refused_up_front(

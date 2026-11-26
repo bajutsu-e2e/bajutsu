@@ -523,24 +523,26 @@ def test_the_mcp_probe_takes_its_device_through_the_worker(monkeypatch: pytest.M
     # CI hosts have no xcuitest toolchain; the probe's routing is what this test reads.
     monkeypatch.setattr("bajutsu.mcp.tools.select_actuator", lambda *_a, **_k: "xcuitest")
 
-    eff, spec = _probe_device(_eff(_IOS), "booted", _grid())
-    assert spec == "https://grid.example/wd/hub"
-    assert eff.device_provider is not None
-    _, local = _probe_device(
-        _eff(_IOS), "booted", parse_worker_capability("version: 1\ndrivers: [fake]\n")
-    )
-    assert local == "booted"
-    with pytest.raises(ValueError, match="no longer takes a URL"):
-        _probe_device(_eff(_IOS), "https://grid/", _grid())
+    with _probe_device(_eff(_IOS), "booted", _grid()) as (eff, spec):
+        assert spec == "https://grid.example/wd/hub"
+        assert eff.device_provider is not None
+    plain = parse_worker_capability("version: 1\ndrivers: [fake]\n")
+    with _probe_device(_eff(_IOS), "booted", plain) as (_, local):
+        assert local == "booted"
+    with (
+        pytest.raises(ValueError, match="no longer takes a URL"),
+        _probe_device(_eff(_IOS), "https://grid/", _grid()),
+    ):
+        pass
     # A grid has no pool to read, so a condition on a target it serves fails by name.
-    with pytest.raises(ValueError, match=r"runsOn\.ios\.os"):
-        _probe_device(
-            _eff(
-                'targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {os: "18"}} }\n'
-            ),
-            "booted",
-            _grid(),
-        )
+    conditioned = _eff(
+        'targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {os: "18"}} }\n'
+    )
+    with (
+        pytest.raises(ValueError, match=r"runsOn\.ios\.os"),
+        _probe_device(conditioned, "booted", _grid()),
+    ):
+        pass
 
 
 def test_the_mcp_doctor_tool_reports_a_refused_device(tmp_path: Path) -> None:

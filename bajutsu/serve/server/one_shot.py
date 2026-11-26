@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
-from bajutsu.common.capability.worker_capability import APPIUM, LOCAL
+from bajutsu.common.capability.worker_capability import APPIUM, LEASED, LOCAL
 from bajutsu.run import INTERNAL_MODULE
 from bajutsu.serve.server.worker_job import (
     CancelRelay,
@@ -187,7 +187,7 @@ def environment_refusal(spec: dict[str, Any], environment: str) -> str | None:
                 f"cloud batch; the spec's batch names provider {provider!r}"
             )
         return None
-    if environment == LOCAL:
+    if environment in (LOCAL, LEASED):
         if batch is not None:
             return (
                 "the spec is a cloud-batch job, which needs a worker whose worker.yaml environment "

@@ -98,7 +98,14 @@ from bajutsu.common.runner import (
     run_matrix_and_report,
 )
 from bajutsu.common.runner.build import BuildError, build_app
-from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
+from bajutsu.common.runner.device_provider import (
+    DeviceLease,
+    LeaseEnvConflictError,
+    acquire_device,
+    merge_lease_env,
+)
+from bajutsu.common.runner.device_provider.tagged_udid import entries_for_platform
+from bajutsu.run.pool_demand import pool_demand
 from bajutsu.common.runner.hook_session import HookSession, phases_of, run_tags, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
@@ -882,7 +889,7 @@ def _sharing_problems(
         xcuitest = config.xcuitest if isinstance(config, IosConfig) else None
         return (
             eff.platform,
-            # One device answers to one backend: `_pool_demand` charges the group to its first
+            # One device answers to one backend: `pool_demand` charges the group to its first
             # member's pool, so a member resolving to another actuator would draw from a pool
             # nothing counted.
             tuple(eff.backend),
@@ -2074,11 +2081,18 @@ def _reject_unshareable_groups(
     """
     grouped = {name for s in scenarios for g in s.device_groups if len(g) >= 2 for name in g}
     for name in sorted(grouped):
-        actuator, _ = _select_actuator(backend, target_effs[name], engines, worker)
+        eff = target_effs[name]
+        actuator, _ = _select_actuator(backend, eff, engines, worker)
+        # A worker's borrowed list is tagged by platform (BE-0511); judge this target on its own.
+        own = udid
+        if (provider := eff.device_provider) is not None and provider.kind == "leased":
+            try:
+                own = entries_for_platform(udid, eff.platform)
+            except ValueError as e:
+                typer.echo(str(e))
+                raise typer.Exit(2) from None
         # The run-aware set: a real iPhone and a WebDriver endpoint drop `deviceGroup` there.
-        if base.Capability.DEVICE_GROUP not in capabilities_for_run(
-            actuator, target_effs[name], udid
-        ):
+        if base.Capability.DEVICE_GROUP not in capabilities_for_run(actuator, eff, own):
             typer.echo(
                 f"target '{name}' is in a device group, but backend '{actuator}' cannot share a "
                 "device between two apps yet (BE-0447)"
@@ -2108,16 +2122,33 @@ def _acquire_targets(
         name: _select_actuator(backend, eff, engines, worker) for name, eff in target_effs.items()
     }
     setups: dict[str, _TargetSetup] = {}
+    lease_env: dict[str, str] = {}
     try:
         for name, eff in target_effs.items():
             actuator, backends = selected[name]
-            device = acquire_device(eff, udid)
-            udids, lanes = _resolve_lanes(
-                actuator,
-                device.udid_spec,
-                workers,
-                environment_for(actuator, device.udid_spec).resolve_device,
-            )
+            try:
+                device = acquire_device(eff, udid)
+            except ValueError as e:
+                typer.echo(f"target '{name}': {e}")
+                raise typer.Exit(2) from None
+            try:
+                # Before any device tool runs: a borrowed device may only be reachable through
+                # the variables its lease names (BE-0511).
+                merge_lease_env(lease_env, device.env)
+                os.environ.update(device.env)
+                udids, lanes = _resolve_lanes(
+                    actuator,
+                    device.udid_spec,
+                    workers,
+                    environment_for(actuator, device.udid_spec).resolve_device,
+                )
+            except BaseException as e:
+                # Not in `setups` yet, so the cleanup below would miss it.
+                device.release()
+                if isinstance(e, LeaseEnvConflictError):
+                    typer.echo(f"target '{name}': {e}")
+                    raise typer.Exit(2) from None
+                raise
             setups[name] = _TargetSetup(
                 name=name,
                 eff=eff,
@@ -2133,26 +2164,6 @@ def _acquire_targets(
     return setups
 
 
-def _pool_demand(scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]) -> dict[str, int]:
-    """The most devices any one scenario needs from each pool at once (BE-0428).
-
-    Targets sharing a pool share its device queue, and a scenario holds every declared target's
-    lease for its whole length, so two targets on one pool need two devices from it. A device group
-    is one device however many members it holds (BE-0447), so the count is per group, keyed by the
-    group's first member; a group whose members differ in backend is refused by the
-    config-aware group preflight (BE-0447 unit 4).
-    """
-    demand: dict[str, int] = {}
-    for s in scenarios:
-        per_pool: dict[str, int] = {}
-        for group in s.device_groups:
-            key = setups[group[0]].actuator
-            per_pool[key] = per_pool.get(key, 0) + 1
-        for key, n in per_pool.items():
-            demand[key] = max(demand.get(key, 0), n)
-    return demand
-
-
 def _resolve_multi_target_workers(
     scenarios: list[Scenario], setups: Mapping[str, _TargetSetup], workers: int
 ) -> int:
@@ -2165,7 +2176,8 @@ def _resolve_multi_target_workers(
     Refusing outright would be worse: `--workers` is a throughput knob, and quietly running a
     correct suite more slowly beats failing a run that has enough devices to finish.
     """
-    for actuator, needed in _pool_demand(scenarios, setups).items():
+    actuators = {name: setup.actuator for name, setup in setups.items()}
+    for actuator, needed in pool_demand(scenarios, actuators).items():
         lanes = next(len(s.udids) for s in setups.values() if s.actuator == actuator)
         if needed > lanes:
             typer.echo(

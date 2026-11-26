@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
@@ -49,11 +52,15 @@ def _parse_verdict(stdout: str) -> str:
     return ""
 
 
-def _probe_device(eff: Effective, udid: str, worker: WorkerCapability) -> tuple[Effective, str]:
+@contextmanager
+def _probe_device(
+    eff: Effective, udid: str, worker: WorkerCapability
+) -> Iterator[tuple[Effective, str]]:
     """*eff* with the worker's device provider, and the device of the target's first run (BE-0452).
 
     The probe scores the screen of the first run the target's `runsOn` conditions form, as `doctor`
-    does; a target with no condition keeps the udid spec the provider hands back.
+    does; a target with no condition keeps the udid spec the provider hands back. The server is
+    long-lived, so a lease and the variables it needs last only as long as the block (BE-0511).
 
     Raises:
         ValueError: *udid* is a URL, the provider cannot resolve a device, or no available device
@@ -70,8 +77,18 @@ def _probe_device(eff: Effective, udid: str, worker: WorkerCapability) -> tuple[
     provider = worker.device_provider_for(eff.backend[0] if eff.backend else eff.platform)
     if provider is not None:
         eff = replace(eff, device_provider=provider)
-    spec = acquire_device(eff, udid).udid_spec
-    return first_run_device(eff, select_actuator(eff.backend), spec)
+    lease = acquire_device(eff, udid)
+    previous = {key: os.environ.get(key) for key in lease.env}
+    try:
+        os.environ.update(lease.env)
+        yield first_run_device(eff, select_actuator(eff.backend), lease.udid_spec)
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        lease.release()
 
 
 def register_tools(
@@ -103,17 +120,15 @@ def register_tools(
         """
         eff = _load_effective(config_path, target)
         try:
-            eff, udid_spec = _probe_device(eff, udid, in_force)
-        except ValueError as e:
-            return str(e)
-        backends = eff.backend
-        actuator = select_actuator(backends)
-        try:
-            elements = probe_screen(actuator, udid_spec, eff)
+            with _probe_device(eff, udid, in_force) as (eff, udid_spec):
+                actuator = select_actuator(eff.backend)
+                elements = probe_screen(actuator, udid_spec, eff)
         except DoctorProbeError as e:
             return str(e)
         except (device_errors.DeviceError, base.UnsupportedAction) as e:
             return f"could not read the screen to score: {e}"
+        except ValueError as e:
+            return str(e)
         s = score(
             elements,
             eff.id_namespaces,

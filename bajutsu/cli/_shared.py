@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, get_args, overload
 
+import click
 import typer
 from pydantic import ValidationError
 
@@ -858,8 +859,9 @@ def _device_udid_or_exit(eff: Effective, udid: str) -> str:
     """The udid spec *eff*'s device provider hands back for *udid*, or exit 2 (BE-0236, BE-0452).
 
     The single route every device-driving command takes to its device, as `run` does: the `--udid`
-    pool for the local provider, the grid's endpoint for an `appium` one. Neither reserves anything,
-    so there is no lease to release.
+    pool for the local provider, the grid's endpoint for an `appium` one, a borrowed device for a
+    `leased` one. The lease's variables go into this process's environment, and the lease is
+    released when the command ends (BE-0511).
     """
     _reject_url_udid(udid)
     # Imported here: the provider registry reaches the platform environments, which only a command
@@ -867,10 +869,16 @@ def _device_udid_or_exit(eff: Effective, udid: str) -> str:
     from bajutsu.common.runner.device_provider import acquire_device
 
     try:
-        return acquire_device(eff, udid).udid_spec
+        lease = acquire_device(eff, udid)
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    if (context := click.get_current_context(silent=True)) is not None:
+        context.call_on_close(lease.release)
+    else:
+        atexit.register(lease.release)
+    os.environ.update(lease.env)
+    return lease.udid_spec
 
 
 def _first_run_or_exit(

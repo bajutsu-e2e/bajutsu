@@ -33,6 +33,7 @@ from bajutsu.common.backend_cli import simctl
 from bajutsu.common.backends import PLATFORMS
 from bajutsu.common.capability.worker_capability import (
     APPIUM,
+    LEASED,
     BATCH_PROVIDER_PLATFORMS,
     BATCH_PROVIDERS,
     DEVICEFARM_HOST,
@@ -290,7 +291,14 @@ def _advertised_capabilities(
                 *parse_capabilities(override),
             }
         )
+    if cap.environment == LEASED and platform:
+        raise typer.BadParameter(
+            "a leased worker takes no --platform: the platforms its broker lends are in worker.yaml",
+            param_hint="--platform",
+        )
     platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
+    if cap.platforms is not None:
+        platforms = list(cap.platforms)
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
     # `platform:iso` token that matches no job — the worker would otherwise poll forever leasing
     # nothing (BE-0166, "determinism first"). The same known set the config schema registry validates.
@@ -303,7 +311,8 @@ def _advertised_capabilities(
     for p in platforms:
         kept, reasons = filter_actuators(PLATFORMS[p], cap, machine)
         if not kept:
-            raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint="--platform")
+            hint = "--worker-config" if cap.platforms is not None else "--platform"
+            raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint=hint)
     # Every driver the file and host allow, not --platform's alone: a scenario's other targets run
     # on this machine too (an iOS-and-web scenario on a Mac), so their routes are this worker's.
     drivable = _drivable(cap, machine)
@@ -361,7 +370,11 @@ def _device_reader(
     device-cloud or `appium` worker's devices belong to its provider, and a web or Android worker
     has no `devicectl` to read (BE-0468).
     """
-    if not worker_capability.is_local or platform_capability("ios") not in caps:
+    if (
+        not worker_capability.is_local
+        or worker_capability.environment == LEASED  # its real devices belong to the broker
+        or platform_capability("ios") not in caps
+    ):
         return None
     if worker_capability.real_devices is False:
         # A Simulator-only Mac keeps an iOS device run of a `run-set` off itself (BE-0484).
@@ -1379,7 +1392,10 @@ def _drivable(cap: WorkerCapability, host: str) -> list[str]:
     from bajutsu.common.capability.capability_preflight import filter_actuators
 
     return [
-        a for actuators in PLATFORMS.values() for a in filter_actuators(actuators, cap, host)[0]
+        a
+        for platform, actuators in PLATFORMS.items()
+        if cap.serves(platform)
+        for a in filter_actuators(actuators, cap, host)[0]
     ]
 
 
@@ -1408,9 +1424,10 @@ def _register_environment_or_exit(environment: str) -> None:
     The provider and its lifecycle hooks (BE-0435) live in the worker that submits, so the AWS role
     is held here and never by the server. A worker that cannot register it would lease jobs only to
     fail each one, so it exits at startup instead, with the reason. A `local` worker registers none,
-    and neither does an `appium` one, whose grid submits nothing (BE-0452).
+    and neither does an `appium` one, whose grid submits nothing (BE-0452), or a `leased` one, whose
+    broker only lends devices (BE-0511).
     """
-    if environment in (LOCAL, APPIUM):
+    if environment in (LOCAL, LEASED, APPIUM):
         return
     if environment == DEVICEFARM_HOST:
         raise typer.BadParameter(

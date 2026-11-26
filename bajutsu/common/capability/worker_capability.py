@@ -13,9 +13,10 @@ and no lookup in the working directory, so the file in force is always the one o
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 import yaml
 from pydantic import (
@@ -49,6 +50,19 @@ LOCAL = "local"
 # targets through the endpoint and its other targets on the host.
 APPIUM = "appium"
 
+# A worker whose devices a lease broker lends, one job at a time (BE-0511). It routes and runs like a
+# `local` worker; only where a device comes from differs.
+LEASED = "leased"
+
+# The platforms a lease broker can serve. A web target drives a browser context and borrows nothing.
+LeasedPlatform = Literal["ios", "android"]
+
+# The placeholders a lease command may carry, replaced before it runs.
+PLATFORM_PLACEHOLDER = "{platform}"
+DEVICE_PLACEHOLDER = "{device}"
+_PLACEHOLDER = re.compile(r"\{[^{}]*\}")
+_DURATION = re.compile(r"^(\d+(?:\.\d+)?)([sm])$")
+
 # Every batch-provider kind Bajutsu can register (`serve/batch_provider`). The kinds are listed here
 # rather than read from the provider registry, which the server package fills at runtime and the
 # deterministic core may not import; a test keeps the two in step.
@@ -61,7 +75,9 @@ BATCH_PROVIDERS: frozenset[str] = frozenset(BATCH_PROVIDER_PLATFORMS)
 # booted with its app in place, whatever `subject.path` says.
 DEVICEFARM_HOST = "devicefarm-host"
 
-ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, APPIUM, DEVICEFARM_HOST, *BATCH_PROVIDERS})
+ENVIRONMENTS: frozenset[str] = frozenset(
+    {LOCAL, LEASED, APPIUM, DEVICEFARM_HOST, *BATCH_PROVIDERS}
+)
 
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
 # registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), `machine:<id>`
@@ -148,13 +164,66 @@ class AppiumGrid(BaseModel):
         return value.strip()
 
 
+class LeaseBroker(BaseModel):
+    """The lease broker a `leased` environment borrows from, written under `lease:` (BE-0511).
+
+    Attributes:
+        command: The lease command's argv. It runs with no shell, stays alive while the device is
+            held, and prints one line naming the device.
+        acquire_timeout: Seconds the command may take to print that line.
+        release_timeout: Seconds it may take to exit after the termination signal.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", frozen=True)
+
+    command: tuple[str, ...] = Field(min_length=1)
+    acquire_timeout: float = Field(default=60.0, alias="acquireTimeout", gt=0)
+    release_timeout: float = Field(default=10.0, alias="releaseTimeout", gt=0)
+
+    @field_validator("acquire_timeout", "release_timeout", mode="before")
+    @classmethod
+    def _seconds(cls, value: object) -> object:
+        if isinstance(value, str):
+            if (match := _DURATION.match(value.strip())) is None:
+                raise ValueError(f"duration {value!r} must be a number followed by `s` or `m`")
+            return float(match[1]) * (60 if match[2] == "m" else 1)
+        return value
+
+    @field_validator("command")
+    @classmethod
+    def _placeholders(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if not value[0].strip():
+            raise ValueError("lease.command needs a program as its first element")
+        known = (PLATFORM_PLACEHOLDER, DEVICE_PLACEHOLDER)
+        for i, element in enumerate(value):
+            if unknown := [p for p in _PLACEHOLDER.findall(element) if p not in known]:
+                raise ValueError(
+                    f"lease.command: unknown placeholder {unknown[0]!r}; known: {', '.join(known)}"
+                )
+            if DEVICE_PLACEHOLDER not in element:
+                continue
+            if element != DEVICE_PLACEHOLDER:
+                raise ValueError(f"lease.command: {DEVICE_PLACEHOLDER} must be a whole element")
+            # A job that names no device drops this element and the one before it, so the one
+            # before it has to be the flag that takes it and nothing else.
+            flag = value[i - 1] if i > 0 else ""
+            if i < 2 or not flag.startswith("-") or _PLACEHOLDER.search(flag):
+                raise ValueError(
+                    f"lease.command: {DEVICE_PLACEHOLDER} must follow the flag that takes it"
+                )
+        return value
+
+
 class WorkerCapability(BaseModel):
     """One worker's declared limits, loaded from `worker.yaml` (BE-0450).
 
     Attributes:
         version: The file's schema version; only `1` exists.
-        environment: Where the worker runs jobs: `local`, `appium`, or a device-cloud provider kind.
+        environment: Where the worker runs jobs: `local`, `leased`, `appium`, or a device-cloud
+            provider kind.
         appium: The grid an `appium` environment drives; required with that environment alone.
+        lease: The lease broker a `leased` environment borrows from; required with it alone.
+        platforms: The platforms that broker serves; required with a `leased` environment alone.
         max_job_concurrency: Jobs the worker may have in flight at once.
         max_targets_per_job: Targets one scenario may declare, counted across every driver; None
             means unbounded.
@@ -176,6 +245,8 @@ class WorkerCapability(BaseModel):
     version: Literal[1]
     environment: str = LOCAL
     appium: AppiumGrid | None = None
+    lease: LeaseBroker | None = None
+    platforms: tuple[LeasedPlatform, ...] | None = None
     max_job_concurrency: PositiveInt = Field(default=1, alias="maxJobConcurrency")
     max_targets_per_job: PositiveInt | None = Field(default=None, alias="maxTargetsPerJob")
     drivers: tuple[str, ...]
@@ -222,6 +293,25 @@ class WorkerCapability(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _leased_names_its_broker(self) -> WorkerCapability:
+        if self.environment == LEASED:
+            if self.lease is None:
+                raise ValueError(
+                    "environment 'leased' needs a `lease:` block naming the lease command"
+                )
+            if not self.platforms:
+                raise ValueError("environment 'leased' needs `platforms:` naming what it serves")
+            if len(set(self.platforms)) != len(self.platforms):
+                raise ValueError(f"platforms lists a platform twice: {list(self.platforms)}")
+            return self
+        for key, value in (("lease", self.lease), ("platforms", self.platforms)):
+            if value is not None:
+                raise ValueError(
+                    f"a `{key}:` key belongs to environment 'leased', not '{self.environment}'"
+                )
+        return self
+
+    @model_validator(mode="after")
     def _local_runs_one_job(self) -> WorkerCapability:
         # Several local jobs at once need a device allocated to each job, which is separate work;
         # `run --workers` lanes are a different mechanism and stay unaffected.
@@ -253,8 +343,18 @@ class WorkerCapability(BaseModel):
 
     @property
     def is_local(self) -> bool:
-        """Whether this worker drives devices on its own host."""
-        return self.environment == LOCAL
+        """Whether this worker drives devices on its own host, borrowed ones included (BE-0511)."""
+        return self.environment in (LOCAL, LEASED)
+
+    def serves(self, platform: str) -> bool:
+        """Whether a target on *platform* can get a device from this worker's environment.
+
+        A `leased` worker drives only the device platforms its broker lends; a platform that
+        needs no device, web, runs on its own host.
+        """
+        if self.platforms is None:
+            return True
+        return platform in self.platforms or platform not in get_args(LeasedPlatform)
 
     @property
     def is_batch(self) -> bool:
@@ -275,12 +375,20 @@ class WorkerCapability(BaseModel):
         """The device provider a target of *platform* takes from this worker, or None for local.
 
         An `appium` environment hands its grid to the targets of the grid's platform alone (BE-0452);
-        a `devicefarm-host` one hands every target its preinstalled Device Farm device (BE-0465).
+        a `devicefarm-host` one hands every target its preinstalled Device Farm device (BE-0465);
+        a `leased` one borrows for the targets of the platforms its broker lends (BE-0511).
         """
         if self.environment == DEVICEFARM_HOST:
             return DeviceProvider(kind=DEVICEFARM_HOST)
         if self.appium is not None and platform == self.appium.platform:
             return DeviceProvider(kind=APPIUM, endpoint=self.appium.endpoint)
+        if self.lease is not None and platform in (self.platforms or ()):
+            return DeviceProvider(
+                kind=LEASED,
+                command=self.lease.command,
+                acquire_timeout=self.lease.acquire_timeout,
+                release_timeout=self.lease.release_timeout,
+            )
         return None
 
 
