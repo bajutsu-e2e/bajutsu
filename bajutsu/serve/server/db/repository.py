@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 from ._shared import DEFAULT_LEASE_MAX_ATTEMPTS, DEFAULT_RUN_LIMIT
+from .api_key_record import ApiKeyRecord
 from .concurrency_caps import ConcurrencyCaps
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
@@ -210,6 +211,26 @@ class Repository(Protocol):
         False when there is no such user. Authorization is the caller's: this writes the choice it
         is given, the way `upsert_user` writes the role it is given.
         """
+
+    def create_api_key(self, key: ApiKeyRecord) -> None:
+        """Insert a new API key (BE-0509)."""
+
+    def list_api_keys(self, org_id: str) -> list[ApiKeyRecord]:
+        """The org's unrevoked API keys, oldest first. Expired ones stay listed."""
+
+    def get_api_key(self, key_id: str) -> ApiKeyRecord | None:
+        """The key with identifier *key_id*, revoked ones included, or None if there is none."""
+
+    def revoke_api_key(self, key_id: str, *, org_id: str, at: datetime) -> bool:
+        """Revoke the org's key *key_id* at *at*. False when the org has no unrevoked key by that
+        identifier, so another org's key is untouched."""
+
+    def revoke_org_keys(self, org_id: str, *, at: datetime) -> int:
+        """Revoke every unrevoked key of *org_id*; returns how many were."""
+
+    def touch_api_key(self, key_id: str, *, at: datetime, min_interval: timedelta) -> bool:
+        """Record *at* as the key's last use, unless one less than *min_interval* older is already
+        recorded. Returns whether it wrote."""
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]

@@ -1090,6 +1090,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   requires a token**, so the server is never exposed unauthenticated (it exits otherwise). With no
   token the server is open, as before, which is safe only on loopback. Full multi-user auth (OAuth/RBAC) is
   out of scope here ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+- **Organization-scoped API keys (BE-0509).** On a deployment with a database, an admin issues a key
+  for one organization with `POST /api/orgs/<slug>/keys`, lists them with `GET`, and revokes one with
+  `DELETE /api/orgs/<slug>/keys/<id>`. A key opens only the routes on an allowlist, which is empty
+  today. See [API keys for a script](self-hosting.md#api-keys-for-a-script).
 - **CSRF + security headers (BE-0051).** When a token is set, a state-changing POST whose `Origin`
   doesn't match the `Host` is rejected (defense-in-depth atop the `SameSite=Strict` session cookie);
   non-browser clients (no `Origin`) are unaffected. Every response carries `X-Content-Type-Options:

@@ -27,7 +27,7 @@ from bajutsu.serve.orgs import (
     orgs_from_db,
     preferred_org,
 )
-from bajutsu.serve.sessions import machine_repository
+from bajutsu.serve.sessions import api_key_id, machine_repository
 from bajutsu.serve.state import ServeState
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
@@ -419,17 +419,23 @@ def _record_audit(
     the machine in the roster `/api/orgs` discloses and give it a role column besides. The repository
     goes into *detail* instead, so "which pipeline did this" is still answerable, and *ci_job* goes
     in under `actor`, so "which job of that pipeline" is too.
+
+    An API key (BE-0509) has no user row either: null `actor_id`, and the key identifier (never the
+    secret) in *detail* under `apiKey`.
     """
     if state.repository is None or not actor:
         return
     repository = machine_repository(actor)
+    key_id = api_key_id(actor)
     if repository is not None:
         detail = {**detail, "repository": repository}
         if ci_job:
             detail["actor"] = ci_job
+    elif key_id is not None:
+        detail = {**detail, "apiKey": key_id}
     state.repository.record_audit(
         org_id=org,
-        actor_id=None if repository is not None else actor,
+        actor_id=None if repository is not None or key_id is not None else actor,
         action=action,
         target=target,
         detail=detail,

@@ -10,6 +10,7 @@ types cross."""
 from ._functions import _age_seconds as _age_seconds
 from ._functions import _as_utc as _as_utc
 from ._functions import _positive_env as _positive_env
+from ._functions import _to_api_key as _to_api_key
 from ._functions import _to_org as _to_org
 from ._functions import _to_record as _to_record
 from ._functions import engine_from_url, repository_from_env
@@ -20,6 +21,7 @@ from ._shared import (
     cancelled_job_result,
     job_failed,
 )
+from .api_key_record import ApiKeyRecord
 from .concurrency_caps import ConcurrencyCaps
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
@@ -34,6 +36,7 @@ __all__ = [
     "DEFAULT_LEASE_TIMEOUT_SECONDS",
     "DEFAULT_RUN_LIMIT",
     "TERMINAL_JOB_STATUSES",
+    "ApiKeyRecord",
     "ConcurrencyCaps",
     "JobMetrics",
     "LeasedJob",

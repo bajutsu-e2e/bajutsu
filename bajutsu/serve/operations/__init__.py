@@ -23,6 +23,7 @@ from bajutsu.serve.operations._common import (
     _device_args,
     _resolve_org_or_forbid,
 )
+from bajutsu.serve.operations.api_keys import create_api_key, list_api_keys, revoke_api_key
 from bajutsu.serve.operations.audit import audit_scenario
 from bajutsu.serve.operations.author_edit import apply_enrichment_edit, apply_selector_edit
 from bajutsu.serve.operations.capture import (
@@ -196,6 +197,7 @@ __all__ = [
     "coverage_html",
     "coverage_view",
     "crawl_runs_payload",
+    "create_api_key",
     "create_org",
     "declared_secret_names",
     "delete_org",
@@ -214,6 +216,7 @@ __all__ = [
     "job_sse",
     "job_view",
     "lint_scenario",
+    "list_api_keys",
     "list_environments",
     "list_orgs_view",
     "list_scenarios",
@@ -234,6 +237,7 @@ __all__ = [
     "restore_org_config",
     "restore_run",
     "restore_uploaded_config",
+    "revoke_api_key",
     "revoke_machine_sessions",
     "role_allows",
     "role_for",
