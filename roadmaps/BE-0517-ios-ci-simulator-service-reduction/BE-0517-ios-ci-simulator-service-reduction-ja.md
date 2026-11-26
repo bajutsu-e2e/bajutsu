@@ -1,14 +1,14 @@
-[English](BE-XXXX-ios-ci-simulator-service-reduction.md) · **日本語**
+[English](BE-0517-ios-ci-simulator-service-reduction.md) · **日本語**
 
-# BE-XXXX — iOS の E2E レーンで不要なシミュレータサービスを無効にする
+# BE-0517 — iOS の E2E レーンで不要なシミュレータサービスを無効にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-ios-ci-simulator-service-reduction-ja.md) |
+| 提案 | [BE-0517](BE-0517-ios-ci-simulator-service-reduction-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming-ja.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md) |
 <!-- /BE-METADATA -->

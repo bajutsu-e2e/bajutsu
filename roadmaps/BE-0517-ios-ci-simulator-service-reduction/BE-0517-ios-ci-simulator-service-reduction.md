@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-ios-ci-simulator-service-reduction-ja.md)
+**English** · [日本語](BE-0517-ios-ci-simulator-service-reduction-ja.md)
 
-# BE-XXXX — Disable unneeded Simulator services on the iOS E2E lanes
+# BE-0517 — Disable unneeded Simulator services on the iOS E2E lanes
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-ios-ci-simulator-service-reduction.md) |
+| Proposal | [BE-0517](BE-0517-ios-ci-simulator-service-reduction.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
 | Topic | CI / build infrastructure |
 | Related | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) |
 <!-- /BE-METADATA -->
