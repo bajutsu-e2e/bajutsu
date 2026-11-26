@@ -58,6 +58,16 @@ class JobRecord(Base):
     # until the worker takes it; any replica can then hand it over.
     handoff_pending: Mapped[bool] = mapped_column(default=False, server_default=false())
     handoff_response: Mapped[str | None] = mapped_column(Text, default=None)
+    # A worker that could not borrow its devices gave the job back (BE-0511): how often, since when,
+    # and why. Until `not_before`, the lease scan hides the job from workers of the environment that
+    # declined it, and from no other.
+    decline_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    first_declined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+    decline_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    not_before: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    declined_environment: Mapped[str | None] = mapped_column(default=None)
     result: Mapped[dict[str, Any]] = mapped_column(_JSON, default=dict)
     # The scheduled cloud-batch (Device Farm) run's ARN, persisted once the run is scheduled so a
     # worker that re-leases this job after a restart resumes polling that run instead of resubmitting

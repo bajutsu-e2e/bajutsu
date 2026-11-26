@@ -89,7 +89,7 @@ def _is_machine_job_route(path: str) -> bool:
 def _is_worker_route(path: str) -> bool:
     """Whether *path* is a control-plane route a worker authenticates to with the shared token
     (BE-0313). Once OAuth is configured the token authorizes only these — never a human session or
-    another endpoint. Beyond the `/api/worker/*` routes (lease / heartbeat / log / result /
+    another endpoint. Beyond the `/api/worker/*` routes (lease / decline / heartbeat / log / result /
     artifact-urls / scenario-url), a worker also requests evidence upload URLs at
     `POST /api/runs/{id}/upload-urls` (BE-0257), which sits outside that prefix — so it is matched
     by shape here, the same way `required_role` already treats it as worker traffic with no role

@@ -28,6 +28,7 @@ from .run_record import RunRecord
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
     from sqlalchemy.orm import InstrumentedAttribute, Session
+    from sqlalchemy.sql.elements import ColumnElement
 
     from bajutsu.serve.server.models import JobGroup, JobRecord
 
@@ -35,6 +36,11 @@ if TYPE_CHECKING:
 # reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
 # worker's heartbeat interval must stay well under the timeout so a live long run is never reclaimed.
 DEFAULT_LEASE_TIMEOUT_SECONDS = 120.0
+# How long a job may keep being declined for want of a device before it fails (BE-0511).
+DEFAULT_DECLINE_WINDOW_SECONDS = 3600.0
+# A declined job hides from the declining environment this long, doubling per decline up to the cap.
+# The first delay is the worker's default poll interval.
+_DECLINE_DELAY_SECONDS, _DECLINE_DELAY_CAP_SECONDS = 2.0, 60.0
 
 # How many times `cancel_job` retries its queued-then-leased pair when the row moves between the two
 # updates. Each retry needs a lease or a reclaim to land in a window of one statement, so a handful
@@ -93,8 +99,10 @@ class SqlRepository:
         *,
         lease_timeout: timedelta | None = None,
         max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS,
+        decline_window: timedelta | None = None,
     ) -> None:
         self._engine = engine
+        self._decline_window = decline_window or timedelta(seconds=DEFAULT_DECLINE_WINDOW_SECONDS)
         self._lease_timeout = lease_timeout or timedelta(seconds=DEFAULT_LEASE_TIMEOUT_SECONDS)
         self._max_attempts = max_attempts
 
@@ -970,6 +978,7 @@ class SqlRepository:
         max_jobs: int = 1,
         caps: ConcurrencyCaps | None = None,
         on_stopped: Callable[[list[str]], None] | None = None,
+        environment: str | None = None,
     ) -> list[LeasedJob]:
         from bajutsu.serve.capabilities import can_serve, checks_routes
         from bajutsu.serve.server.models import JobRecord
@@ -987,7 +996,7 @@ class SqlRepository:
         # Scopes a count in this call found full: a later group in one stays queued without taking
         # the lock and counting again, which on SQLite would hold the database's write lock per group.
         full: set[tuple[int, str]] = set()
-        for candidate in self._lease_candidates(pair):
+        for candidate in self._lease_candidates(pair, environment):
             if not can_serve(candidate.capabilities or [], advertised):
                 continue
             if candidate.group_id is None:
@@ -1004,12 +1013,15 @@ class SqlRepository:
                     limit=max(1, max_jobs),
                     caps=caps,
                     full=full,
+                    environment=environment,
                 )
             if leased:
                 return leased
         return []
 
-    def _lease_candidates(self, pair: InstrumentedAttribute[str | None]) -> list[Any]:
+    def _lease_candidates(
+        self, pair: InstrumentedAttribute[str | None], environment: str | None = None
+    ) -> list[Any]:
         """Every queued plain job, and the oldest queued job of each group and *pair* key, oldest
         first; read with no lock, as each claim re-checks its row.
 
@@ -1017,15 +1029,16 @@ class SqlRepository:
         `can_serve` (BE-0484), so the scan's `can_serve` calls follow the groups, not their size.
         The plain scan stays unbounded: an unroutable backlog piles up at the head, so a fixed
         window would hide a servable younger job (BE-0166); `bajutsu_unroutable_jobs` surfaces it.
+        A job *environment* declined is left out until its `not_before` (BE-0511).
         """
-        from sqlalchemy import func, literal, null, select
+        from sqlalchemy import and_, func, literal, null, select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobRecord
 
         # Ids are the registry's counter, and one `run-set` shares a `created_at`, so they break ties.
         order = (JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
-        queued = JobRecord.status == "queued"
+        queued = and_(JobRecord.status == "queued", _not_declined(environment))
         columns = (
             JobRecord.id,
             JobRecord.capabilities,
@@ -1094,6 +1107,7 @@ class SqlRepository:
         limit: int,
         caps: ConcurrencyCaps,
         full: set[tuple[int, str]],
+        environment: str | None = None,
     ) -> list[LeasedJob]:
         """Lease up to *limit* queued jobs of one group and pair key, oldest first, within the
         headroom the caps leave in *scopes* (BE-0484); a scope found full joins *full*.
@@ -1119,7 +1133,12 @@ class SqlRepository:
                     return []
             query = (
                 select(JobRecord)
-                .where(JobRecord.status == "queued", JobRecord.group_id == group_id, pair == key)
+                .where(
+                    JobRecord.status == "queued",
+                    JobRecord.group_id == group_id,
+                    pair == key,
+                    _not_declined(environment),
+                )
                 .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
                 .limit(limit)
             )
@@ -1563,6 +1582,80 @@ class SqlRepository:
             on_stopped=on_stopped,
         )
 
+    def decline_job(
+        self,
+        job_id: str,
+        worker_id: str,
+        *,
+        reason: str,
+        environment: str,
+        on_stopped: Callable[[list[str]], None] | None = None,
+    ) -> str | None:
+        from sqlalchemy import select, update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import JobRecord
+
+        owned = (
+            JobRecord.id == job_id,
+            JobRecord.status == "leased",
+            JobRecord.leased_by == worker_id,
+        )
+        with Session(self._engine) as session:
+            row = session.execute(
+                select(
+                    JobRecord.decline_count,
+                    JobRecord.first_declined_at,
+                    JobRecord.cancel_requested,
+                ).where(*owned)
+            ).first()
+        if row is None:
+            return None
+        count, first, cancelling = row
+        now = datetime.now(UTC)
+        if cancelling:
+            # The requester asked for it to stop, so it ends there rather than waiting for a device.
+            cancelled = self.cancel_leased_job(
+                job_id, cancelled_job_result(job_id), worker_id=worker_id
+            )
+            return "cancelled" if cancelled else None
+        if first is not None and now - _as_utc(first) >= self._decline_window:
+            waited = self._decline_window.total_seconds()
+            failed = self.fail_job(
+                job_id,
+                error=f"no device was lent within {waited:g} seconds: {reason}",
+                worker_id=worker_id,
+                on_stopped=on_stopped,
+            )
+            return "failed" if failed else None
+        delay = min(_DECLINE_DELAY_SECONDS * 2 ** min(count, 10), _DECLINE_DELAY_CAP_SECONDS)
+        with Session(self._engine) as session:
+            # `attempts` is left alone: the scenario never ran. A cancel that landed since the read
+            # keeps the lease, so the worker's next decline ends the job.
+            declined = session.execute(
+                update(JobRecord)
+                .where(*owned, JobRecord.cancel_requested.is_(False))
+                .values(
+                    status="queued",
+                    leased_by=None,
+                    leased_at=None,
+                    decline_count=count + 1,
+                    first_declined_at=first or now,
+                    decline_reason=reason,
+                    not_before=now + timedelta(seconds=delay),
+                    declined_environment=environment,
+                )
+            )
+            session.commit()
+            if _rowcount(declined) == 1:
+                return "queued"
+        if not self.cancel_requested(job_id, worker_id):
+            return None
+        cancelled = self.cancel_leased_job(
+            job_id, cancelled_job_result(job_id), worker_id=worker_id
+        )
+        return "cancelled" if cancelled else None
+
     def _finish_job(
         self,
         job_id: str,
@@ -1818,6 +1911,23 @@ class SqlRepository:
 _DEPLOYMENT_SCOPE, _ORG_SCOPE, _USER_SCOPE = 1, 2, 3
 
 
+def _not_declined(environment: str | None) -> ColumnElement[bool]:
+    """Whether a worker of *environment* may see a queued job yet (BE-0511).
+
+    Only the environment that declined it waits for `not_before`: a local worker with the device
+    free still takes the job at once.
+    """
+    from sqlalchemy import or_
+
+    from bajutsu.serve.server.models import JobRecord
+
+    return or_(
+        JobRecord.not_before.is_(None),
+        JobRecord.not_before <= datetime.now(UTC),
+        JobRecord.declined_environment != environment,
+    )
+
+
 def _reclaim_row(
     session: Session,
     job_id: str,
@@ -1856,6 +1966,10 @@ def _reclaim_row(
             attempts=attempts,
             leased_by=None,
             leased_at=None,
+            # A worker that held the job had its devices, so an earlier wait for one is over.
+            decline_count=0,
+            first_declined_at=None,
+            not_before=None,
             # The paused `record` died with the lease, so its handoff ends too.
             handoff_pending=False,
             handoff_response=None,

@@ -30,10 +30,15 @@ from .org_record import OrgRecord
 from .queued_job import QueuedJob
 from .repository import Repository
 from .run_record import RunRecord
-from .sql_repository import DEFAULT_LEASE_TIMEOUT_SECONDS, SqlRepository
+from .sql_repository import (
+    DEFAULT_DECLINE_WINDOW_SECONDS,
+    DEFAULT_LEASE_TIMEOUT_SECONDS,
+    SqlRepository,
+)
 
 __all__ = [
     "DEFAULT_LEASE_MAX_ATTEMPTS",
+    "DEFAULT_DECLINE_WINDOW_SECONDS",
     "DEFAULT_LEASE_TIMEOUT_SECONDS",
     "DEFAULT_RUN_LIMIT",
     "IMPORTING_STATUS",

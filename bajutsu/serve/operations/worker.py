@@ -93,8 +93,12 @@ def worker_lease(
     *,
     max_jobs: Any = None,
     relay_secrets: bool = True,
+    environment: Any = None,
 ) -> tuple[Any, int]:
     """Lease the oldest queued job *worker_id* can serve, or return 204 when none is servable.
+
+    *environment* is the worker's `worker.yaml` environment, so a job its kind of worker just
+    declined stays out of its scan for a while (BE-0511); a worker from before sends none.
 
     With *max_jobs*, the worker's free slots, the response is a list of lease bodies: when the
     oldest servable job belongs to a `run-set` group, the lease adds that group's next jobs that
@@ -146,6 +150,7 @@ def worker_lease(
         max_jobs=max_jobs or 1,
         caps=state.concurrency_caps,
         on_stopped=lambda ids: close_cancelled(state, ids),
+        environment=environment if isinstance(environment, str) else None,
     )
     if not leased:
         return {}, 204
@@ -319,6 +324,52 @@ def worker_heartbeat(state: ServeState, worker_id: str, job_id: str) -> tuple[di
             return {"ok": True, "cancel": True}, 200
         return {"ok": True}, 200
     return {"error": "lease lost or not held by this worker"}, 409
+
+
+# The most of a decline's reason that is stored: a broker's message, not its log.
+MAX_DECLINE_REASON_CHARS = 2000
+
+
+def worker_decline(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """Give back a leased job whose devices the worker could not borrow (BE-0511).
+
+    The response's ``status`` says where the job went: ``queued`` while its decline window is open,
+    ``failed`` once it has passed, ``cancelled`` when a cancel had reached it. A worker that does
+    not hold the lease gets 409, so one worker cannot decline another's job.
+    """
+    worker_id, job_id, refusal = _lease_owner(state, body)
+    if refusal is not None:
+        return refusal
+    assert state.repository is not None  # `_lease_owner` refused otherwise
+    reason = body.get("reason")
+    environment = body.get("environment")
+    if not isinstance(reason, str) or not reason.strip():
+        return {"error": "reason is required"}, 400
+    if not isinstance(environment, str) or not environment:
+        return {"error": "environment is required"}, 400
+    reason = reason.strip()[:MAX_DECLINE_REASON_CHARS]
+    info = state.repository.get_job(job_id)
+    stopped: list[str] = []
+    status = state.repository.decline_job(
+        job_id, worker_id, reason=reason, environment=environment, on_stopped=stopped.extend
+    )
+    if status is None:
+        return {"error": "lease lost or not held by this worker"}, 409
+    state.live_log_budget.forget(job_id)
+    state.live_artifact_budget.forget(job_id)
+    state.live_handoff_budget.forget(job_id)
+    if status == "queued":
+        return {"status": status}, 200
+    finished = state.repository.get_job(job_id)
+    result = dict((finished or {}).get("result") or {"ok": False})
+    if status == "failed":
+        result.setdefault("ok", False)
+        state.logbus.publish(job_id, f"error: {result.get('error', reason)}")
+    if info is not None:
+        _persist_worker_run(state, info, result, ok=False)
+    state.logbus.close(job_id, json.dumps(result))
+    close_cancelled(state, stopped)
+    return {"status": status}, 200
 
 
 def worker_batch_run(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, Any], int]:
