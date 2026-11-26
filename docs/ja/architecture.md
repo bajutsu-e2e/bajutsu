@@ -838,6 +838,9 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - どの org として振る舞うかは、リクエスト自身が指定します。org の指定は選択であって、権限の付与ではありません。1 つのリポジトリを複数の org が列挙できるため、指定された org の `allowedRepositories` が受け入れたときにだけ、セッションを発行します。判定は、トークンの `repository` クレームへの完全一致で行います（`sub` はパースしません）。エントリごとに、`environment` / `ref` / `workflowRef` で絞り込めます。
   - マシンセッションは、人間の OAuth セッション、worker の共有トークンに次ぐ 3 つ目の呼び出し元です。ロールではなく、`gate.py` の明示的なエンドポイント許可リストで権限が決まります。許可リストは、`GET /api/artifacts/exists` によるアーティファクトの有無の確認、3 種類のアーティファクトのアップロード、`POST /api/run`、`POST /api/run-set` と `GET /api/run-set/<groupId>`（BE-0484）、自 org の run と発行したジョブの読み取りです。
   - リポジトリ単位で失効できます。データベースなしのデプロイや、セッションの有効期限を守れないストアでは拒否されます。
+- **org 単位の API キー**（BE-0509）：admin が `/api/orgs/<slug>/keys` で org 1 つ分のキーを発行します。スクリプトはそれを bearer トークンとして送ります。
+  - キーは、セッションを持たない 4 つ目の呼び出し元です。2 つの backend は、セッションのゲートより先にキーを判定します。判定に使うのは、`gate.py` の専用の許可リスト（初期状態は空）と、キーの role（`viewer` か `editor`）です。
+  - データベースは、識別子とシークレットの SHA-256 ハッシュを持ちます。発行、失効、利用は、いずれも識別子で監査ログに残ります。
 - **有効な config の binding とは独立した、job 単位のアーティファクト差し替え**（[BE-0431](../../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)）。ホスト型デプロイでは、`POST /api/run` が `binaryArtifact` と `scenariosArtifact` を受け付けます。どちらも、保存済みのアーティファクトの sha256 です（BE-0268）。
   - 指定した方の脚は、そのアーティファクトだけを解決先とします。binary はその job 自身の target の `subject.path` に配置し、`scenarios` の zip はその target の scenarios ディレクトリを置き換えます。
   - 指定しなかった脚は、従来どおり org の有効な config の binding を解決先とするため、そちらは変更されません。この結果、1 つのデプロイに対する 2 つの同時 CI ディスパッチが、デプロイのフォールバック binding を奪い合ったり、org の記憶済み設定を書き換えたりすることがなくなります。

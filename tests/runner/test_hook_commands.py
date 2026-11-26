@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import signal
 from pathlib import Path
 
 import pytest
@@ -385,14 +385,17 @@ def test_the_spawn_seam_receives_argv_and_the_log_path(tmp_path: Path) -> None:
 def test_output_is_never_piped_so_a_background_server_cannot_block_the_run(tmp_path: Path) -> None:
     # A script that leaves a server running exits; a pipe it inherited would keep the runner waiting.
     runner = _runner(tmp_path)
-    body = "sleep 20 & echo started"
+    pidfile = tmp_path / "server.pid"
+    body = f"sleep 20 & echo $! > '{pidfile}'; echo started"
     result = runner.run_list(
         "beforeRun",
         [HookCommand(name="srv", cmd=_script(tmp_path, "bg.sh", body), timeout=5)],
         _ctx(),
     )
     assert result.ok, result.reason
-    subprocess.run(["pkill", "-f", "sleep 20"], check=False, capture_output=True)
+    # By pid, never `pkill -f`: a pattern also matches any parallel worker's process whose command
+    # line merely contains it, which killed the diagnostics action tests' `bash -c <script>`.
+    os.kill(int(pidfile.read_text()), signal.SIGKILL)
 
 
 def test_a_planted_symlink_at_a_later_entry_s_output_path_is_never_written_through(

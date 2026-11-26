@@ -1090,6 +1090,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   requires a token**, so the server is never exposed unauthenticated (it exits otherwise). With no
   token the server is open, as before, which is safe only on loopback. Full multi-user auth (OAuth/RBAC) is
   out of scope here ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
+- **Organization-scoped API keys (BE-0509).** On a deployment with a database, an admin issues a key
+  for one organization with `POST /api/orgs/<slug>/keys`, lists them with `GET`, and revokes one with
+  `DELETE /api/orgs/<slug>/keys/<id>`. A key opens only the routes on an allowlist, which is empty
+  today. See [API keys for a script](self-hosting.md#api-keys-for-a-script).
 - **CSRF + security headers (BE-0051).** When a token is set, a state-changing POST whose `Origin`
   doesn't match the `Host` is rejected (defense-in-depth atop the `SameSite=Strict` session cookie);
   non-browser clients (no `Origin`) are unaffected. Every response carries `X-Content-Type-Options:
@@ -1267,6 +1271,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   the run id is always in the key and runs never collide. Upload runs after the verdict, so a failure
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
+- **`POST /api/runs/import` takes a run that finished elsewhere.** The route needs the `editor` role.
+  It accepts a zip of one run, which `scripts/upload_run.py` builds and sends
+  ([BE-0510](../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import.md)).
+  [Self-hosting](self-hosting.md#importing-a-finished-run) covers the checks and the answers.
 - **Every job runs on a worker (BE-0449).** `serve` queues every kind of job for a
   `bajutsu worker`. The `serve` process runs none of them. A queued job waits for a worker. With
   no live worker able to take it, the job carries a notice that no worker is available. `make serve` starts a worker beside the server. A bare

@@ -28,6 +28,7 @@ from ._functions import _SCHEMA_KEYS as _SCHEMA_KEYS
 from ._functions import _SENSITIVE_KEYS as _SENSITIVE_KEYS
 from ._functions import (
     EVENTS,
+    bind_actor,
     bind_request,
     configure,
     job_context,
@@ -55,6 +56,7 @@ from ._text_formatter import _TextFormatter as _TextFormatter
 
 __all__ = [
     "EVENTS",
+    "bind_actor",
     "bind_request",
     "configure",
     "job_context",

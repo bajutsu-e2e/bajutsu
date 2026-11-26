@@ -10,15 +10,17 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from ._functions import _age_seconds, _as_utc, _rowcount, _to_org, _to_record
+from ._functions import _age_seconds, _as_utc, _rowcount, _to_api_key, _to_org, _to_record
 from ._shared import (
     DEFAULT_LEASE_MAX_ATTEMPTS,
     DEFAULT_RUN_LIMIT,
+    IMPORTING_STATUS,
     LEASE_EXPIRED,
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
     job_failed,
 )
+from .api_key_record import ApiKeyRecord
 from .concurrency_caps import ConcurrencyCaps
 from .group_event_claim import GroupEventClaim
 from .job_metrics import JobMetrics
@@ -181,7 +183,7 @@ class SqlRepository:
 
         from bajutsu.serve.server.models import Run
 
-        stmt = select(Run).where(Run.org_id == org_id)
+        stmt = select(Run).where(Run.org_id == org_id, Run.status != IMPORTING_STATUS)
         if label is not None:
             # An unlabeled run matches every label filter (BE-0404 unit 4): a run recorded before
             # the column existed, or one enqueued with no config bound, belongs to no partition, and
@@ -195,6 +197,77 @@ class SqlRepository:
                 Run.deleted_at.is_(None)
             )  # trashed runs drop out of history (BE-0239)
         stmt = stmt.order_by(Run.created_at.desc()).limit(limit)
+        with Session(self._engine) as session:
+            return [_to_record(row) for row in session.scalars(stmt)]
+
+    def finish_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = (
+            update(Run)
+            .where(
+                Run.id == run_id,
+                Run.org_id == org_id,
+                Run.status == IMPORTING_STATUS,
+                Run.created_at == reserved_at,
+            )
+            .values(status="done")
+        )
+        with Session(self._engine) as session:
+            result = session.execute(stmt)
+            session.commit()
+            return _rowcount(result) == 1
+
+    def release_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        from sqlalchemy import delete
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = delete(Run).where(
+            Run.id == run_id,
+            Run.org_id == org_id,
+            Run.status == IMPORTING_STATUS,
+            Run.created_at == reserved_at,
+        )
+        with Session(self._engine) as session:
+            result = session.execute(stmt)
+            session.commit()
+            return _rowcount(result) == 1
+
+    def claim_import(
+        self, run_id: str, *, org_id: str, reserved_at: datetime, claimed_at: datetime
+    ) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = (
+            update(Run)
+            .where(
+                Run.id == run_id,
+                Run.org_id == org_id,
+                Run.status == IMPORTING_STATUS,
+                Run.created_at == reserved_at,
+            )
+            .values(created_at=claimed_at)
+        )
+        with Session(self._engine) as session:
+            result = session.execute(stmt)
+            session.commit()
+            return _rowcount(result) == 1
+
+    def list_stale_imports(self, *, before: datetime) -> list[RunRecord]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import Run
+
+        stmt = select(Run).where(Run.status == IMPORTING_STATUS, Run.created_at <= before)
         with Session(self._engine) as session:
             return [_to_record(row) for row in session.scalars(stmt)]
 
@@ -616,6 +689,104 @@ class SqlRepository:
             user.org_id, user.role, user.org_selected_at = org_id, role, datetime.now(UTC)
             session.commit()
             return True
+
+    def create_api_key(self, key: ApiKeyRecord) -> None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import ApiKey
+
+        fields: dict[str, Any] = {
+            "id": key.id,
+            "org_id": key.org_id,
+            "name": key.name,
+            "role": key.role,
+            "secret_hash": key.secret_hash,
+            "created_by": key.created_by,
+            "expires_at": key.expires_at,
+        }
+        if key.created_at is not None:
+            fields["created_at"] = key.created_at
+        with Session(self._engine) as session:
+            session.add(ApiKey(**fields))
+            session.commit()
+
+    def list_api_keys(self, org_id: str) -> list[ApiKeyRecord]:
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import ApiKey
+
+        stmt = (
+            select(ApiKey)
+            .where(ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))
+            .order_by(ApiKey.created_at, ApiKey.id)
+        )
+        with Session(self._engine) as session:
+            return [_to_api_key(row) for row in session.scalars(stmt)]
+
+    def get_api_key(self, key_id: str) -> ApiKeyRecord | None:
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import ApiKey
+
+        with Session(self._engine) as session:
+            row = session.get(ApiKey, key_id)
+            return None if row is None else _to_api_key(row)
+
+    def revoke_api_key(self, key_id: str, *, org_id: str, at: datetime) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import ApiKey
+
+        stmt = (
+            update(ApiKey)
+            .where(ApiKey.id == key_id, ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))
+            .values(revoked_at=at)
+        )
+        with Session(self._engine) as session:
+            revoked = _rowcount(session.execute(stmt))
+            session.commit()
+        return revoked == 1
+
+    def revoke_org_keys(self, org_id: str, *, at: datetime) -> int:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import ApiKey
+
+        stmt = (
+            update(ApiKey)
+            .where(ApiKey.org_id == org_id, ApiKey.revoked_at.is_(None))
+            .values(revoked_at=at)
+        )
+        with Session(self._engine) as session:
+            revoked = _rowcount(session.execute(stmt))
+            session.commit()
+        return revoked
+
+    def touch_api_key(self, key_id: str, *, at: datetime, min_interval: timedelta) -> bool:
+        from sqlalchemy import or_, update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import ApiKey
+
+        # One conditional UPDATE, so replicas serving the same key share the throttle.
+        stmt = (
+            update(ApiKey)
+            .where(
+                ApiKey.id == key_id,
+                or_(ApiKey.last_used_at.is_(None), ApiKey.last_used_at <= at - min_interval),
+            )
+            .values(last_used_at=at)
+            # The comparison above is the database's alone: nothing is loaded here to re-evaluate
+            # it against, and SQLite hands back naive datetimes an in-Python one would choke on.
+            .execution_options(synchronize_session=False)
+        )
+        with Session(self._engine) as session:
+            touched = _rowcount(session.execute(stmt))
+            session.commit()
+        return touched == 1
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]

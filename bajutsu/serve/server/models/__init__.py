@@ -8,6 +8,7 @@ ordinary columns."""
 
 from ._functions import _created_at as _created_at
 from ._shared import _JSON as _JSON
+from .api_key import ApiKey
 from .audit_log import AuditLog
 from .base import Base
 from .group_event import GroupEvent
@@ -24,6 +25,7 @@ from .user_org import UserOrg
 from .worker_record import WorkerRecord
 
 __all__ = [
+    "ApiKey",
     "AuditLog",
     "Base",
     "GroupEvent",

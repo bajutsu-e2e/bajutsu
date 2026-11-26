@@ -23,6 +23,7 @@ from bajutsu.serve.operations._common import (
     _device_args,
     _resolve_org_or_forbid,
 )
+from bajutsu.serve.operations.api_keys import create_api_key, list_api_keys, revoke_api_key
 from bajutsu.serve.operations.audit import audit_scenario
 from bajutsu.serve.operations.author_edit import apply_enrichment_edit, apply_selector_edit
 from bajutsu.serve.operations.capture import (
@@ -107,6 +108,7 @@ from bajutsu.serve.operations.reads import (
     trashed_runs_payload,
     usage_html,
 )
+from bajutsu.serve.operations.run_import import import_run, sweep_stale_imports
 from bajutsu.serve.operations.runs import (
     bulk_delete_runs,
     delete_run,
@@ -196,6 +198,7 @@ __all__ = [
     "coverage_html",
     "coverage_view",
     "crawl_runs_payload",
+    "create_api_key",
     "create_org",
     "declared_secret_names",
     "delete_org",
@@ -209,11 +212,13 @@ __all__ = [
     "generate_upload_urls",
     "get_theme_contract",
     "git_credential_info",
+    "import_run",
     "job_group_view",
     "job_log_events",
     "job_sse",
     "job_view",
     "lint_scenario",
+    "list_api_keys",
     "list_environments",
     "list_orgs_view",
     "list_scenarios",
@@ -234,6 +239,7 @@ __all__ = [
     "restore_org_config",
     "restore_run",
     "restore_uploaded_config",
+    "revoke_api_key",
     "revoke_machine_sessions",
     "role_allows",
     "role_for",
@@ -261,6 +267,7 @@ __all__ = [
     "start_triage",
     "stats_html",
     "sweep_expired_trash",
+    "sweep_stale_imports",
     "target_metrics_view",
     "trashed_runs_payload",
     "update_org_membership",

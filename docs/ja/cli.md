@@ -854,6 +854,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   載せません。**非 loopback の `--host`（例 `0.0.0.0`）への bind はトークン必須**で、無認証での公開を防ぎます
   （無ければ起動を中止）。トークン未設定なら従来どおり全開放で、loopback でのみ安全です。完全なマルチユーザー認証
   （OAuth/RBAC）は対象外です（[BE-0015](../../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting-ja.md)）。
+- **org 単位の API キー（BE-0509）。** データベースがあるデプロイでは、admin が `POST /api/orgs/<slug>/keys` で
+  org 1 つ分のキーを発行します。一覧は `GET`、失効は `DELETE /api/orgs/<slug>/keys/<id>` です。キーが開くのは
+  許可リストの route だけで、許可リストは現時点では空です。詳しくは
+  [スクリプト向けの API キー](self-hosting.md#スクリプト向けの-api-キー)を参照してください。
 - **CSRF + セキュリティヘッダ（BE-0051）。** トークン設定時、`Origin` が `Host` と一致しない状態変更 POST は
   拒否します（`SameSite=Strict` セッション Cookie に対する多層防御）。`Origin` を送らない非ブラウザ
   クライアントは影響を受けません。全レスポンスに `X-Content-Type-Options: nosniff` /
@@ -1007,6 +1011,10 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
 - **`--max-concurrent-runs`（既定 4）** は同時実行できる run/record ジョブ数の上限です。1 呼び出し元が
   希少なデバイスを独占しないようにします（BE-0051）。上限超過の dispatch は **429** を返します。`0` で無制限。
 - **`--evidence-store <uri>`（または `$BAJUTSU_EVIDENCE_STORE`）。各 run の証跡をアップロードします（[BE-0110](../../roadmaps/BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md)）。** `s3://bucket/prefix` または `gs://bucket/prefix` を指定すると、完了した run のツリーがそこへアップロードされます。キーは `<prefix><evidence_prefix><runId>/…` の形になるので、パスによってクラウドのライフサイクルポリシーが切り替わります。スタンドアロンの `run --evidence-store`（Runner 自身の認証情報で直接アップロードする）と違い、**`serve` は認証情報を保持し、Worker には渡しません**。コントロールプレーンがファイルごとに presigned PUT URL を発行し、Worker はクラウド SDK も認証情報も持たずに平文 HTTP でアップロードします。呼び出し元は `POST /api/run` のボディに `evidence_prefix`（安全な相対セグメントとして検証されます）を渡して run ごとのパスを選びます。サーバが自分のバケットとベースプレフィックスを前置するので、run ID が必ずキーに含まれ、run 同士が衝突しません。アップロードは判定の後に走るため、失敗しても警告のみです。**サーバ側**に `s3` または `gcs` extra が必要です（Worker には不要）。トポロジは [self-hosting](self-hosting.md) を参照してください。
+- **`POST /api/runs/import`：別の場所で完了した run の受け口**（[BE-0510](../../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import-ja.md)）
+  - 必要なロールは `editor`
+  - run 1 件分の zip は `scripts/upload_run.py` が作成して送信
+  - 検査内容と応答は [self-hosting の「完了した run の取り込み」](self-hosting.md#完了した-run-の取り込み)を参照
 - **すべての job を worker が実行します（BE-0449）。** `serve` は `bajutsu worker` に渡す job のキューを持ち、すべての job をキューに積みます。対象は、ビルド段階を含む各 run、Device Farm への展開、triage、record、crawl です。`serve` のプロセスは、どの job も実行しません。キューの job は worker を待ちます。その job を実行できる稼働中の worker がないあいだ、job には使える worker がないという通知が付きます。`make serve` はサーバの横で worker を起動します。`bajutsu serve` を直接起動したときは、横で `bajutsu worker` を起動する必要があります。lease は、その job の org に保存されたシークレットを worker に渡します。1台のマシンで `BAJUTSU_SERVER_STORE` を設定しなければ、サーバに環境変数は要りません。キューは runs ディレクトリの隣の `.bajutsu/queue.db`（SQLite）に置きます。キーも同じ場所に `0600` の権限で生成します。1つは署名付き URL 用で、もう1つは保存するシークレット用です（`BAJUTSU_SECRETS_KEY` を設定したときは生成しません）。アーティファクトのストアは default org の run を runs のツリーから直接、サーバが署名した URL で読み、それ以外のオブジェクトは `.bajutsu/objects/` に置きます。起動時には、すでに `runs/` の下にある run を履歴に登録します。その後の run は、admin が `POST /api/runs/rescan` を呼ぶと登録されます。`BAJUTSU_DATABASE_URL`、`BAJUTSU_SECRETS_KEY`、`BAJUTSU_SERVER_STORE`、`BAJUTSU_HOSTED` を設定すると、これらの既定値を上書きします。バケットのないサーバは、`--asgi` と同じく FastAPI のトランスポートを使います。また、`--port 0` ではなく固定のポートが必要です。バケットを指定したサーバは、`BAJUTSU_DATABASE_URL` も設定する必要があります。設定しなければ、キューを持たないので起動を拒否します。詳しくは [self-hosting の「1台のマシンで動かすサーバ backend」](self-hosting.md#1台のマシンで動かすサーバ-backendbe-0449)を参照してください。
 - **`--backend`（非推奨）。** 以前このフラグは、2つの backend を選んでいました。`local` backend は `serve` のプロセス内で job を実行し、`server` backend は job をキューに積みました。今はどちらの値でも同じサーバが起動します。`serve` は `local` と `server` を受け付けて警告を表示し、値を無視します。未知の値を渡すと、これまでどおり終了コード 2 で終わります。次のリリースでフラグを取り除くので、コマンドラインから外してください。
 - **ホスティング向けフラグ（応用）。** `--emit-launchagent` は `serve` を単一 Mac 上でトークン認証付きの LaunchAgent として動かす launchd plist を出力します。詳しくは [self-hosting](self-hosting.md) で扱います。

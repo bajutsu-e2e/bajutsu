@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
 from ._shared import DEFAULT_LEASE_MAX_ATTEMPTS, DEFAULT_RUN_LIMIT
+from .api_key_record import ApiKeyRecord
 from .concurrency_caps import ConcurrencyCaps
 from .group_event_claim import GroupEventClaim
 from .job_metrics import JobMetrics
@@ -44,10 +45,35 @@ class Repository(Protocol):
     ) -> list[RunRecord]:
         """An org's runs, newest first, capped at *limit*; ``None`` means unbounded.
 
+        A run still being imported (`IMPORTING_STATUS`) is not history yet and is never listed.
+
         *label* and *target* narrow the result to that partition and that target when given
         (BE-0404 units 2 and 4); an unlabeled run matches every *label*, since it belongs to no
         partition. Soft-deleted runs are excluded unless *include_deleted* (BE-0239).
         """
+
+    def finish_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        """Flip the org's import reservation of *run_id* to ``done`` (BE-0510).
+
+        A compare-and-set: it lands only while the row is still ``importing`` with the
+        ``created_at`` the caller reserved it with. True when it landed.
+        """
+
+    def release_import(self, run_id: str, *, org_id: str, reserved_at: datetime) -> bool:
+        """Delete the org's import reservation of *run_id* (BE-0510), by the same compare as
+        `finish_import`, so a row another writer put there since is never removed. True when it
+        was deleted."""
+
+    def claim_import(
+        self, run_id: str, *, org_id: str, reserved_at: datetime, claimed_at: datetime
+    ) -> bool:
+        """Take over a stale import reservation (BE-0510) by moving its ``created_at`` to
+        *claimed_at*, by the same compare as `finish_import`. Of two purges of one row, True for
+        the one that may remove its files."""
+
+    def list_stale_imports(self, *, before: datetime) -> list[RunRecord]:
+        """Every org's import reservations made at or before *before* (BE-0510), for the sweep a
+        server start runs over the leftovers of a crash."""
 
     def soft_delete_run(
         self, run_id: str, *, org_id: str, deleted_by: str | None, at: datetime
@@ -211,6 +237,26 @@ class Repository(Protocol):
         False when there is no such user. Authorization is the caller's: this writes the choice it
         is given, the way `upsert_user` writes the role it is given.
         """
+
+    def create_api_key(self, key: ApiKeyRecord) -> None:
+        """Insert a new API key (BE-0509)."""
+
+    def list_api_keys(self, org_id: str) -> list[ApiKeyRecord]:
+        """The org's unrevoked API keys, oldest first. Expired ones stay listed."""
+
+    def get_api_key(self, key_id: str) -> ApiKeyRecord | None:
+        """The key with identifier *key_id*, revoked ones included, or None if there is none."""
+
+    def revoke_api_key(self, key_id: str, *, org_id: str, at: datetime) -> bool:
+        """Revoke the org's key *key_id* at *at*. False when the org has no unrevoked key by that
+        identifier, so another org's key is untouched."""
+
+    def revoke_org_keys(self, org_id: str, *, at: datetime) -> int:
+        """Revoke every unrevoked key of *org_id*; returns how many were."""
+
+    def touch_api_key(self, key_id: str, *, at: datetime, min_interval: timedelta) -> bool:
+        """Record *at* as the key's last use, unless one less than *min_interval* older is already
+        recorded. Returns whether it wrote."""
 
     def record_audit(
         self, *, org_id: str, actor_id: str | None, action: str, target: str, detail: dict[str, Any]

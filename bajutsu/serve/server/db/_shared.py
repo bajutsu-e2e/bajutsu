@@ -9,6 +9,10 @@ DEFAULT_LEASE_MAX_ATTEMPTS = 3
 # The structured reason a job failed by lease expiry carries in its result (BE-0500).
 LEASE_EXPIRED = "lease-expired"
 
+# A run row reserved by an import that has not finished placing its files (BE-0510). History readers
+# leave it out; the import flips it to ``done`` or a sweep purges it.
+IMPORTING_STATUS = "importing"
+
 # The job statuses no transition leaves (BE-0449 added ``cancelled``). One tuple, so every reader that
 # asks "has this job finished" — the cap-release probe, the post-completion log bus — agrees.
 TERMINAL_JOB_STATUSES = ("done", "failed", "cancelled")

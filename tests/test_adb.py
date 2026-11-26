@@ -3191,3 +3191,63 @@ def test_uninstalling_something_absent_is_not_a_failure() -> None:
         raise subprocess.CalledProcessError(1, "adb", stderr="Failure [DELETE_FAILED]")
 
     adb.Env("U", run=run).uninstall("com.example.absent")  # does not raise
+
+
+def test_install_waits_for_its_own_broadcasts() -> None:
+    # A late one relaunches the app the caller is about to launch (issue #2520).
+    calls: list[list[str]] = []
+    adb.Env("U", run=_recorder(calls)).install("a.apk")
+    assert calls == [adb.install_cmd("U", "a.apk"), adb.await_broadcasts_cmd("U")]
+
+
+@pytest.mark.parametrize(
+    ("barrier", "idle", "code", "ran"),
+    [
+        (0, 1, 0, ["barrier"]),
+        (124, 0, 124, ["barrier"]),  # out of time: the bound is not spent twice
+        (255, 0, 0, ["barrier", "idle"]),  # no such command before API 34
+        (255, 124, 124, ["barrier", "idle"]),
+    ],
+)
+def test_the_broadcast_wait_falls_back_only_where_the_barrier_is_missing(
+    barrier: int, idle: int, code: int, ran: list[str]
+) -> None:
+    # The script itself under a real shell, with the device's `timeout` standing in for both waits.
+    stub = (
+        'timeout() { [ "$1" = 60 ] || return 99; case "$4" in '
+        f"*-barrier) echo barrier >&2; return {barrier};; *-idle) echo idle >&2; return {idle};; "
+        "esac; }; "
+    )
+    done = subprocess.run(
+        ["sh", "-c", stub + adb.await_broadcasts_cmd("U")[-1]],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (done.returncode, done.stderr.split()) == (code, ran)
+
+
+def test_a_broadcast_wait_that_runs_out_is_logged_not_raised(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def run(argv: list[str]) -> str:
+        if argv == adb.await_broadcasts_cmd("U"):
+            raise subprocess.CalledProcessError(124, argv, stderr="Terminated\n")
+        return ""
+
+    with caplog.at_level(logging.WARNING):
+        adb.Env("U", run=run).install("a.apk")
+    assert "U: the install's broadcasts were not confirmed" in caplog.text
+    assert "(exit 124: Terminated)" in caplog.text
+
+
+def test_a_failed_install_never_waits() -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str]) -> str:
+        calls.append(argv)
+        raise subprocess.CalledProcessError(1, argv)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        adb.Env("U", run=run).install("a.apk")
+    assert calls == [adb.install_cmd("U", "a.apk")]

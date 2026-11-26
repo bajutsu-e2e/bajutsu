@@ -1219,6 +1219,45 @@ a `group_event.contended` log line as the sole trace.
 **Roll out a new sink within 46 minutes.** A replica claims the events of its own sinks alone. A replica abandons an event whose sink no file on it defines. The replica
 waits until the event is about 46 minutes old. Update every replica's sink file within that time.
 
+### API keys for a script
+
+This section is optional. A script on a developer's machine cannot complete a browser sign-in, and it
+holds no token from a CI platform. An administrator can issue it an **API key** for one organization
+([BE-0509](../roadmaps/BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md)). The script sends the
+key as `Authorization: Bearer <key>` and acts as that organization. A key needs a database, so without
+one the three routes below answer `409`.
+
+**A key opens no route yet.** It reaches only the routes on an allowlist that ships empty, and each
+feature that adds a key-callable route adds it there. Any other route answers `403`.
+
+| Request | What it does |
+|---|---|
+| `POST /api/orgs/<slug>/keys` | Issue a key from `{"name": "...", "role": "viewer" or "editor", "expiresInDays": 90}`. `expiresInDays` is optional, from 1 to 365 (default 90). The reply carries the key in `key`, and no later request returns it. |
+| `GET /api/orgs/<slug>/keys` | List each unrevoked key's identifier, name, role, creator, expiry, and last-used time. |
+| `DELETE /api/orgs/<slug>/keys/<id>` | Revoke a key. Its next request answers `401`. An identifier that belongs to another organization answers `404`. |
+
+All three are admin actions, like the rest of `/api/orgs/…`:
+
+```bash
+# -b: the admin's own signed-in session cookie.
+curl -X POST "$BAJUTSU_URL/api/orgs/acme/keys" -b cookies.txt \
+  -H 'Content-Type: application/json' -d '{"name": "laptop", "role": "viewer"}'
+```
+
+The key is written `bajutsu_<id>_<secret>`. `serve` stores the identifier and a SHA-256 hash of the
+secret, never the secret itself, so a lost key cannot be recovered. A key never has the `admin` role,
+and it cannot issue or revoke keys. To rotate one, issue a new key, then revoke the old one.
+
+A key answers `401` once it is revoked or expired, and once its organization is retired; retiring an
+organization also revokes its keys. A route on the allowlist still requires the role it requires of a
+person, so a `viewer` key cannot call an `editor` route. A route that writes and names no role requires
+`editor` of a key.
+
+The audit log records each issue, revocation, and admitted use under the key's identifier. A request
+refused with `403` is audited at most once a minute for each key; the operations log records every
+one. A `401` writes no audit entry; the operations log records it as `apikey.denied` with the reason
+the caller is not told. A key's last-used time updates at most once a minute.
+
 ### Operator secrets and the Claude API key
 
 The **API key** an admin sets through the settings panel is an *operator secret*, and on the hosted
@@ -1629,6 +1668,77 @@ base prefix, so the final key is `evidence/main/abc1234/<runId>/…` — the run
 so runs never collide, and a caller can't escape the base prefix. The upload runs **after** the verdict,
 so a failure is logged and never changes pass/fail. When `BAJUTSU_EVIDENCE_STORE` is unset the worker
 still asks and simply uploads nothing.
+
+### Importing a finished run
+
+`POST /api/runs/import` takes a run that finished elsewhere
+([BE-0510](../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import.md)). A run from a
+developer's laptop is one example. The server stores the run where it keeps runs. It also records
+the run in the run history. [`scripts/upload_run.py`](reporting.md#uploading-a-run-to-a-server)
+builds the request.
+
+The body is a zip sent as `application/zip`. The zip has one top-level directory, whose name is the
+run id. That directory holds `manifest.json` and `scenario.yaml`. A success answers with these
+fields:
+
+| Field | Content |
+|---|---|
+| `runId`, `ok` | The run and its verdict |
+| `url`, `archive` | The paths of the report and of the run's zip |
+| `dropped` | The files the server did not keep |
+
+A refusal answers with one of these codes:
+
+| Answer | Cause |
+|---|---|
+| `400` | The zip or the run breaks a rule below. Nothing is stored. |
+| `409` | The run id is taken, in any organization or by a trashed run. |
+| `413` | The body is over 2 GiB. |
+| `500` | Storing the run did not succeed. The history keeps no entry. |
+
+The server checks the upload before it stores anything:
+
+| Check | Rule |
+|---|---|
+| Size | At most 4 GiB uncompressed, and 32 MiB each for `manifest.json` and `scenario.yaml` |
+| Report size | At most 512 MiB embedded: each linked artifact but screenshots and videos, and each result's scenario |
+| Entries | No symlink, and no path that leaves the run's directory |
+| `scenario.yaml` | No YAML alias |
+| `manifest.json` | A boolean `ok`, a list `scenarios`, and a `runId` that matches the directory |
+| Artifact paths | Relative, inside the run, and naming a file the zip holds |
+| Trash marker | No entry named `.deleted` |
+
+The server serves a run's files from its own origin, so it keeps passive types alone:
+
+| Kind | Extensions kept |
+|---|---|
+| Images and video | `.png` `.jpg` `.jpeg` `.webp` `.gif` `.mp4` `.webm` |
+| Text | `.json` `.txt` `.log` `.yaml` `.yml` |
+
+The server drops every other file, and a report link to a dropped file answers `404`. It also
+replaces `report.html`, `junit.xml`, and `ctrf.json` with its own rendering. The stored manifest
+records `provenance.source: import`. That value says that the client asserted the verdict.
+
+The route needs the `editor` role. The credential the script can send depends on the server:
+
+| Server | Script sign-in |
+|---|---|
+| Shared token, no OAuth | Yes, with the shared token |
+| OAuth | Not yet: such a server accepts the shared token for worker routes alone |
+
+Organization-scoped API keys
+([BE-0509](../roadmaps/BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md)) will close that
+gap.
+
+The server reserves the run id before it writes any file. The history leaves out the reservation
+until the import finishes. An import that stops midway leaves the reservation behind. A retry from
+the same organization clears a reservation more than an hour old. A server start does the same.
+
+A job's run id stays unknown to the server until the job ends. An import can thus collide with a
+running job. Both ids come from the time in seconds.
+
+The server unpacks an upload in `.<runs>-import/`, beside the runs directory. That location needs
+free space.
 
 ### Multiple orgs
 

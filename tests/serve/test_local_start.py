@@ -23,6 +23,7 @@ from bajutsu.serve import operations as ops
 from bajutsu.serve.jobs import index_run_trees
 from bajutsu.serve.server.app import make_app
 from bajutsu.serve.server.local_start import hosted_from_env, loopback_base_url
+from bajutsu.serve.state import ServeState
 
 # Every variable that would steer the server backend away from its local defaults.
 _SERVER_ENV = (
@@ -446,6 +447,26 @@ def test_serve_starts_group_event_delivery_for_its_sinks(
 
     assert len(started) == 1
     assert started[0].group_sinks == sinks  # type: ignore[attr-defined]
+
+
+def test_serve_sweeps_stale_run_imports_at_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # BE-0510: what an import that died left behind is cleared before the first request.
+    swept: list[ServeState] = []
+
+    class _Server:
+        def run(self) -> None:
+            assert len(swept) == 1
+
+    monkeypatch.setattr(srv, "sweep_stale_imports", swept.append)
+    monkeypatch.setattr(srv, "make_asgi_server", lambda *_a, **_k: _Server())
+    monkeypatch.setattr(srv, "_configure_oplog", lambda _state: None)
+    _scn, cfg, runs = project(tmp_path)
+
+    srv.serve("127.0.0.1", 8799, None, cfg, runs, root=tmp_path)
+
+    assert len(swept) == 1
 
 
 # --- review follow-ups: isolation, rescan scope, and indexing races ---

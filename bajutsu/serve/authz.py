@@ -27,7 +27,7 @@ from bajutsu.serve.orgs import (
     orgs_from_db,
     preferred_org,
 )
-from bajutsu.serve.sessions import machine_repository
+from bajutsu.serve.sessions import api_key_id, machine_repository
 from bajutsu.serve.state import ServeState
 
 if TYPE_CHECKING:  # keeps the default serve/CLI path free of `serve.server` (server/__init__.py)
@@ -419,17 +419,23 @@ def _record_audit(
     the machine in the roster `/api/orgs` discloses and give it a role column besides. The repository
     goes into *detail* instead, so "which pipeline did this" is still answerable, and *ci_job* goes
     in under `actor`, so "which job of that pipeline" is too.
+
+    An API key (BE-0509) has no user row either: null `actor_id`, and the key identifier (never the
+    secret) in *detail* under `apiKey`.
     """
     if state.repository is None or not actor:
         return
     repository = machine_repository(actor)
+    key_id = api_key_id(actor)
     if repository is not None:
         detail = {**detail, "repository": repository}
         if ci_job:
             detail["actor"] = ci_job
+    elif key_id is not None:
+        detail = {**detail, "apiKey": key_id}
     state.repository.record_audit(
         org_id=org,
-        actor_id=None if repository is not None else actor,
+        actor_id=None if repository is not None or key_id is not None else actor,
         action=action,
         target=target,
         detail=detail,
@@ -444,6 +450,10 @@ _ROLE_RANK = {"viewer": 0, "editor": 1, "admin": 2}
 # keeps it admin is not its reach but what it does: it materializes content the deployment does not
 # own and decides that content's build trust (BE-0121).
 _RESCAN_PATH = "/api/runs/rescan"
+# Importing a finished run (BE-0510) adds to the history, as triggering one does.
+_IMPORT_PATH = "/api/runs/import"
+# POSTs under `/api/runs/` that name no single run, so the path sets below decide their role.
+_RUN_COLLECTION_PATHS = (_RESCAN_PATH, _IMPORT_PATH)
 _ADMIN_PATHS = frozenset(
     {
         "/api/config",
@@ -489,6 +499,7 @@ _EDITOR_PATHS = frozenset(
         "/api/capture/start",
         "/api/capture/mark",
         "/api/capture/finish",
+        _IMPORT_PATH,
     }
 )
 
@@ -579,10 +590,11 @@ def required_role(method: str, path: str) -> str | None:
     # triggering a run. Permanent purge (``?purge=true``) is admin, but the query string isn't in the
     # `path` seen here, so that gate lives in the operation (`delete_run`/`bulk_delete_runs`). Handled
     # ahead of the POST-only guard because the soft-delete is a DELETE; the worker upload-urls POST
-    # keeps its own no-role handling (falls through to None). The rescan POST is no run's lifecycle,
-    # so it passes on to `_ADMIN_PATHS`; any other verb on that path stays a run's (an editor's).
-    rescan = method == "POST" and path == _RESCAN_PATH
-    if path.startswith(("/api/runs/", "/api/crawl/runs/")) and not rescan:
+    # keeps its own no-role handling (falls through to None). The rescan and import POSTs are no
+    # one run's lifecycle, so they pass on to `_ADMIN_PATHS` / `_EDITOR_PATHS`; any other verb on
+    # those paths stays a run's (an editor's).
+    collection = method == "POST" and path in _RUN_COLLECTION_PATHS
+    if path.startswith(("/api/runs/", "/api/crawl/runs/")) and not collection:
         if method == "DELETE":
             return "editor"
         if method == "POST" and (path == "/api/runs/bulk-delete" or path.endswith("/restore")):
