@@ -844,6 +844,19 @@ def test_devicefarm_refuses_a_flat_runs_on_key_before_submitting(tmp_path: Path)
         _check_no_conditions(config, "demo")
 
 
+def test_check_no_conditions_allows_ignored_settings(tmp_path: Path) -> None:
+    # An iOS Device Farm target must declare `install` under ignoredSettings; it is no condition.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_no_conditions
+
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    platform: ios\n    runsOn:\n      ios: { kind: device }\n"
+        "      ignoredSettings: { install: preinstalled, erase: real device }\n",
+        encoding="utf-8",
+    )
+    _check_no_conditions(config, "demo")
+
+
 def test_devicefarm_provider_refuses_a_runs_on_condition_before_submitting(tmp_path: Path) -> None:
     # A reserved Device Farm device has no pool to read, so a target's condition fails the job before
     # anything is uploaded (BE-0452); a scenario declares none since BE-0469.
