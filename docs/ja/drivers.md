@@ -217,9 +217,11 @@ runner は各シナリオを actuator の能力と照合します（`bajutsu/com
 | キー | 意味 |
 |---|---|
 | `version` | スキーマのバージョンです。`1` でなければなりません。 |
-| `environment` | worker が job を実行する場所です。`local`（既定）、`appium`（稼働中の Appium グリッド）、`devicefarm-host`（Device Farm のパッケージ内の実行で、Device Farm が起動してアプリを入れたデバイスを使います）、device cloud のプロバイダ種別のいずれかを書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
+| `environment` | worker が job を実行する場所です。`local`（既定）、`leased`（このホストで、[lease broker](self-hosting.md#lease-broker-からのデバイスの借用be-0511) が貸すデバイスを使います）、`appium`（稼働中の Appium グリッド）、`devicefarm-host`（Device Farm のパッケージ内の実行で、Device Farm が起動してアプリを入れたデバイスを使います）、device cloud のプロバイダ種別のいずれかを書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
 | `appium` | `environment: appium` のときに必須で、それ以外では拒否します。グリッドの `endpoint` の URL と、グリッドが受け持つ 1 つの `platform`（現在は `ios`）を書きます。 |
-| `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になり、`local` の worker は 1 しか受け付けません。 |
+| `lease` | `environment: leased` で必須、ほかでは拒否します。lease の `command`、`acquireTimeout`、`releaseTimeout` を書きます（[BE-0511](../../roadmaps/BE-0511-worker-device-lease-broker/BE-0511-worker-device-lease-broker-ja.md)）。 |
+| `platforms` | `environment: leased` で必須、ほかでは拒否します。broker が貸し出す platform を `ios` と `android` から書きます。 |
+| `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になります。`local` と `leased` の worker は 1 しか受け付けません。 |
 | `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
 | `realDevices` | `xcuitest` を提供する `local` の worker が、接続した実機の iPhone も動かすかどうかです。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |

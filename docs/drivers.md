@@ -254,9 +254,11 @@ key, driver, or environment, and any number below one.
 | Key | Meaning |
 |---|---|
 | `version` | The schema version. It must be `1`. |
-| `environment` | Where the worker runs jobs: `local` (the default), `appium` (a live Appium grid), `devicefarm-host` (the run inside a Device Farm package, whose device Device Farm booted and installed the app on), or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
+| `environment` | Where the worker runs jobs: `local` (the default), `leased` (this host, on devices a [lease broker](self-hosting.md#borrowing-devices-from-a-lease-broker-be-0511) lends), `appium` (a live Appium grid), `devicefarm-host` (the run inside a Device Farm package, whose device Device Farm booted and installed the app on), or a device-cloud provider kind. `devicefarm` is the one provider kind known today. |
 | `appium` | Required with `environment: appium`, refused otherwise: the grid's `endpoint` URL and the one `platform` it serves (`ios` today). |
-| `maxJobConcurrency` | How many jobs the worker may run at once, a positive integer. Omitted means one, and a `local` worker accepts one alone. |
+| `lease` | Required with `environment: leased`, refused otherwise: the lease `command`, `acquireTimeout`, and `releaseTimeout` ([BE-0511](../roadmaps/BE-0511-worker-device-lease-broker/BE-0511-worker-device-lease-broker.md)). |
+| `platforms` | Required with `environment: leased`, refused otherwise: the platforms the broker serves, from `ios` and `android`. |
+| `maxJobConcurrency` | How many jobs the worker may run at once, a positive integer. Omitted means one. A `local` or `leased` worker accepts one alone. |
 | `maxTargetsPerJob` | How many targets one scenario may declare, a positive integer. The count spans every driver and device group, so a Simulator target and a browser target count two. Omitted means unbounded. |
 | `drivers` | The drivers the worker offers, from `xcuitest`, `adb`, `playwright`, and `fake`. A driver the list omits is unavailable. |
 | `realDevices` | Whether a `local` worker that offers `xcuitest` also drives attached real iPhones, so serve routes real-device jobs to it ([capability routing](self-hosting.md#capability-routed-queues-be-0166), BE-0467). Omitted counts as `true`, as such a worker served real-device jobs before. Set `false` to keep a Simulator-only Mac off them. |

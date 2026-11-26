@@ -19,7 +19,7 @@
 - ユニット / 結合テスト（XCTest の領域。E2E に集中）
 - アプリのビルドツールチェーン自体（Bajutsu 自身はアプリをビルドせず、`subject.build` に書かれた既存コマンドを呼ぶだけ。ビルド手順自体は実装しない）
 
-> **デバイスクラウド実行について（BE-0236）。** かつてここには、「実機 / クラウドデバイスファーム」をスコープ外として挙げていました。BE-0236 でこの姿勢を改め、**device provider** の seam を導入しました。device provider は、run が駆動するデバイスの取得元を差し替えられる仕組みです。provider は worker 能力ファイル（`worker.yaml`）の `environment` で選びます。既定の `local` は従来のローカル接続デバイスで、そのままです。`environment: appium` にすると、ネットワーク越しに予約したクラウドデバイスなど、別のデバイスを run に渡せます。以前は target の `deviceProvider` で選んでいましたが、[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) でこのキーを worker 側へ移しました。
+> **デバイスクラウド実行について（BE-0236）。** かつてここには、「実機 / クラウドデバイスファーム」をスコープ外として挙げていました。BE-0236 でこの姿勢を改め、**device provider** の seam を導入しました。device provider は、run が駆動するデバイスの取得元を差し替えられる仕組みです。provider は worker 能力ファイル（`worker.yaml`）の `environment` で選びます。既定の `local` は従来のローカル接続デバイスで、そのままです。`environment: appium` にすると、ネットワーク越しに予約したクラウドデバイスなど、別のデバイスを run に渡せます。`environment: leased` にすると、lease broker（シミュレータ・エミュレータ・実機を貸し出すプログラム）のコマンドから、ジョブごとにデバイスを借ります（[BE-0511](roadmaps/BE-0511-worker-device-lease-broker/BE-0511-worker-device-lease-broker-ja.md)）。デバイスは run の入力であり、合否の判定には関わりません。以前は target の `deviceProvider` で選んでいましたが、[BE-0452](roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md) でこのキーを worker 側へ移しました。
 >
 > seam は run/CI の判定経路の外にあり、provider の仕事はデバイスの取得と解放だけです。決定的コア、ドライバ、ランナーは不変です。具象の provider（例: Firebase Device Streaming のように、実機を対話的にネットワーク越しに貸し出すサービス）は、任意導入の別アダプタとして実装します。決定的ゲートがクラウド SDK に依存しないようにするためです。本項目は seam を出荷します。既定は `local` なので、既存のターゲットの挙動は変わりません。
 >
