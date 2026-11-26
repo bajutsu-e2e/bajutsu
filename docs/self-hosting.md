@@ -1595,8 +1595,8 @@ scenario needs at once. A web target needs none. Borrowing those is all or nothi
 borrows whole extra lanes for `--workers` while the broker lends them. A shortfall of extra lanes
 never declines the job. The worker allows 90 seconds in all for borrowing. The run receives the
 devices in one tagged list, such as `--udid ios=AAAA,android=emulator-5588`. A `leased` worker
-ignores a device that a run request names. Two leases that give one variable different values fail
-the job and name the variable.
+ignores a device that a run request names. The devices one scenario needs must agree on every
+variable. Otherwise the job fails and names the variable. The worker gives back an extra lane that disagrees.
 
 **When the broker has no device.** The worker gives the job back through `POST /api/worker/decline`.
 The job returns to the queue and spends no lease attempt. Workers of the declining environment skip

@@ -505,3 +505,16 @@ def test_a_lost_lease_is_in_the_job_log_before_it_uploads(tmp_path: Path) -> Non
     devices: Any = _Devices()
     worker_mod._finish_job_log(tmp_path, InMemoryLogBus(), devices, Job(id="j1", cmd=list(_RUN)))
     assert reported == [None]
+
+
+def test_an_extra_lane_that_clashes_is_given_back_and_the_job_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker_file, log = _worker_file(tmp_path, "per-device-env")
+    devices, job, lines = _devices(worker_file, monkeypatch, _pools(("ios", 1, [])), workers=2)
+    assert devices.prepare(job)
+    assert job.cmd[-1] == "ios=AAAA-1111"
+    assert _ended(log) == 1
+    assert any(line.startswith("running 1 lane(s) of 2") for line in lines)
+    devices.release()
+    assert _ended(log) == 2

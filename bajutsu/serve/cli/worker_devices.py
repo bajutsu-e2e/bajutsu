@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from bajutsu.common.capability.worker_capability import LeaseBroker, load_worker_capability
-from bajutsu.common.runner.device_provider import merge_lease_env
+from bajutsu.common.runner.device_provider import LeaseEnvConflictError, merge_lease_env
 from bajutsu.common.runner.device_provider.lease_command import (
     BorrowedDevice,
     LeaseDeclinedError,
@@ -91,8 +91,8 @@ class JobDevices:
         Raises:
             LeaseDeclinedError: The broker did not lend every device one scenario needs at once;
                 nothing is held.
-            ValueError: The devices cannot be counted, a borrow was answered badly, or two leases
-                need different values for one variable; nothing is held.
+            ValueError: The devices cannot be counted, a borrow was answered badly, or two of the
+                devices one scenario needs set one variable differently; nothing is held.
         """
         capability = load_worker_capability(self._worker_file)
         flags = run_flags(job.cmd)
@@ -176,8 +176,9 @@ class JobDevices:
                     if self._stop():
                         return False
                     self._take(more, broker, platform, model, deadline)
-            except LeaseDeclinedError as e:
-                # A lane is all or nothing, and a shortfall only means fewer lanes.
+            except (LeaseDeclinedError, LeaseEnvConflictError) as e:
+                # A lane is all or nothing, and a shortfall only means fewer lanes. A lane whose
+                # variables clash is given back too, which leaves nothing in conflict.
                 self._log(f"running {extra + 1} lane(s) of {workers}: {e}")
                 break
             else:

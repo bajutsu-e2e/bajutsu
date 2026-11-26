@@ -324,6 +324,7 @@ worker の capability token、route token、`_device_reader` を、上の routin
 | 混在するモデル指定 | モデル指定と並んで family や OS の条件があれば、broker が選ぶ 1 台を追加 |
 | fake ドライバ | `leased` の run でも借用なし |
 | `record`、`crawl`、`--once` | 自分で借り、辞退の対象外 |
+| 追加レーンの値の衝突 | そのレーンを返して job を実行。`--workers` はスループットの指定にすぎないため |
 | lease の途中終了 | job のログに記録し、run は継続 |
 
 ## 参考

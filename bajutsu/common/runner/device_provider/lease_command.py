@@ -12,11 +12,13 @@ import contextlib
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import IO, cast
 
 from bajutsu.common.capability.worker_capability import DEVICE_PLACEHOLDER, PLATFORM_PLACEHOLDER
@@ -25,6 +27,9 @@ from bajutsu.common.config import Effective
 # The most of the answer line, and of the broker's standard error, that is ever held.
 _MAX_ANSWER_BYTES = 65536
 _STDERR_TAIL_BYTES = 4096
+_PLACEHOLDERS = re.compile("|".join(map(re.escape, (PLATFORM_PLACEHOLDER, DEVICE_PLACEHOLDER))))
+# An argument of this length or more is masked even without a flag before it.
+_TOKEN_LENGTH = 8
 
 _logger = logging.getLogger(__name__)
 
@@ -126,9 +131,9 @@ def borrow_device(
 
     try:
         if not answered.wait(acquire_timeout):
-            raise _silent(acquire_timeout, stderr_tail)  # noqa: TRY301  # released below
+            raise _silent(acquire_timeout, _said(stderr_tail, command))  # noqa: TRY301
         if not line or not line[0].endswith(b"\n"):
-            raise _ended_early(proc, errors, stderr_tail, release_timeout)  # noqa: TRY301  # same
+            raise _ended_early(proc, errors, stderr_tail, command, release_timeout)  # noqa: TRY301
         address, env = _parse_answer(line[0])
         granted.set()
     except BaseException:
@@ -138,7 +143,7 @@ def borrow_device(
     def problem() -> str | None:
         if released.is_set() or proc.poll() is None:
             return None
-        said = stderr_tail.decode(errors="replace").strip()
+        said = _said(stderr_tail, command)
         return (
             f"the lease on {address} ended before the run released it "
             f"(exit status {proc.returncode})" + (f": {said}" if said else "")
@@ -147,8 +152,28 @@ def borrow_device(
     return BorrowedDevice(address=address, env=env, release=release, problem=problem)
 
 
-def _silent(acquire_timeout: float, stderr_tail: bytearray) -> LeaseDeclinedError:
+def _said(stderr_tail: bytearray, command: Sequence[str]) -> str:
+    """The broker's last words, without the command's own argument values.
+
+    A usage line echoes the argv, and the reason travels to the job's log and the queue database,
+    where nothing knows a `worker.yaml` argument may be the operator's credential. Masked: the value
+    of a flag, and any other literal argument long enough to be a token.
+    """
+    values: set[str] = set()
+    for before, element in pairwise(command):
+        if _PLACEHOLDERS.search(element):
+            continue
+        if element.startswith("-"):
+            values.add(element.partition("=")[2])
+        elif before.startswith("-") or len(element) >= _TOKEN_LENGTH:
+            values.add(element)
     said = stderr_tail.decode(errors="replace").strip()
+    for value in sorted(values - {""}, key=len, reverse=True):
+        said = said.replace(value, "***")
+    return said
+
+
+def _silent(acquire_timeout: float, said: str) -> LeaseDeclinedError:
     return LeaseDeclinedError(
         f"the lease command printed no line within {acquire_timeout:g} seconds"
         + (f": {said}" if said else "")
@@ -159,13 +184,14 @@ def _ended_early(
     proc: subprocess.Popen[bytes],
     errors: threading.Thread,
     stderr_tail: bytearray,
+    command: Sequence[str],
     release_timeout: float,
 ) -> LeaseDeclinedError:
     """The decline of a command that closed its output before naming a device, with its reason."""
     with contextlib.suppress(subprocess.TimeoutExpired):
         proc.wait(timeout=release_timeout)
     errors.join(timeout=1.0)
-    said = stderr_tail.decode(errors="replace").strip()
+    said = _said(stderr_tail, command)
     status = proc.returncode
     ended = f"exit status {status}" if status is not None else "output closed"
     return LeaseDeclinedError(

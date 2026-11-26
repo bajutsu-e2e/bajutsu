@@ -815,8 +815,8 @@ WORKER_CONFIG_HELP = (
 def _load_device_worker_or_exit(path: Path | None) -> WorkerCapability:
     """The `--worker-config` in force for a command that drives a device, or exit 2 (BE-0450).
 
-    Such a command drives devices on its own host, or through an `appium` grid (BE-0452), and never
-    submits to a device cloud, so a file naming a batch provider describes a different kind of
+    Such a command drives devices on its own host, on devices a lease broker lends (BE-0511), or
+    through an `appium` grid (BE-0452), and never submits to a device cloud, so a file naming a batch provider describes a different kind of
     worker and is a usage error, not a silent override.
     """
     worker = _load_worker_capability_or_exit(path)
@@ -824,7 +824,7 @@ def _load_device_worker_or_exit(path: Path | None) -> WorkerCapability:
         typer.echo(
             f"--worker-config: environment '{worker.environment}' is a device cloud; this command "
             "drives devices on its own host or through an appium grid, and needs "
-            "`environment: local` or `environment: appium`"
+            "`environment: local`, `environment: leased`, or `environment: appium`"
         )
         raise typer.Exit(2)
     return worker

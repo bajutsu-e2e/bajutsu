@@ -103,7 +103,8 @@ def test_the_delay_doubles_and_stops_at_a_minute(repo: SqlRepository, tmp_path: 
         _decline(state, "j1")
         not_before = _row(repo, "j1").not_before
         assert not_before is not None
-        delays.append(round((not_before.replace(tzinfo=UTC) - before).total_seconds()))
+        # Floored: `not_before` counts from a clock read just after `before`.
+        delays.append(int((not_before.replace(tzinfo=UTC) - before).total_seconds()))
     assert delays == [2, 4, 8, 16, 32, 60, 60, 60]
     assert _lease(repo) == []  # still waiting out the last delay
 

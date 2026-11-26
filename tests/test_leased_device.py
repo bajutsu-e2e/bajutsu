@@ -461,3 +461,16 @@ def test_a_granted_lease_that_exited_is_warned_about_by_program_alone(
     borrowed.release()
     assert "already exited" in caplog.text
     assert "broker_stub.py" not in caplog.text
+
+
+def test_the_commands_argument_values_are_masked_in_the_brokers_words() -> None:
+    command = [
+        *("broker-cli", "--token", "s3cret", "--key=k3y", "0123456789abcdef"),
+        *("lease", "--platform", "{platform}"),
+    ]
+    echoed = bytearray(
+        b"usage: broker-cli --token s3cret --key=k3y 0123456789abcdef lease --platform ios\n"
+    )
+    assert broker._said(echoed, command) == (
+        "usage: broker-cli --token *** --key=*** *** lease --platform ios"
+    )

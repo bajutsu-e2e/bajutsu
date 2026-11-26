@@ -341,6 +341,7 @@ Log:
 | Mixed models | A family or OS condition beside a named model adds one device of the broker's choosing |
 | Fake driver | A `leased` run under it borrows nothing |
 | `record`, `crawl`, `--once` | Each borrows for itself and is not declined |
+| Clash in an extra lane | The lane is given back and the job runs, since `--workers` only sets throughput |
 | Early lease exit | The job log reports it, and the run goes on |
 
 ## References
