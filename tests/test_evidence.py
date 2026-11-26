@@ -585,6 +585,9 @@ def test_filesink_confirms_ios_on_demand_video_start(
         def await_stderr(self, needle: str, timeout: float) -> float | None:
             return time.monotonic()  # simctl announced its first processed frame
 
+        def await_stdout(self, timeout: float) -> float | None:
+            return None
+
     monkeypatch.setattr(intervals._functions, "_SubprocessProc", _FakeProc)
 
     sink = FileSink(tmp_path, udid="UDID")
@@ -610,6 +613,9 @@ def test_filesink_reports_a_video_that_never_confirmed_it_started(
 
         def await_stderr(self, needle: str, timeout: float) -> float | None:
             return time.monotonic() if announces["v"] else None
+
+        def await_stdout(self, timeout: float) -> float | None:
+            return None
 
     announces = {"v": True}
     monkeypatch.setattr(intervals._functions, "_SubprocessProc", _FakeProc)
@@ -639,6 +645,9 @@ def test_filesink_adopts_a_prestarted_video_instead_of_starting_one(tmp_path: Pa
             pass
 
         def await_stderr(self, needle: str, timeout: float) -> float | None:
+            return None
+
+        def await_stdout(self, timeout: float) -> float | None:
             return None
 
     prestarted = intervals.start_video("SER", temp, spawn=lambda argv, out: _Proc())

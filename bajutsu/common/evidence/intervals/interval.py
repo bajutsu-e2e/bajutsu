@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import signal
 import time
 from collections.abc import Callable
@@ -11,6 +12,7 @@ from pathlib import Path
 from ._null_proc import _NullProc
 from .proc import Proc
 
+_logger = logging.getLogger(__name__)
 PROVIDER = "simctl"
 
 
@@ -82,8 +84,20 @@ class Interval:
     _stop_signal: int = signal.SIGTERM
     _stop_timeout: float = _STOP_TIMEOUT
     _transform: Callable[[Path], Path] | None = field(default=None, repr=False)
+    # How long `stop()` still waits for the child's first output before signalling it, for a
+    # `log stream` that had written nothing when its start wait gave up; zero otherwise. Separate
+    # from `start_confirmed`, which the sink reads as a video stall.
+    _output_wait_before_stop: float = 0.0
 
     def stop(self) -> Path:
+        if self._output_wait_before_stop and (
+            self._proc.await_stdout(self._output_wait_before_stop) is None
+        ):
+            _logger.warning(
+                "%s's log stream never produced output; stopping it may leave it running on the "
+                "device",
+                self.path,
+            )
         before = time.monotonic()
         self._proc.stop(self._stop_signal, self._stop_timeout)
         ended_at = time.monotonic() if self.stops_when_stop_returns else before

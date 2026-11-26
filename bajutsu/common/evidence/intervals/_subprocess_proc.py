@@ -58,6 +58,24 @@ class _SubprocessProc:
                 return None
             time.sleep(_STDERR_POLL)
 
+    def await_stdout(self, timeout: float) -> float | None:
+        """Wait for the child's first byte in its stdout file; that instant, or None.
+
+        None on timeout, when the child exits having written nothing (no point waiting out the
+        deadline), and when stdout goes to no file. Reads at least once, as `await_stderr` does.
+        """
+        if self._file is None:
+            return None
+        deadline = time.monotonic() + timeout
+        while True:
+            # Sampled before the size, so output written just before an exit is still seen.
+            exited = self._proc.poll() is not None
+            if os.fstat(self._file.fileno()).st_size:
+                return time.monotonic()
+            if exited or time.monotonic() >= deadline:
+                return None
+            time.sleep(_STDERR_POLL)
+
     def stop(self, sig: int, timeout: float) -> None:
         self._proc.send_signal(sig)
         try:

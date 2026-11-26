@@ -679,3 +679,12 @@ def test_slug_never_collides_between_distinct_nodeids() -> None:
         == ondevice_evidence._slug(other_readable).rsplit("_", 1)[0]
     )
     assert ondevice_evidence._slug(collided_readable) != ondevice_evidence._slug(other_readable)
+
+
+def test_xcuitest_device_log_leaves_apsd_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[str, Path, str]] = []
+    monkeypatch.setattr(intervals, "start_device_log", lambda *args: seen.append(args))
+    ondevice_evidence.xcuitest_device_log("UDID", tmp_path / "device.log")
+    assert seen == [("UDID", tmp_path / "device.log", 'process != "apsd"')]

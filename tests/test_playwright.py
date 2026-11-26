@@ -1870,7 +1870,9 @@ def test_web_intervals_answer_the_stderr_wait_with_no_confirmation(tmp_path: Any
     console = drv.driver_interval("deviceLog", tmp_path / "console.log")
     assert video is not None and console is not None
     assert video._proc.await_stderr("Recording started", 0.0) is None
+    assert video._proc.await_stdout(0.0) is None
     assert console._proc.await_stderr("Recording started", 0.0) is None
+    assert console._proc.await_stdout(0.0) is None
 
 
 def test_driver_interval_video_none_without_recording(tmp_path: Any) -> None:

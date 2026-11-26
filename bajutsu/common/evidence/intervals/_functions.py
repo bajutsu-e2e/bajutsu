@@ -62,6 +62,15 @@ _ANCHOR_UNCORRECTED_MSG = (
 )
 
 
+# `simctl spawn … log stream` forwards a stop signal to the guest only once the guest process is
+# running. Signalled before that, simctl exits and the stream stays behind in the Simulator, loading
+# the host until it shuts down. The stream's first output (its header line, about 0.4s after the
+# spawn on an idle host) is the proof it is running, so the start waits for it, and a stop whose
+# start gave up waits once more, longer, before signalling.
+_LOG_STREAM_START_TIMEOUT = 10.0
+_LOG_STREAM_STOP_GRACE = 30.0
+
+
 # spawn(argv, stdout_path) -> a running process (stdout written to the file if given)
 Spawn = Callable[[list[str], "Path | None"], Proc]
 
@@ -313,7 +322,25 @@ def start_device_log(
 ) -> Interval:
     """Begin streaming the device log to `path`; stop() (SIGTERM) ends the stream."""
     proc = spawn(device_log_cmd(udid, predicate), path)
-    return Interval(kind="deviceLog", path=path, _proc=proc, _stop_signal=signal.SIGTERM)
+    return Interval(
+        kind="deviceLog",
+        path=path,
+        _proc=proc,
+        _stop_signal=signal.SIGTERM,
+        _output_wait_before_stop=_log_stream_stop_grace(proc, path),
+    )
+
+
+def _log_stream_stop_grace(proc: Proc, path: Path) -> float:
+    """Wait for a just-spawned `log stream` to run; the extra wait its stop still owes it."""
+    if proc.await_stdout(_LOG_STREAM_START_TIMEOUT) is not None:
+        return 0.0
+    _logger.warning(
+        "log stream for %s exited or wrote nothing within %ss; the evidence may miss its start",
+        path,
+        _LOG_STREAM_START_TIMEOUT,
+    )
+    return _LOG_STREAM_STOP_GRACE
 
 
 # --- adb (Android) interval providers: the twins of the simctl starters above ---
@@ -817,4 +844,5 @@ def start_app_trace(
         _proc=proc,
         _stop_signal=signal.SIGTERM,
         _transform=transform,
+        _output_wait_before_stop=_log_stream_stop_grace(proc, raw_path),
     )
