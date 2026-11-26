@@ -1857,7 +1857,8 @@ The step repeats the request about once a second until the response status equal
   twice. Any other method is a load error, a `${...}` token included.
 - A different status leads to the next attempt.
 - A connection error fails the step at once.
-- Each request may take the remaining time, up to 30 seconds.
+- Each request may take the remaining time, up to 30 seconds. A request that uses up that time
+  leads to the next attempt.
 - At the deadline the step fails and reports the last status it saw.
 - A cancelled run leaves the wait.
 

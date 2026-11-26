@@ -277,7 +277,7 @@ def test_http_step_handles_connection_error() -> None:
 # --- http status wait (BE-0515) ---
 
 
-@pytest.mark.parametrize("method", ["GET", "HEAD", "get"])
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
 def test_http_timeout_accepts_repeatable_methods(method: str) -> None:
     step = Step.model_validate(
         {"http": {"url": "https://example.com", "method": method, "status": 200, "timeout": 30}}
@@ -292,6 +292,7 @@ def test_http_timeout_accepts_repeatable_methods(method: str) -> None:
         ({"timeout": 5}, "timeout requires status"),
         ({"timeout": 5, "status": 200, "method": "POST"}, "requires method GET or HEAD"),
         ({"timeout": 5, "status": 200, "method": "${vars.m}"}, "requires method GET or HEAD"),
+        ({"timeout": 5, "status": 200, "method": "get"}, "requires method GET or HEAD"),
         ({"timeout": 0, "status": 200}, "greater than 0"),
         ({"timeout": float("inf"), "status": 200}, "finite number"),
     ],
@@ -391,6 +392,29 @@ def test_http_wait_bounds_each_request_and_reports_a_cut_off_one_as_the_deadline
     ):
         http_handler._do_http(http, {}, clock)
     assert timeouts == [30.0, 24.0]
+
+
+def test_http_wait_retries_a_request_that_reaches_the_per_request_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = FakeClock()
+    timeouts: list[float] = []
+
+    def send(_request: object, timeout: float) -> tuple[int, str]:
+        timeouts.append(timeout)
+        if len(timeouts) == 1:
+            clock.sleep(timeout)
+            raise base.SelectorError("http: request failed: timed out")
+        return 200, "ready"
+
+    monkeypatch.setattr(http_handler, "_send", send)
+    http = HttpRequest.model_validate(
+        {"url": "https://example.com", "status": 200, "timeout": 120, "saveBody": "resp"}
+    )
+    bindings: dict[str, str] = {}
+    http_handler._do_http(http, bindings, clock)
+    assert timeouts == [30.0, 30.0]
+    assert bindings == {"vars.resp": "ready"}
 
 
 def test_http_step_wait_clears_the_live_selection_like_a_one_shot_http_step() -> None:

@@ -62,7 +62,8 @@ class HttpRequest(_Model):
             return self
         if self.status is None:
             raise ValueError("http: timeout requires status (the response status to wait for)")
-        if self.method.upper() not in ("GET", "HEAD"):
+        # Case-sensitive, as HTTP methods are: the value reaches the wire verbatim.
+        if self.method not in ("GET", "HEAD"):
             raise ValueError(
                 f"http: timeout requires method GET or HEAD, got {self.method!r} "
                 "(repeating another method can create data twice)"

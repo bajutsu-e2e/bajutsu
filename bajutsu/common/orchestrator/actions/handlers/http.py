@@ -239,8 +239,8 @@ def _store_body(http: HttpRequest, body: str, bindings: dict[str, str] | None) -
 def _await_status(http: HttpRequest, timeout: float, clock: Clock, cancelled: CancelSource) -> str:
     """Repeat the request until the response carries `http.status`, and return that body (BE-0515).
 
-    A condition wait bounded by `timeout`: another status leads to the next attempt, while a request
-    that gets no response fails at once, unless the deadline is what cut it short.
+    A condition wait bounded by `timeout`: another status leads to the next attempt, and so does a
+    request that used up its own time. A request that errors sooner fails at once.
 
     Raises:
         base.SelectorError: The deadline passed, or a request got no response.
@@ -255,19 +255,23 @@ def _await_status(http: HttpRequest, timeout: float, clock: Clock, cancelled: Ca
         remaining = deadline - clock.now()
         if remaining <= 0:
             break
+        budget = min(remaining, _REQUEST_TIMEOUT)
+        started = clock.now()
         try:
-            status, body = _send(http, min(remaining, _REQUEST_TIMEOUT))
+            status, body = _send(http, budget)
         except base.SelectorError as e:
-            if clock.now() < deadline:
+            # Elapsed time tells a real error from a request its own time limit cut short.
+            if clock.now() - started < budget:
                 raise
             cut_off = e
-            break
+            continue
+        cut_off = None
         if status == http.status:
             return body
         last = status
         clock.sleep(max(0.0, min(_HTTP_POLL, deadline - clock.now())))
     seen = "no response arrived" if last is None else f"last status was {last}"
-    # A request that errored at the deadline may mean more than slowness, so its cause is kept.
+    # A cut-off last request may mean more than slowness, so its cause is kept.
     if cut_off is not None:
         seen += f"; last attempt: {cut_off}"
     raise base.SelectorError(
