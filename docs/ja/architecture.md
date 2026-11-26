@@ -846,7 +846,8 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - 受動的なファイル形式だけを並べた固定の許可リストに拡張子が載っていないエントリは、すべて破棄します。そのため `serve` が、アップロードされた HTML、SVG、XML のページを、閲覧者のサインインの Cookie が送られる自身のオリジンから配信することはありません。
   - ファイルを配置する前に run id を予約し、run id の衝突を拒否します。
   - 保存済みの `manifest.json` と `scenario.yaml` から `report.html` / `junit.xml` / `ctrf.json` を再生成し、manifest の `provenance.source` を `import` として記録し、呼び出し元の org の下に run を記録します。
-  - このルートには editor ロールが必要ですが、上記の org 単位の API キーの許可リストにはまだ載っていないため、今のところ呼び出せるのはサインイン済みのセッションだけです。
+  - このルートには editor ロールが必要です。上記の org 単位の API キーの許可リストにも、machine セッションの許可リストにも、まだ載っていません。
+  - OAuth を構成したサーバーで呼び出せるのは、サインイン済みのセッションだけです。OAuth のないサーバーは共有トークンを受け付けます。`scripts/upload_run.py` が送る資格情報は、この共有トークンです。
 - **有効な config の binding とは独立した、job 単位のアーティファクト差し替え**（[BE-0431](../../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)）。ホスト型デプロイでは、`POST /api/run` が `binaryArtifact` と `scenariosArtifact` を受け付けます。どちらも、保存済みのアーティファクトの sha256 です（BE-0268）。
   - 指定した方の脚は、そのアーティファクトだけを解決先とします。binary はその job 自身の target の `subject.path` に配置し、`scenarios` の zip はその target の scenarios ディレクトリを置き換えます。
   - 指定しなかった脚は、従来どおり org の有効な config の binding を解決先とするため、そちらは変更されません。この結果、1 つのデプロイに対する 2 つの同時 CI ディスパッチが、デプロイのフォールバック binding を奪い合ったり、org の記憶済み設定を書き換えたりすることがなくなります。
