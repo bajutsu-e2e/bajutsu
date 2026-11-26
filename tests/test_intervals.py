@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import signal
 import subprocess
 import time
@@ -1494,7 +1495,8 @@ def test_run_refuses_an_unknown_log_level_at_parse_time() -> None:
 
     result = CliRunner().invoke(app, ["run", "--target", "t", "--log-level", "verbose"])
     assert result.exit_code == 2
-    assert "--log-level" in result.output
+    # CI's terminal gets colored help, whose escape codes split the option name; compare plain text.
+    assert "--log-level" in re.sub(r"\x1b\[[0-9;]*m", "", result.output)
 
 
 def test_file_sink_hands_its_log_level_to_the_device_log(
