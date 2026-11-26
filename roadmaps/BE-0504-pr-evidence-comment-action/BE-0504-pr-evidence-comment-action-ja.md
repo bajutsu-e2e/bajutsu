@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
-| 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位） |
+| 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位）、[#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574)（最終更新日時） |
 | トピック | Integration with external services |
 | 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -73,7 +73,7 @@ zip にしないアップロードは、1つの artifact につき1ファイル�
 
 照合の対象は、作者のログインが `comment-author` と等しいコメントに限ります。Issue のコメントはすべてたどる（`per_page=100`）ので、会話が長くなってもマーカーを見つけられます。見つかれば更新し、なければ新規に作ります。
 
-描画するコメントの形は次のとおりです。先頭には、判定、成功と失敗のシナリオ数、コミットの Secure Hash Algorithm (SHA) の値（`github.sha`）、ワークフロー実行へのリンクを置きます。その下に、失敗したシナリオごとのブロックを置きます。ブロックには、シナリオ名、最初に失敗したステップの番号とアクション、失敗の理由を書きます。`steps` に失敗したエントリーがないときは、シナリオ単位の `failure` の要約を書き、ステップとスクリーンショットは示しません。スクリーンショットと動画には、zip にしない artifact へのリンクを付けます。最初の3シナリオに入らないシナリオは、実行全体の artifact 内のパスで、スクリーンショットと動画を示します。パスは `<runId>/<マニフェストが記録する名前>` の形です。
+描画するコメントの形は次のとおりです。先頭には、判定、成功と失敗のシナリオ数、コミットの Secure Hash Algorithm (SHA) の値（`github.sha`）、ワークフロー実行へのリンクを置きます。協定世界時の最終更新日時も置きます。その下に、失敗したシナリオごとのブロックを置きます。ブロックには、シナリオ名、最初に失敗したステップの番号とアクション、失敗の理由を書きます。`steps` に失敗したエントリーがないときは、シナリオ単位の `failure` の要約を書き、ステップとスクリーンショットは示しません。スクリーンショットと動画には、zip にしない artifact へのリンクを付けます。最初の3シナリオに入らないシナリオは、実行全体の artifact 内のパスで、スクリーンショットと動画を示します。パスは `<runId>/<マニフェストが記録する名前>` の形です。
 
 描画処理は、シナリオ名、失敗理由、artifact のパスをそれぞれコードスパンに入れます。複数行にわたる文字列は、フェンスつきブロックに入れます。コードスパンの区切りには、文字列の中でもっとも長いバッククォートの連続より1つ長い連続を使います。両端には空白を1つずつ入れます。フェンスつきブロックのフェンスも、中のどのバッククォートの連続より長くします。コードスパンとフェンスにより、アプリ由来の文字列はメンションや生のマークアップを加えられません。さらに `<!--` と `-->` を残らなくなるまで繰り返し取り除き、2つ目のマーカーを偽造できないようにします。
 

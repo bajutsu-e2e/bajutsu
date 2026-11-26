@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
-| Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike) |
+| Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike), [#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574) (last update time) |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -125,7 +125,8 @@ The action exposes one output, `artifact-url`, the URL of the whole-run artifact
 
 The rendered comment has this shape. The header gives the verdict and the counts of passing and
 failing scenarios. It also gives the commit Secure Hash Algorithm (SHA)
-value (`github.sha`). A link points to the workflow run. Under the header, each failing scenario gets a block with its name. The block shows
+value (`github.sha`). A link points to the workflow run. It also gives the last update time
+in coordinated universal time. Under the header, each failing scenario gets a block with its name. The block shows
 the index and action of the first failing step, and the step's reason. When `steps` holds no failing
 entry, the block shows the scenario-level `failure` summary instead. It then names no step or
 screenshot. A block links the screenshot and the video through

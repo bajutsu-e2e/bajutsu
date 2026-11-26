@@ -9,7 +9,7 @@ around each test, the way `demos/showcase/android/screenrecord.py` already does 
 lane's `connectedAndroidTest` — no bajutsu runtime there either, so no scenario/YAML `capture:`
 machinery to hook into. `capture()` itself is backend-agnostic: the caller supplies `start_video`/
 `start_log`, e.g. `android_screenrecord`/`intervals.start_logcat` for adb or `xcuitest_video`/
-`start_device_log` for XCUITest — `android_screenrecord` below pre-binds the adb-specific video
+`xcuitest_device_log` for XCUITest — `android_screenrecord` below pre-binds the adb-specific video
 bounds both Android suites share.
 
 Recorded per test, not per module: `screenrecord`'s ~180s device-side ceiling (see
@@ -112,6 +112,16 @@ def xcuitest_video(udid: str, path: Path) -> intervals.Interval:
     return intervals.start_video(udid, path, confirm_started=True)
 
 
+def xcuitest_device_log(udid: str, path: Path) -> intervals.Interval:
+    """`intervals.start_device_log` without `apsd`, the XCUITest twin of `android_screenrecord`'s bounds.
+
+    On a CI Simulator `apsd` alone was most of an unfiltered debug stream, hundreds of MB per test.
+    The default level is now `info`, where its share is unmeasured; it still says nothing about the
+    driver.
+    """
+    return intervals.start_device_log(udid, path, 'process != "apsd"')
+
+
 @pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(
     item: pytest.Item, call: pytest.CallInfo[None]
@@ -183,7 +193,7 @@ def capture(
     `lane` names the CI job (e.g. "conformance-adb") so its own uploaded artifact is self-contained.
     `start_video`/`start_log` take only `(serial_or_udid, path)` — this function is backend-agnostic,
     so every caller states explicitly which backend's primitives it wants (`android_screenrecord` +
-    `intervals.start_logcat` for adb, `xcuitest_video` + `start_device_log` for XCUITest) —
+    `intervals.start_logcat` for adb, `xcuitest_video` + `xcuitest_device_log` for XCUITest) —
     and a test can pass a fake pair to exercise this without a real device (BE-0350).
     """
     dest = Path("runs") / lane / _slug(request.node.nodeid)

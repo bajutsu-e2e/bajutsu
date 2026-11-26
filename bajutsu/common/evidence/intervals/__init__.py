@@ -15,6 +15,8 @@ driver-native and lives in the Playwright driver, not here.
 from ._functions import _ANCHOR_UNCORRECTED_MSG as _ANCHOR_UNCORRECTED_MSG
 from ._functions import _BEGIN as _BEGIN
 from ._functions import _END as _END
+from ._functions import _LOG_STREAM_START_TIMEOUT as _LOG_STREAM_START_TIMEOUT
+from ._functions import _LOG_STREAM_STOP_GRACE as _LOG_STREAM_STOP_GRACE
 from ._functions import _ORIGIN_SLACK as _ORIGIN_SLACK
 from ._functions import _ORIGIN_STARTUP_CEILING as _ORIGIN_STARTUP_CEILING
 from ._functions import _RECORDING_STARTED as _RECORDING_STARTED

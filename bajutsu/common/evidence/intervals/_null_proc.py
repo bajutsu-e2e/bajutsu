@@ -11,3 +11,6 @@ class _NullProc:
 
     def await_stderr(self, needle: str, timeout: float) -> float | None:  # noqa: ARG002  # Proc shape
         return None
+
+    def await_stdout(self, timeout: float) -> float | None:  # noqa: ARG002  # Proc shape
+        return None
