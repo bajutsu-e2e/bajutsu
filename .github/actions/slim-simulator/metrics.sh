@@ -18,8 +18,10 @@ awk -v l="$label" '
     if (path ~ /simruntime|CoreSimulator\/Volumes/) name = "sim:" name
     cpu[name] += s; total += s }
   END { printf "EXPMETRIC %s cpu_total_s=%d\n", l, total
-        for (name in cpu) printf "EXPMETRIC %s cpu_s %.1f %s\n", l, cpu[name], name }' /tmp/exp-ps.txt |
-  sort -k4 -g -r | head -25
+        for (name in cpu) printf "EXPMETRIC %s cpu_s %.1f %s\n", l, cpu[name], name }' /tmp/exp-ps.txt >/tmp/exp-cpu.txt
+# The total and the processes the arms are compared on are printed whatever their rank.
+grep -E 'cpu_total_s=| (sim:)?(apsd|diagnosticd|diskimagesiod)$' /tmp/exp-cpu.txt
+grep ' cpu_s ' /tmp/exp-cpu.txt | sort -k4 -g -r | head -25
 /usr/bin/top -l 2 -n 0 -s 5 | awk '/^Load Avg|^CPU usage|^PhysMem/ { line[$1] = $0 } END { for (k in line) print line[k] }' |
   sed "s/^/EXPMETRIC $label /"
 /usr/bin/vm_stat | grep -E 'free|compressor|Pageins|Pageouts|Swap|Decompressions' | sed "s/^/EXPMETRIC $label vm /"

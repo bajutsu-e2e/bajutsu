@@ -1,5 +1,8 @@
-# EXPERIMENT ONLY, not for merge. Runs the run / actuation / golden lanes of ios-e2e.yml three times
-# each with and without a set of Simulator services disabled, and prints load figures into the logs.
+# EXPERIMENT ONLY, not for merge. Runs the run and actuation lanes of ios-e2e.yml three times each in
+# three arms, and prints load figures into the logs:
+#   normal  - as ios-e2e.yml does it: the Simulator boots while the build products download
+#   ordered - download and unpack first, then boot synchronously with nothing alongside
+#   slim    - as normal, then reboot with a set of Simulator services disabled
 name: iOS slim Simulator experiment
 
 on:
@@ -81,26 +84,29 @@ jobs:
           if-no-files-found: error
 
   lane:
-    name: ${{ matrix.lane }} (slim=${{ matrix.slim }}, trial ${{ matrix.trial }})
+    name: ${{ matrix.lane }} (${{ matrix.arm }}, trial ${{ matrix.trial }})
     needs: build
     runs-on: macos-latest
     timeout-minutes: 60
     env:
       BAJUTSU_MIN_WAIT_TIMEOUT: "20"
-    # Three at a time, so the experiment does not take every macOS runner from other work.
+    # Three at a time, so the experiment does not take every macOS runner from other work. The arm
+    # varies fastest, so the three arms of one lane and trial run side by side.
     strategy:
       fail-fast: false
       max-parallel: 3
       matrix:
         trial: [1, 2, 3]
-        lane: [run, actuation, golden]
-        slim: [false, true]
+        lane: [run, actuation]
+        arm: [normal, ordered, slim]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up the iOS toolchain
         id: toolchain
         uses: ./.github/actions/setup-ios-toolchain
+        with:
+          boot: ${{ matrix.arm == 'ordered' && 'false' || 'true' }}
 
       - name: Download the prebuilt app + runner
         uses: ./.github/actions/download-ios-build
@@ -108,17 +114,37 @@ jobs:
       - name: Unpack the build products
         run: tar -xpf ios-build.tar
 
+      - name: Boot the Simulator after the downloads
+        id: late
+        if: matrix.arm == 'ordered'
+        uses: ./.github/actions/boot-simulator
+
+      - name: Resolve the Simulator
+        env:
+          UDID: ${{ steps.toolchain.outputs.udid || steps.late.outputs.udid }}
+        run: echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+
       - name: Wait for the Simulator
-        run: xcrun simctl bootstatus "${{ steps.toolchain.outputs.udid }}" -b
+        run: xcrun simctl bootstatus "$SIM_UDID" -b
 
       - name: Reboot the Simulator
+        if: matrix.arm == 'slim'
         uses: ./.github/actions/slim-simulator
         with:
-          udid: ${{ steps.toolchain.outputs.udid }}
-          slim: ${{ matrix.slim }}
+          udid: ${{ env.SIM_UDID }}
+          slim: "true"
+
+      - name: Load figures before the tests
+        if: matrix.arm != 'slim'
+        run: .github/actions/slim-simulator/metrics.sh "$SIM_UDID" start
+
+      - name: Record the runner image and how fast it answers
+        run: |
+          echo "EXPMETRIC image ${ImageOS:-?} ${ImageVersion:-?}"
+          python3 -c 'import subprocess,time; t=time.monotonic(); subprocess.run(["xcodebuild","-version"],check=True,capture_output=True); print(f"EXPMETRIC xcodebuild_version_s {time.monotonic()-t:.1f}")'
 
       - name: Install the app
-        run: xcrun simctl install "${{ steps.toolchain.outputs.udid }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
+        run: xcrun simctl install "${{ env.SIM_UDID }}" "demos/showcase/ios/swiftui/build/dd/Build/Products/Debug-iphonesimulator/BajutsuShowcaseSwiftUI.app"
 
       - name: Run the gating XCUITest scenarios (smoke, gestures, runner channel, permissions)
         if: matrix.lane == 'run'
@@ -138,13 +164,13 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: run-${{ matrix.slim }}-${{ matrix.trial }}
+          udid: ${{ env.SIM_UDID }}
+          artifact-name: run-${{ matrix.arm }}-${{ matrix.trial }}
 
       - name: Onboarding gate (bajutsu doctor environment — BE-0304)
         if: matrix.lane == 'run'
         env:
-          UDID: ${{ steps.toolchain.outputs.udid }}
+          UDID: ${{ env.SIM_UDID }}
         run: >-
           uv run --no-sync python scripts/assert_doctor_env.py --expect ok
           --target showcase-swiftui --backend xcuitest
@@ -170,31 +196,18 @@ jobs:
           target: showcase-swiftui
           backend: xcuitest
           config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
+          udid: ${{ env.SIM_UDID }}
           log-predicate: process IN {"BajutsuShowcaseSwiftUI", "SpringBoard", "runningboardd"}
-          artifact-name: actuation-run-${{ matrix.slim }}-${{ matrix.trial }}
+          artifact-name: actuation-run-${{ matrix.arm }}-${{ matrix.trial }}
 
       - name: Attach the REPL to the running app (BE-0455)
         if: matrix.lane == 'actuation'
-        run: scripts/repl_attach_e2e.sh "${{ steps.toolchain.outputs.udid }}"
-
-      - name: Run golden scenarios (BE-0006)
-        if: matrix.lane == 'golden'
-        uses: ./.github/actions/bajutsu-e2e
-        with:
-          scenarios: >-
-            demos/showcase/scenarios/golden/golden.yaml
-            demos/showcase/scenarios/golden/golden_xcuitest.yaml
-          target: showcase-swiftui
-          backend: xcuitest
-          config: demos/showcase/showcase.config.yaml
-          udid: ${{ steps.toolchain.outputs.udid }}
-          artifact-name: ios-golden-run-${{ matrix.slim }}-${{ matrix.trial }}
+        run: scripts/repl_attach_e2e.sh "${{ env.SIM_UDID }}"
 
       - name: Load figures at the end
         if: always()
         env:
-          UDID: ${{ steps.toolchain.outputs.udid }}
+          UDID: ${{ env.SIM_UDID }}
         run: |
           .github/actions/slim-simulator/metrics.sh "$UDID" end
           echo "EXPMETRIC telemetry $(jq -c '{host_load, runs_ok, scenarios: [.scenarios[] | {scenario, ok, duration_s}]}' runs/diagnostics/ci-telemetry/ci-telemetry.json || echo missing)"
