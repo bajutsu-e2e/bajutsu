@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0514](BE-0514-email-imap-pop3.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
 | Topic | Scenario authoring features |
 | Related | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) |
@@ -163,10 +163,18 @@ The gate cannot reach a mail server, so the last unit is a manual check.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Message model and reader interface
-- [ ] IMAP and POP3 adapters, new settings, and removal of the `HTTP` reader
-- [ ] Documents in both languages
+- [x] Message model and reader interface
+- [x] IMAP and POP3 adapters, new settings, and removal of the `HTTP` reader
+- [x] Documents in both languages
 - [ ] Manual check against a mail server
+
+Log:
+
+- Units 1 to 3 landed together. The change removes the `HTTP`
+  mailbox, and the manual check is still open. BE-0515,
+  which this design wants no later than this item, has not shipped yet.
+- Review added two stricter rules. Matches that share the newest receive time stop the step. The
+  reader also gained `check_same_inbox`, which stops the step when an IMAP folder is rebuilt.
 
 ## References
 

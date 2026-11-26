@@ -847,7 +847,7 @@ defaults:
 
 ### mailbox（`email` ステップ）
 
-`targets.<name>.services.mailbox` は、[`email`](scenarios.md#emailメールで届くコードをメールボックスから取得) ステップが 2FA / 検証コードを取得するためにポーリングする汎用 HTTP メールボックスを設定します。エンドポイントと認証情報をシナリオではなく config に置くためのものです。
+`targets.<name>.services.mailbox` には、[`email`](scenarios.md#emailメールで届くコードをメールボックスから取得) ステップが読むメールサーバーを書きます。対応するのは Internet Message Access Protocol（IMAP）と POP3 です。サーバーと認証情報は config に置くので、シナリオはどちらも名指ししません。
 
 ```yaml
 targets:
@@ -856,17 +856,31 @@ targets:
     subject: { id: com.example.myapp }
     services:
       mailbox:
-        kind: http                                        # トランスポートアダプタ。省略時は http
-        url: "${secrets.MAILBOX_URL}"                     # 受信箱エンドポイント（GET）。${secrets.*} は実行時に解決
-        headers: { Authorization: "Bearer ${secrets.MAILBOX_TOKEN}" }
-        # 任意のレスポンスマッピング。プロバイダ固有コードなしで任意の JSON を読むため:
-        messages: "items"                                 # メッセージ配列へのドット区切りパス（既定: レスポンス自体が配列）
-        fields: { to: to, subject: subject, body: text, receivedAt: receivedAt, id: id }
+        kind: imap                          # 必須。imap または pop3
+        host: "${secrets.MAIL_HOST}"
+        port: 993                           # 任意
+        security: tls                       # tls（既定）または starttls
+        username: "${secrets.MAIL_USER}"
+        password: "${secrets.MAIL_PASSWORD}"
+        folder: INBOX                       # imap のみ。既定は INBOX
 ```
 
-既定値はよくある形（`to` / `subject` / `body` / `receivedAt` / `id` を持つメッセージの配列）に合わせるので、準拠 API では `messages` / `fields` のマッピングは不要です。`email` ステップは受信箱を HTTP で読み、ステップ開始より新しいメッセージ（`id` で判定）だけを残し、一致するものを待ってコードを取り出します。決定的で LLM 非依存です（[BE-0046](../../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)）。
+`host`、`username`、`password`、`folder` には `${secrets.*}` を参照できます。ポートのデフォルト値は `kind` と `security` で決まります。
 
-`kind` は、メールボックスの背後にあるトランスポートアダプタを選びます。メールボックスは 1 つのインターフェースの背後にある backend であり、ベンダーではなくトランスポート（`http`、将来は `imap`）でキーを引くので、トランスポートを増やすことは runner を分岐させることではなくアダプタを登録することになります（[BE-0186](../../roadmaps/BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md)）。`kind` は任意で、省略時は `http` になるので既存の `mailbox:` ブロックはそのまま動きます。未知の `kind` はフォールバックせず、きれいな config エラーで run を落とします。現在出荷しているのは `http` だけです。ベンダーではなくトランスポートでキーを引くのは、ベンダー間の違いが JSON のフィールド名だけで、それは `fields` が吸収するからです。
+| `kind` | `tls` | `starttls` |
+|---|---|---|
+| `imap` | 993 | 143 |
+| `pop3` | 995 | 110 |
+
+どちらの `security` でも Transport Layer Security（TLS）を使い、サーバー証明書とそのサーバー名を検証します。平文のモードはありません。
+
+`starttls` では、アップグレードが成功するまで認証情報を送りません。サーバーが `STARTTLS`（IMAP）も `STLS`（POP3）も提供しない場合、ステップは停止します。ログインにはユーザー名とパスワードを使います。OAuth を要求するサーバーには対応していません。
+
+POP3 の受信箱は1つなので、`kind: pop3` に `folder` を書くと config エラーになります。
+
+`kind` はレジストリからアダプタを選びます（[BE-0186](../../roadmaps/BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md)）。組み込みのアダプタは `imap` と `pop3` です（[BE-0514](../../roadmaps/BE-0514-email-imap-pop3/BE-0514-email-imap-pop3-ja.md)）。未知の `kind` は config エラーとして run を停止します。
+
+このステップは Hypertext Transfer Protocol（`HTTP`）でのメール受信をやめました。`url`、`headers`、`messages`、`fields` のどれかが残るブロックは読み込めません。`HTTP` のメールボックスは [`http`](scenarios.md#httpテストデータ準備用のリクエスト) ステップで読んでください。`http` ステップはまだステータスを待てないので、遅れて届くメールを待つには [BE-0515](../../roadmaps/BE-0515-http-status-wait/BE-0515-http-status-wait-ja.md) が必要です。
 
 ### Webhook 通知（`notify:`、BE-0099）
 

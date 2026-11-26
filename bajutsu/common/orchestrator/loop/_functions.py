@@ -28,7 +28,7 @@ from bajutsu.common.evidence.network import (
     TransitionSource,
     _no_transitions,
 )
-from bajutsu.common.mailbox import extract_value, select
+from bajutsu.common.mailbox import UnknownNewestError, extract_value, select
 from bajutsu.common.orchestrator.actions import _do_action, handle_system_alert_selector
 from bajutsu.common.orchestrator.actions.handlers.totp import generator_key
 from bajutsu.common.orchestrator.control_channel import (
@@ -47,6 +47,7 @@ from bajutsu.common.orchestrator.types import (
     DerivedSecrets,
     DeviceControl,
     MailboxReader,
+    MailboxTimeout,
     NetworkSource,
     ProgressFn,
     RealClock,
@@ -101,8 +102,8 @@ from .app_crash_latches import AppCrashLatches
 from .step_loop_state import StepLoopState
 from .target_roster import TargetRoster
 
-# How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick is a remote HTTP
-# request to a (often rate-limited / metered) provider, so it polls about once a second.
+# How often `email` re-polls the mailbox. Unlike the UI's 50 ms `_POLL`, each tick opens a mail
+# connection and logs in, which a (often rate-limited) server should see only about once a second.
 _EMAIL_POLL = 1.0
 # How often a `sleep` step looks up from its pause to notice a cancelled run.
 _SLEEP_SLICE = 0.25
@@ -348,11 +349,12 @@ def _do_email(
 ) -> tuple[bool, str]:
     """Poll the mailbox until a matching message arrives, then extract its value into `vars.*`.
 
-    A condition wait bounded by `email.timeout` (never a fixed sleep): it baselines the ids present
-    at the start so only mail arriving *after* counts (skew-free), then re-fetches until a match or
-    the deadline. A missing mailbox, a timeout, or a matched message whose body the regex can't hit
-    is a clean failure — never a silent wrong value. `mailbox.fetch` raising `SelectorError` (an
-    unreachable / non-2xx endpoint) propagates to the caller's handler, which records it as a failure.
+    A condition wait bounded by `email.timeout` (never a fixed sleep): it records the ids present at
+    the start so only mail arriving *after* counts (skew-free), then fetches each unseen message once
+    until one matches or the deadline passes. A missing mailbox, a timeout, an unknowable newest
+    match, or a matched message whose body the regex can't hit is a clean failure — never a silent
+    wrong value. A reader raising `SelectorError` (connection, login, certificate) propagates to the
+    caller's handler, which records it as a failure.
 
     `cancelled` (BE-0370) raises `RunCancelled` out of the poll, like every other condition wait. This
     wait needs the check as much as any: `email.timeout` is whatever the scenario asked for — a wait
@@ -360,26 +362,42 @@ def _do_email(
     otherwise outlive the grace window and be killed before it wrote its manifest.
     """
     if mailbox is None:
-        return False, "email: no mailbox configured (set targets.<name>.mailbox)"
+        return False, "email: no mailbox configured (set targets.<name>.services.mailbox)"
     if bindings is None:  # defensive: the run loop always passes a dict for a step
         return True, ""
     deadline = clock.now() + email.timeout
-    baseline = frozenset(m.id for m in mailbox.fetch(email.timeout))
+    baseline = mailbox.list_ids(email.timeout)
+    seen = set(baseline)
+    timed_out = f"email: no matching message within {email.timeout:g}s"
     while True:
         remaining = deadline - clock.now()
         if remaining <= 0:
-            return False, f"email: no matching message within {email.timeout:g}s"
-        # Bound each fetch by the time left, so a single hung request can't overrun email.timeout.
-        picked = select(mailbox.fetch(remaining), email.match, baseline)
+            return False, timed_out
+        # Bound each call by the time left, so a single hung server can't overrun email.timeout.
+        try:
+            listed = mailbox.list_ids(remaining)
+            mailbox.check_same_inbox(baseline, listed)
+            new_ids = listed - seen
+            remaining = deadline - clock.now()
+            messages = mailbox.fetch(new_ids, remaining) if new_ids and remaining > 0 else []
+        except MailboxTimeout as e:
+            # The last poll often has too little time left to log in, so lead with the real news —
+            # and keep the server's silence visible, since that can be the cause.
+            return False, f"{timed_out} (last poll: {e})"
+        try:
+            picked = select(messages, email.match)
+        except UnknownNewestError as e:
+            return False, f"email: {e}"
         if picked is not None:
             value = extract_value(picked.body, email.extract)
             if value is None:
                 return False, "email: matched a message but extract regex did not match its body"
             bindings[f"vars.{email.extract.var}"] = value
             return True, ""
+        seen.update(m.id for m in messages)
         if cancelled():
             raise RunCancelled
-        clock.sleep(min(_EMAIL_POLL, deadline - clock.now()))
+        clock.sleep(max(0.0, min(_EMAIL_POLL, deadline - clock.now())))
 
 
 def _do_sleep(seconds: float, clock: Clock, cancelled: CancelSource) -> None:

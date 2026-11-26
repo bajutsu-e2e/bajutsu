@@ -1909,18 +1909,37 @@ generator's name.
 - type: { text: "${vars.code}", into: { id: auth.otp } }
 ```
 
-`email` waits for a 2FA / verification code delivered by email. It polls a generic HTTP mailbox
-(configured under `targets.<name>.services.mailbox`, see [configuration](configuration.md#mailbox-the-email-step))
-until a message that arrived **after the step started** satisfies `match`. It then extracts the value
-from the message body by the `bodyMatches` regex (first capturing group, or the whole match) into
-`${vars.<var>}`.
+`email` waits for a verification code that arrives by mail. It reads the server under `targets.<name>.services.mailbox`
+(see [configuration](configuration.md#mailbox-the-email-step)). The server speaks Internet Message
+Access Protocol (IMAP) or POP3.
+It waits until a message that arrived **after the step started** satisfies `match`. Then
+`bodyMatches` extracts the value into `${vars.<var>}`. The first capture group wins, and a pattern
+without a group yields the whole match.
 
-The wait is a **condition wait with a mandatory `timeout`** (no fixed sleep). A timeout, a matched
-message whose body the regex can't hit, or an unreachable / non-2xx mailbox is a clean step failure,
-never a silent wrong value. Only mail newer than the step's start counts (keyed on message id, so a
-stale code from an earlier run is never matched), and among new matches the newest wins. The step is
-deterministic and LLM-free. The endpoint and credentials live in config-referenced `${secrets.*}`, so
-the scenario stays app-agnostic ([BE-0046](../roadmaps/BE-0046-otp-email-steps/BE-0046-otp-email-steps.md)).
+The step reads each message by these rules.
+
+| Part | Rule |
+|---|---|
+| `match.to` | Equals one address in the `To` header, ignoring letter case |
+| `match.subject` | Equals the decoded subject |
+| Body | The `text/plain` parts that are not attachments, or else the `text/html` source |
+| Receive time | IMAP uses `INTERNALDATE`, and POP3 uses the `Date` header |
+
+The wait is a **condition wait with a mandatory `timeout`**, with no fixed sleep. Mail present when
+the step starts never counts. A stale code from an earlier run thus cannot match. Each new message
+downloads once. Neither adapter deletes mail or marks it as read.
+
+Among new matches, the newest wins. The step stops when it cannot tell which
+match is newest. One match may lack a date, or the newest two share a receive time.
+
+A timeout fails the step. A body that the pattern cannot hit fails it too. A connection error, a
+certificate error, or a rejected login also fails it. No error message quotes the password or the
+message body. A POP3 server without the `UIDL` command stops the step as well.
+An IMAP folder rebuilt during the step stops it too.
+
+Matching and extraction use fixed rules, with no Large Language Model (LLM). The scenario stays
+app-agnostic, because the server and credentials live in config
+([BE-0514](../roadmaps/BE-0514-email-imap-pop3/BE-0514-email-imap-pop3.md)).
 
 ### `generate` (a value computed at run time)
 

@@ -2356,7 +2356,7 @@ def run_all(
         values=[*(secret_values or []), *masked_by_hooks],
     )
     # One mailbox reader for the whole run (it's per-target, not per-device): the `email` step polls
-    # it, with ${secrets.*} in the url/headers resolved from the same secret bindings (BE-0046).
+    # it, with ${secrets.*} in its settings resolved from the same secret bindings (BE-0046).
     mailbox = build_mailbox_reader(eff.mailbox, bindings or {})
     # Preflight: a backend's capability set is (near-)static, so a scenario that needs a capability
     # the actuator lacks (e.g. simctl device control on a real iOS device — BE-0238) is failed

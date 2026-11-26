@@ -59,7 +59,7 @@ class Effective:
     declared_platform: str | None = None
     # Resolved AI provider/model/endpoint/key (BE-0047), passed to the AI factory. None = env-only.
     ai: AiConfig | None = None
-    # Generic HTTP mailbox the `email` step polls (`services.mailbox`, BE-0046). None = no
+    # The IMAP / POP3 server the `email` step reads (`services.mailbox`, BE-0514). None = no
     # mailbox configured, so an `email` step fails cleanly.
     mailbox: Mailbox | None = None
     # Where this target's devices come from (BE-0236). None = the built-in local provider (today's
