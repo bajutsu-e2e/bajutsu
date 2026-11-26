@@ -51,6 +51,9 @@ def test_run_flag_surface_is_fully_classified() -> None:
         "rebuild",
         # The worker stamps it from the job spec's own field (BE-0501), so serve's argv never does.
         "scenario_source",
+        # --log-level picks the iOS deviceLog's `log stream --level`. Serve's run request has no
+        # field for it yet, so a hosted run captures at the default, info.
+        "log_level",
     }
     pass_through = {
         "backend",

@@ -116,6 +116,10 @@ def test_device_log_cmd_with_and_without_predicate() -> None:
     assert "--predicate" not in base
     # Info, not debug: a debug stream loads the whole Simulator, and the default would drop info too.
     assert base[base.index("--level") + 1] == "info"
+    debug = intervals.device_log_cmd("UDID", level="debug")
+    assert debug[debug.index("--level") + 1] == "debug"
+    with pytest.raises(ValueError, match="unknown device log level"):
+        intervals.device_log_cmd("UDID", level="verbose")
     withp = intervals.device_log_cmd("UDID", 'subsystem == "com.x"')
     assert "--predicate" in withp and 'subsystem == "com.x"' in withp
 
@@ -1474,3 +1478,38 @@ def test_screenrecord_stop_retries_a_failed_interrupt(monkeypatch: pytest.Monkey
 
     intervals._await_screenrecord_stopped("SER", run, frozenset(), poll=0.001)
     assert sends["n"] == 2
+
+
+def test_run_levels_match_the_streams_own() -> None:
+    from bajutsu.run.cli import DeviceLogLevel
+
+    assert tuple(level.value for level in DeviceLogLevel) == intervals.DEVICE_LOG_LEVELS
+
+
+def test_run_refuses_an_unknown_log_level_at_parse_time() -> None:
+    # Exit 2 before any device work, rather than a ValueError at the first deviceLog capture.
+    from typer.testing import CliRunner
+
+    from bajutsu.cli import app
+
+    result = CliRunner().invoke(app, ["run", "--target", "t", "--log-level", "verbose"])
+    assert result.exit_code == 2
+    assert "--log-level" in result.output
+
+
+def test_file_sink_hands_its_log_level_to_the_device_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # `run --log-level` reaches the stream through the sink, as `--log-predicate` does.
+    from bajutsu.common.evidence.core.file_sink import FileSink
+
+    seen: dict[str, object] = {}
+
+    def fake_start(udid: str, path: Path, predicate: str | None = None, **kw: object) -> object:
+        seen.update(udid=udid, predicate=predicate, level=kw.get("level"))
+        return intervals.Interval(kind="deviceLog", path=path, _proc=FakeProc())
+
+    monkeypatch.setattr(intervals, "start_device_log", fake_start)
+    sink = FileSink(tmp_path, udid="UDID", log_predicate='process == "X"', log_level="debug")
+    sink._start_simctl_interval("deviceLog", tmp_path / "device.log", "scenario")
+    assert seen == {"udid": "UDID", "predicate": 'process == "X"', "level": "debug"}

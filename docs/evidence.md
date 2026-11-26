@@ -336,6 +336,7 @@ each line's time and pairs the markers into `appTrace.json`.
   - The stream runs at the info level, which keeps info messages and leaves out debug ones.
     A debug stream makes every process in the Simulator emit its debug messages.
     On a loaded CI runner that ran to thousands of lines a second.
+    `run --log-level debug` brings debug messages back when an investigation needs them.
   - `adb logcat` has no tag or priority filter. A logcat filterspec is a different syntax, a later
     knob.
   - `adb logcat` starts the follow from the tail, so it reflects the scenario window, not the whole

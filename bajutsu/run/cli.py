@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Annotated, Any, NoReturn, cast
 if TYPE_CHECKING:
     from bajutsu.common.doctor import Score
 
+from enum import StrEnum
+
 import typer
 
 from bajutsu.cli._shared import (
@@ -2268,6 +2270,7 @@ class _RunPlan:
     network: bool
     log_predicate: str
     log_subsystem: str
+    log_level: str
     progress: bool
     zip_run: bool
     evidence_store: str
@@ -2534,6 +2537,7 @@ def _open_pools(plan: _RunPlan) -> dict[str, tuple[LeaseFn, Callable[[], None]]]
                 network=plan.network,
                 log_predicate=plan.log_predicate or None,
                 log_subsystem=plan.log_subsystem or _log_subsystem_default(setup.eff),
+                log_level=plan.log_level,
                 secret_values=plan.secret_values,
                 provision=setup.device.provision,
             )
@@ -2655,6 +2659,7 @@ def _dispatch_matrix(
             network=plan.network,
             log_predicate=plan.log_predicate or None,
             log_subsystem=plan.log_subsystem or _log_subsystem_default(eff_e),
+            log_level=plan.log_level,
             secret_values=plan.secret_values,
             provision=plan.provision,
         )
@@ -2849,6 +2854,7 @@ def _run_cell(
                 network=plan.network,
                 log_predicate=plan.log_predicate or None,
                 log_subsystem=plan.log_subsystem or _log_subsystem_default(effs[name]),
+                log_level=plan.log_level,
                 secret_values=plan.secret_values,
                 provision=setup.device.provision,
             )
@@ -3004,6 +3010,14 @@ def _finish(
     raise typer.Exit(0 if ok else 1)
 
 
+class DeviceLogLevel(StrEnum):
+    """The `--log-level` choices, which are `log stream --level`'s own values."""
+
+    DEFAULT = "default"
+    INFO = "info"
+    DEBUG = "debug"
+
+
 def _check_label(value: str) -> str:
     """Refuse an over-long `--label` while the command line is parsed (BE-0404 unit 2).
 
@@ -3089,6 +3103,11 @@ def run_body(
     ),
     log_subsystem: str = typer.Option(
         "", "--log-subsystem", help="os_log subsystem for appTrace (defaults to the app's bundleId)"
+    ),
+    # The enum is what makes typer offer and enforce the three choices; ruff's B008 only exempts an
+    # option whose annotation it knows to be immutable, which an enum is to typer but not to ruff.
+    log_level: DeviceLogLevel = typer.Option(  # noqa: B008  # typer reads options from defaults
+        DeviceLogLevel.INFO, "--log-level", help="`log stream --level` for the iOS deviceLog"
     ),
     network: bool | None = typer.Option(
         None,
@@ -3591,6 +3610,7 @@ def run_body(
                 network=network,
                 log_predicate=log_predicate,
                 log_subsystem=log_subsystem,
+                log_level=log_level.value,
                 progress=progress,
                 zip_run=zip_run,
                 label=label,
