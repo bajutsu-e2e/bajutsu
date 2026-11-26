@@ -1155,7 +1155,7 @@ or more actions fails validation (`scenario/models/steps.py` `_one_action`).
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification with this APNs (Apple Push Notification service) payload: `simctl push` on iOS, the in-app BajutsuAndroid push receiver on Android |
-| `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status` and stores the body as `${vars.<saveBody>}` ([below](#http-request-for-test-data-setup)) |
+| `http` | `http: { method?, url, headers?, body?, status?, timeout?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status` and stores the body as `${vars.<saveBody>}`; `timeout` repeats the request until `status` ([below](#http-request-for-test-data-setup)) |
 | `totp` | `totp: { secret, into?: { var }, name? }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}`; `name` also registers the secret for later `otp` steps |
 | `otp` | `otp: { from, into: { var }, minRemaining? }` | write the current code of the generator a `totp` step registered as `from` into `${vars.<var>}` ([below](#fetch-a-fresh-code-later-with-otp)) |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
@@ -1798,6 +1798,37 @@ payload exceeds the limit fails at run time. Its message names the size and the 
 `${vars.<name>}` for later steps. Because it touches no device, `http` is the one device-independent
 action here. To read single values out of a JSON response, follow it with a
 [`parseJson`](#parsejson-read-values-out-of-json-text) step.
+
+#### Waiting for a status with `timeout`
+
+Some data appears later, such as a code that arrives seconds after a button press. An optional
+`timeout`, in seconds, makes the step wait for it
+([BE-0515](../roadmaps/BE-0515-http-status-wait/BE-0515-http-status-wait.md)):
+
+```yaml
+- http:
+    url: "${secrets.API}/codes/latest"
+    status: 200
+    timeout: 30
+    saveBody: response
+```
+
+The step repeats the request about once a second until the response status equals `status`.
+`saveBody` then stores the body of that response alone.
+
+- `timeout` without `status` is a scenario load error.
+- `timeout` requires the `GET` or `HEAD` method, because repeating another method can create data
+  twice. Any other method is a load error, a `${...}` token included.
+- A different status leads to the next attempt.
+- A connection error fails the step at once.
+- Each request may take the remaining time, up to 30 seconds. A request that uses up that time
+  leads to the next attempt.
+- At the deadline the step fails and reports the last status it saw.
+- A cancelled run leaves the wait.
+
+The status is the sole success condition. A service that answers 200 with an empty body before the
+data exists cannot use this wait. The wait also has no notion of new data, unlike `email`. To avoid a
+stale value, ask for something unique to the run. The `generate` step can build such an address.
 
 ### `parseJson` (read values out of JSON text)
 

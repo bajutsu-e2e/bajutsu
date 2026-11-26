@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0515](BE-0515-http-status-wait-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0515") |
+| 実装 PR | [#2580](https://github.com/bajutsu-e2e/bajutsu/pull/2580) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) |
 <!-- /BE-METADATA -->
@@ -85,9 +86,13 @@
 > 作業の進行に合わせて更新します。チェックリストは *詳細設計* の MECE な作業分解に対応し（作業単位ごとに
 > 1 項目）、ログは変更内容と時期を（古い順に）記録して PR にリンクします。
 
-- [ ] モデルと読み込み検査
-- [ ] 待機の本体
-- [ ] 日英の文書
+- [x] モデルと読み込み検査
+- [x] 待機の本体
+- [x] 日英の文書
+
+ログ：
+
+- [#2580](https://github.com/bajutsu-e2e/bajutsu/pull/2580)、2026-11-27：任意の `timeout` と読み込み検査、状態コードの待機、日英の文書を追加しました。
 
 ## 参考
 

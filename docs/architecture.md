@@ -645,7 +645,7 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 - DSL device and system actions (iOS):
   - `background`, `clearKeychain`, `clearClipboard`.
   - `overrideStatusBar` / `clearStatusBar` (deterministic status bar).
-  - The `http` action for test-data setup and webhooks. `saveBody` stores the whole response body.
+  - The `http` action for test-data setup and webhooks. `saveBody` stores the whole response body. An optional `timeout` (BE-0515) turns a `GET` or `HEAD` request into a condition wait. The request repeats until the response carries `status`.
 - DSL `setPickerValue` (BE-0356) moves a wheel-style picker to a named row. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` in a wheel mode. The step calls XCUITest's own `adjust(toPickerWheelValue:)` on the resolved wheel.
   - On Android (BE-0480) the picker is an `android.widget.NumberPicker`, spinner-mode `DatePicker` and `TimePicker` included. The adb driver resolves the wheel as it resolves a tap target. It sends the wheel's identity to the resident server's `/setPickerValue` endpoint. The server steps the wheel one row at a time through `NumberPicker`'s accessibility scroll actions. It reads the row back after each step. A 400-row cap and a deadline bound the walk. The step has no coordinate fallback.
   - The step is handle-based like `tap`, not coordinate-based like `swipe`/`drag`/`scroll`. A wheel's rows are not separately addressable elements that a coordinate drag could reliably stop on.

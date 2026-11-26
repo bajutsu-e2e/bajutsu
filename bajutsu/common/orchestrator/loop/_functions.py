@@ -30,6 +30,7 @@ from bajutsu.common.evidence.network import (
 )
 from bajutsu.common.mailbox import extract_value, select
 from bajutsu.common.orchestrator.actions import _do_action, handle_system_alert_selector
+from bajutsu.common.orchestrator.actions.handlers.http import _do_http
 from bajutsu.common.orchestrator.actions.handlers.totp import generator_key
 from bajutsu.common.orchestrator.control_channel import (
     ControlChannelError,
@@ -395,6 +396,24 @@ def _do_sleep(seconds: float, clock: Clock, cancelled: CancelSource) -> None:
         clock.sleep(min(_SLEEP_SLICE, remaining))
 
 
+def _do_clocked_step(
+    step: Step,
+    clock: Clock,
+    bindings: dict[str, str] | None,
+    cancelled: CancelSource,
+    selection: SelectionState | None,
+) -> None:
+    """Run a `sleep` step, or an `http` step that waits for its status under `timeout` (BE-0515)."""
+    if step.sleep is not None:
+        _do_sleep(step.sleep.seconds, clock, cancelled)
+        return
+    assert step.http is not None
+    _do_http(step.http, bindings, clock, cancelled)
+    # Bypassing `_do_action` skips its selection invalidation, so repeat it, as a one-shot `http` does.
+    if selection is not None:
+        selection.invalidate()
+
+
 def _wait_for_totp_window(
     min_remaining: int,
     clock: Clock,
@@ -518,7 +537,7 @@ def _run_step_body(
     ``totp`` / ``otp`` step's window wait leaves when the wall clock jumped (BE-0474). ``on_interrupt_poll``, when given for a
     wait step, is passed to ``_wait`` so a scenario's ``interrupts`` handlers can clear an
     interstitial screen mid-wait (BE-0314). ``cancelled`` reaches the step kinds that poll —
-    ``wait``, ``handleSystemAlert``, ``assert``, and ``email`` — so each notices a cancelled run
+    ``wait``, ``handleSystemAlert``, ``assert``, ``email``, and ``http`` with a ``timeout`` — so each notices a cancelled run
     within one polling tick (BE-0370), as does ``setMocks``, whose acknowledgement wait also reads
     ``channel`` (BE-0365 unit 4). ``step_id``/``step_index``/``channel``/``hide_markers``, when
     given for an ``assert`` step whose block carries a ``visual`` entry, back that entry's own
@@ -582,11 +601,10 @@ def _run_step_body(
             except ControlChannelError as exc:
                 return False, f"control channel: {exc}", [], None
             return True, "", [], None
-        if kind == "sleep":
-            assert step.sleep is not None
-            # Here rather than through `_do_action`, like `wait`: the pause needs the clock and the
+        if kind == "sleep" or (step.http is not None and step.http.timeout is not None):
+            # Here rather than through `_do_action`, like `wait`: both need the clock and the
             # cancel source, which the action-handler signature carries neither of.
-            _do_sleep(step.sleep.seconds, clock, cancelled)
+            _do_clocked_step(step, clock, bindings, cancelled, selection)
             return True, "", [], None
         if kind == "email":
             assert step.email is not None

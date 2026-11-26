@@ -845,7 +845,7 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（iOS は `simctl push`、Android はアプリ内の BajutsuAndroid のプッシュレシーバ） |
-| `http` | `http: { method?, url, headers?, body?, status?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し、ボディを `${vars.<saveBody>}` に保存する（[後述](#httpテストデータ準備用のリクエスト)） |
+| `http` | `http: { method?, url, headers?, body?, status?, timeout?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し（`timeout` を指定すると一致するまで繰り返し）、ボディを `${vars.<saveBody>}` に保存する（[後述](#httpテストデータ準備用のリクエスト)） |
 | `totp` | `totp: { secret, into?: { var }, name? }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる。`name` を指定すると、後続の `otp` ステップ向けにシークレットも登録する |
 | `otp` | `otp: { from, into: { var }, minRemaining? }` | `totp` ステップが `from` の名前で登録したジェネレータの現在のコードを `${vars.<var>}` に入れる（[後述](#otp-で後から新しいコードを取得する)） |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
@@ -1299,6 +1299,32 @@ Android では、`setLocation` はローカルのエミュレータならエミ�
 ```
 
 `http` はリクエストを runner から HTTP で送ります。UI ドライバは経由しません。そのため `status` の不一致はステップ失敗になり、`saveBody` はレスポンスボディのテキストを `${vars.<name>}` に保存して後続ステップで使えます。デバイスに触れない、ここで唯一のデバイス非依存アクションです。JSON のレスポンスから個々の値を読むには、続けて [`parseJson`](#parsejsonjson-テキストからの値の読み出し) ステップを書きます。
+
+#### `timeout` でステータスを待つ
+
+ボタンを押した数秒後に届くコードのように、あとから現れるデータがあります。`http` ステップに任意の `timeout`（秒）を指定すると、データが現れるまで待てます（[BE-0515](../../roadmaps/BE-0515-http-status-wait/BE-0515-http-status-wait-ja.md)）。
+
+```yaml
+- http:
+    url: "${secrets.API}/codes/latest"
+    status: 200
+    timeout: 30
+    saveBody: response
+```
+
+ステップは、レスポンスのステータスが `status` と一致するまで、約 1 秒ごとにリクエストを繰り返します。`saveBody` が保存するのは、一致したレスポンスのボディだけです。
+
+| 状況 | ステップの動き |
+|---|---|
+| `status` のない `timeout` | シナリオの読み込みエラー |
+| `GET` と `HEAD` 以外のメソッド（`${...}` トークンを含む） | シナリオの読み込みエラー。繰り返すとデータが二重に作られるおそれがあるため |
+| 違うステータスが返る | 次の試行に進む |
+| 接続エラー | すぐに失敗する |
+| 1 回のリクエスト | 残り時間まで使える。上限は 30 秒。使い切った場合は次の試行に進む |
+| 期限に達する | 最後に受け取ったステータスを報告して失敗する |
+| 実行のキャンセル | 待機を抜ける |
+
+成功の条件はステータスだけです。そのため、データができる前から空のボディと 200 を返すサービスには、この待機を使えません。`email` と違い、新しいデータかどうかも区別しません。古い値を読まないように、実行ごとに固有のものを問い合わせます。たとえば `generate` ステップでアドレスを組み立てます。
 
 ### `parseJson`（JSON テキストからの値の読み出し）
 

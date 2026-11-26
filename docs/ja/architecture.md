@@ -633,7 +633,7 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
 - DSL のデバイス / システムアクション（iOS）：
   - `background`、`clearKeychain`、`clearClipboard`。
   - `overrideStatusBar` / `clearStatusBar`（決定的なステータスバー）。
-  - テストデータ準備 / Webhook 用の `http` アクション。`saveBody` はレスポンスボディ全体を保存します。
+  - テストデータ準備 / Webhook 用の `http` アクション。`saveBody` はレスポンスボディ全体を保存します。任意の `timeout`（BE-0515）を指定すると、`GET` / `HEAD` のリクエストは条件待ちになり、レスポンスが `status` を返すまで繰り返します。
 - DSL の `setPickerValue`（BE-0356）は、ホイール式のピッカーを指定した行へ動かします。iOS のピッカーは `UIPickerView`、またはホイールのみのモードに切り替えた `UIDatePicker` です。解決済みのホイールに対して、XCUITest 自身の `adjust(toPickerWheelValue:)` を呼び出します。
   - Android（BE-0480）のピッカーは `android.widget.NumberPicker` で、スピナー表示の `DatePicker` や `TimePicker` も含みます。adb ドライバは、タップ対象と同じ手順でホイールを解決し、その識別情報を常駐サーバーの `/setPickerValue` エンドポイントへ送ります。サーバーは `NumberPicker` のアクセシビリティのスクロール操作でホイールを 1 行ずつ進め、1 行ごとに行を読み直します。回す行数は 400 行を上限とし、期限も設けています。座標によるフォールバックはありません。
   - `tap` と同じくハンドルベースの操作であり、`swipe`/`drag`/`scroll` のような座標ベースではありません。ホイールの行は、座標ドラッグで確実に止められる個別の要素ではないからです。
