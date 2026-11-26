@@ -341,6 +341,7 @@ class Repository(Protocol):
         max_jobs: int = 1,
         caps: ConcurrencyCaps | None = None,
         on_stopped: Callable[[list[str]], None] | None = None,
+        environment: str | None = None,
     ) -> list[LeasedJob]:
         """Atomically lease the oldest queued job *worker_id* can serve, with its group's followers.
 
@@ -356,6 +357,8 @@ class Repository(Protocol):
                 registration; a plain job was capped when it registered. None is unlimited.
             on_stopped: Called with the queued jobs the lease's sweep cancelled (see
                 `reclaim_expired_leases`).
+            environment: The worker's `worker.yaml` environment; a job that environment declined
+                stays out of the scan until its `not_before` (BE-0511).
 
         Returns:
             The leased jobs, oldest first. A group a cap holds back stays queued, and the lease
@@ -444,6 +447,26 @@ class Repository(Protocol):
 
         One conditional update decides the read, so the answer reaches one poll alone, and only
         the lease holder takes it.
+        """
+
+    def decline_job(
+        self,
+        job_id: str,
+        worker_id: str,
+        *,
+        reason: str,
+        environment: str,
+        on_stopped: Callable[[list[str]], None] | None = None,
+    ) -> str | None:
+        """Give back a leased job whose devices *worker_id* could not borrow (BE-0511).
+
+        The job returns to the queue as if nobody had claimed it, consuming no lease attempt, and
+        waits out a growing delay for workers of *environment*. Once its first decline is older than
+        the decline window, it fails instead.
+
+        Returns:
+            The job's status after the call — ``queued``, ``failed``, or ``cancelled`` for one a
+            cancel had reached — or None when *worker_id* does not hold its lease.
         """
 
     def reclaim_expired_leases(

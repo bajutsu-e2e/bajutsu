@@ -8,7 +8,8 @@ the mailbox transport registry (BE-0186): the built-in `local` provider passes t
 through unchanged (today's locally-attached path, byte-for-byte), and an unknown `kind` fails closed
 when the run resolves it. The seam sits upstream of the device pool and entirely off the run/CI
 verdict path — no LLM, no assertion input (prime directive 1). It ships the `local` reference provider
-and the `appium` live path (a reserved iOS device behind an Appium / WebDriver endpoint, BE-0238); a
+the `appium` live path (a reserved iOS device behind an Appium / WebDriver endpoint, BE-0238), and
+`leased`, which borrows a device from a lease broker through its command (BE-0511); a
 further device-cloud adapter registers its own `kind` (a sibling item), never a branch here.
 """
 
@@ -17,7 +18,14 @@ from ._functions import _PROVIDERS as _PROVIDERS
 from ._functions import _ensure_builtins as _ensure_builtins
 from ._functions import acquire_device, register
 from ._local_provider import _LocalProvider as _LocalProvider
-from .device_lease import DeviceLease
+from .device_lease import DeviceLease, LeaseEnvConflictError, merge_lease_env
 from .device_provider import DeviceProvider
 
-__all__ = ["DeviceLease", "DeviceProvider", "acquire_device", "register"]
+__all__ = [
+    "DeviceLease",
+    "DeviceProvider",
+    "LeaseEnvConflictError",
+    "acquire_device",
+    "merge_lease_env",
+    "register",
+]

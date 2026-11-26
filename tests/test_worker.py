@@ -261,7 +261,11 @@ def test_worker_runs_one_iteration(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
 
     lease = [c for c in calls if c[0].endswith("/lease")]
     result = [c for c in calls if c[0].endswith("/result")]
-    assert lease[0][1] == {"worker_id": "w1", "capabilities": ["platform:ios"]}
+    assert lease[0][1] == {
+        "worker_id": "w1",
+        "capabilities": ["platform:ios"],
+        "environment": "local",
+    }
     assert leases == 2
     # The result posted back is the job view with its bulky `lines` stripped.
     assert result and result[0][1] == {
@@ -395,7 +399,11 @@ def test_worker_advertises_capabilities_on_every_lease(
         )
 
     assert seen == {"platform": "web", "capabilities": "beta"}  # flags flow into the derivation
-    assert lease_body == {"worker_id": "w1", "capabilities": ["beta", "platform:web"]}
+    assert lease_body == {
+        "worker_id": "w1",
+        "capabilities": ["beta", "platform:web"],
+        "environment": "local",
+    }
 
 
 def test_worker_logs_result_post_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

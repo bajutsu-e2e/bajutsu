@@ -134,8 +134,11 @@ def test_environments_match_the_registrable_batch_providers(
     )
     assert set(registered) == kinds
     # `appium` registers no batch provider: its grid submits nothing (BE-0452). Nor does
-    # `devicefarm-host`, the run on a Device Farm host that a batch provider's package carries.
-    assert ENVIRONMENTS - {"local", "appium", "devicefarm-host"} == kinds == BATCH_PROVIDERS
+    # `devicefarm-host`, the run on a Device Farm host that a batch provider's package carries, or
+    # `leased`, whose broker lends devices to a run on this host (BE-0511).
+    assert (
+        ENVIRONMENTS - {"local", "leased", "appium", "devicefarm-host"} == kinds == BATCH_PROVIDERS
+    )
 
 
 # --- driver host requirement --------------------------------------------------------------------

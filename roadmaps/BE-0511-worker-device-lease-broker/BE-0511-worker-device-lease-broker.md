@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0511](BE-0511-worker-device-lease-broker.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0511") |
+| Implementing PR | [#2565](https://github.com/bajutsu-e2e/bajutsu/pull/2565) |
 | Topic | Device-cloud execution |
 | Related | [BE-0236](../BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0450](../BE-0450-worker-capability/BE-0450-worker-capability.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0484](../BE-0484-job-group-lease/BE-0484-job-group-lease.md) |
 <!-- /BE-METADATA -->
@@ -322,12 +323,26 @@ The worker takes its platforms from the file and not from `--platform`. A `lease
 > *Detailed design* (one entry per unit of work), and the log records what changed and when, oldest
 > first, each with a link to its PR.
 
-- [ ] Lease environment in `worker.yaml`
-- [ ] Provider and lease environment
-- [ ] Decline route
-- [ ] Worker integration
-- [ ] Orphaned run stop
-- [ ] Documentation and ja mirrors
+- [x] Lease environment in `worker.yaml`
+- [x] Provider and lease environment
+- [x] Decline route
+- [x] Worker integration
+- [x] Orphaned run stop
+- [x] Documentation and ja mirrors
+
+Log:
+
+- [#2565](https://github.com/bajutsu-e2e/bajutsu/pull/2565): all six units shipped. The table lists where the implementation differs from the
+  design.
+
+| Point | What shipped, and why |
+|---|---|
+| Device count | The worker runs `python -m bajutsu.run.demand` in the job's directory, so relative paths resolve as they do for the run |
+| Mixed models | A family or OS condition beside a named model adds one device of the broker's choosing |
+| Fake driver | A `leased` run under it borrows nothing |
+| `record`, `crawl`, `--once` | Each borrows for itself and is not declined |
+| Clash in an extra lane | The lane is given back and the job runs, since `--workers` only sets throughput |
+| Early lease exit | The job log reports it, and the run goes on |
 
 ## References
 

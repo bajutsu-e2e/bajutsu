@@ -1518,6 +1518,79 @@ Linux の web ワーカーに渡って失敗しかねません。その失敗は
 > に数えられます。`--capabilities platform:…` や `kind:…` を付けたワーカーは、以前は起動できましたが、今は
 > 起動を拒否します。この 2 つの接頭辞はワーカー自身が埋めるので、トークンを取り除いてください。
 
+### lease broker からのデバイスの借用（BE-0511）
+
+共有マシンの worker は、job に必要なデバイスを *lease broker* から借りられます。lease broker は、シミュレータ、
+エミュレータ、実機を貸し出し、2 者が同じデバイスを使わないようにするプログラムです。worker は job を引き受けた
+あとに借り、run が終わると返します。Bajutsu は broker を同梱しません。次の約束に従うコマンドなら、どれでも
+使えます。
+
+**設定。** worker の `worker.yaml` に broker を書き、そのファイルを指定して worker を起動します。
+
+```yaml
+version: 1
+environment: leased
+platforms: [ios, android]        # broker が貸し出すもの
+drivers: [xcuitest, adb, playwright, fake]
+lease:
+  command: ["broker-cli", "lease", "--platform", "{platform}", "--device", "{device}"]
+  acquireTimeout: 60s            # デフォルト値
+  releaseTimeout: 10s            # デフォルト値
+```
+
+```bash
+bajutsu worker --worker-config worker.yaml --server-url http://localhost:8765
+```
+
+`command` は引数の配列で、シェルは解釈しません。worker は `{platform}` を `ios` か `android` に置き換えます。
+`{device}` は、`runsOn.ios.model` か `runsOn.android.avd` が指定するモデルに置き換えます。job がモデルを指定しない
+場合、worker は `{device}` と直前のフラグを取り除きます。`{device}` は、フラグの直後に単独の要素として
+書きます。`-` で始まるモデル名は拒否します。
+
+`leased` の worker は `--platform` を受け付けません。扱う platform は `platforms` が指定するためです。同時に
+実行する job は 1 件で、経路の選び方は `local` の worker と同じなので、条件のない job も届きます。
+
+**コマンドの約束。** lease コマンドの振る舞いは、次の 4 点です。
+
+| 項目 | 振る舞い |
+|---|---|
+| 保持 | デバイスを保持している間は動き続けます。Bajutsu は終了シグナルで lease を終え、`releaseTimeout` を過ぎたコマンドは強制終了します |
+| 応答 | `acquireTimeout` 以内に、標準出力へ JSON を 1 行出力します。以降の出力は読み捨てます |
+| 辞退 | 出力より先に終了した場合と、時間内に何も出力しなかった場合は、辞退として扱います。標準エラー出力がその理由です |
+| 終了 | 標準入力が EOF に達したら lease を終えます |
+
+出力の 1 行は、デバイスと、デバイスを扱うツールに必要な環境変数を指定します。
+
+```json
+{"device": {"address": "emulator-5588"}, "environment": {"ANDROID_ADB_SERVER_PORT": "5038"}}
+```
+
+**借りる台数。** worker は、1 つのシナリオが同時に必要とするデバイスを platform ごとに数えます。web の
+ターゲットはデバイスを使いません。この必要分は、全部借りるか、まったく借りないかのどちらかです。次に
+`--workers` の追加レーンを、broker が貸す限り 1 レーン単位で借ります。追加レーンが足りなくても、job は
+辞退しません。借用にかける時間は合計 90 秒までです。run は `--udid ios=AAAA,android=emulator-5588` のような
+タグ付きの一覧でデバイスを受け取ります。`leased` の worker は、実行要求が指定したデバイスを無視します。必要分の
+lease が同じ変数に違う値を返すと、変数名を示して job を失敗させます。追加レーンの値が合わない場合は、その
+レーンを返して実行を続けます。
+
+**broker にデバイスがない場合。** worker は `POST /api/worker/decline` で job を返します。job はキューに戻り、
+lease の試行回数を消費しません。断った environment の worker は、その job を 2 秒の間は引き受けず、待ち時間は
+最大 60 秒まで倍になります。`local` の worker は、すぐに引き受けられます。最初の辞退が decline の受付期間より
+古くなると、server は job を失敗させます。期間は server の `BAJUTSU_DECLINE_WINDOW_SECONDS` で設定します
+（デフォルト値 `3600`）。古い server には decline のルートがないので、worker より先に server を更新します。
+
+**worker が止まった場合。** コマンドの入力が閉じると、各 lease が終わります。worker が起動した run も、worker の
+終了を検知して自分でキャンセルします。teardown は独自の期限まで続くため、その間は、broker が再び貸し出し
+うるデバイスを操作する可能性が残ります。
+
+**worker を使わない場合。** `bajutsu run`、`record`、`crawl`、`repl`、`audit`、`doctor` は、`--udid` がないとき、
+同じファイルに従って自分で借ります。直接の run はターゲットごとに 1 台を借りるので、platform ごとに
+ターゲット 1 つまでのシナリオを実行できます。並列レーンや、同じ platform の 2 ターゲットを使う場合は、自分で
+借りて `--udid` で渡します。
+
+`bajutsu worker --once` の借り方は、直接の run と同じです。キューの `record` と `crawl` の job も同様です。
+worker はこれらの job を辞退しないので、broker が混んでいると job はすぐに失敗します。
+
 ### オブジェクトストレージへの証跡アップロード（BE-0110）
 
 証跡のアップロードは任意です。上記のワーカーのアップロードは、コントロールプレーンがレポートを配信する

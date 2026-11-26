@@ -539,8 +539,10 @@ ROUTES: tuple[Route, ...] = (
             ctx.body().get("capabilities"),
             max_jobs=ctx.body().get("maxJobs"),
             relay_secrets=_worker_caller(ctx),
+            environment=ctx.body().get("environment"),
         ),
     ),
+    Route("POST", "/api/worker/decline", lambda state, ctx: ops.worker_decline(state, ctx.body())),
     Route(
         "POST",
         "/api/worker/heartbeat",

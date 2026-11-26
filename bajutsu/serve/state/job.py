@@ -191,6 +191,8 @@ class Job:
     # from the secrets its lease relayed, and `_spawn_env` merges it onto the child env. Never part of the job spec the queue stores, and
     # kept out of `repr` so a logged `Job` cannot print a value.
     secret_env: dict[str, str] = field(default_factory=dict, repr=False)
+    # What the run's device tools need to reach devices a `leased` worker borrowed (BE-0511).
+    lease_env: dict[str, str] = field(default_factory=dict, repr=False)
     # The `run-set` group this job belongs to and what a worker may share between its jobs (BE-0484);
     # both None for a job any other route registers. The jobs table stores them, not the spec; a slot
     # worker reads them from the lease, and its batch provider shares uploads under them.

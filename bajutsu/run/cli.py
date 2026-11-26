@@ -42,6 +42,7 @@ from bajutsu.cli._shared import (
     _with_headed,
     _with_worker_device,
     _without_engine_condition,
+    _worker_backends,
     check_listed_browsers,
     parse_engine_flag,
     resolve_system_alert_handling_flag,
@@ -52,6 +53,7 @@ from bajutsu.common.backends import (
     current_host_os,
     default_available,
     ensure_web_runtime,
+    platform_of,
     select_actuator,
     select_actuator_for_scenario,
 )
@@ -102,7 +104,14 @@ from bajutsu.common.runner import (
     run_matrix_and_report,
 )
 from bajutsu.common.runner.build import BuildError, build_app
-from bajutsu.common.runner.device_provider import DeviceLease, acquire_device
+from bajutsu.common.runner.device_provider import (
+    DeviceLease,
+    LeaseEnvConflictError,
+    acquire_device,
+    merge_lease_env,
+)
+from bajutsu.common.runner.device_provider.lease_command import declared_models
+from bajutsu.common.runner.device_provider.tagged_udid import entries_for_platform
 from bajutsu.common.runner.hook_session import HookSession, phases_of, run_tags, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
@@ -148,6 +157,7 @@ from bajutsu.run.device_matrix import (
     render_not_applicable,
 )
 from bajutsu.run.device_matrix import plan as plan_device_matrix
+from bajutsu.run.pool_demand import pool_demand
 from bajutsu.run.step_gate import PromptStepGate
 
 
@@ -886,7 +896,7 @@ def _sharing_problems(
         xcuitest = config.xcuitest if isinstance(config, IosConfig) else None
         return (
             eff.platform,
-            # One device answers to one backend: `_pool_demand` charges the group to its first
+            # One device answers to one backend: `pool_demand` charges the group to its first
             # member's pool, so a member resolving to another actuator would draw from a pool
             # nothing counted.
             tuple(eff.backend),
@@ -2078,11 +2088,18 @@ def _reject_unshareable_groups(
     """
     grouped = {name for s in scenarios for g in s.device_groups if len(g) >= 2 for name in g}
     for name in sorted(grouped):
-        actuator, _ = _select_actuator(backend, target_effs[name], engines, worker)
+        eff = target_effs[name]
+        actuator, _ = _select_actuator(backend, eff, engines, worker)
+        # A worker's borrowed list is tagged by platform (BE-0511); judge this target on its own.
+        own = udid
+        if (provider := eff.device_provider) is not None and provider.kind == "leased":
+            try:
+                own = entries_for_platform(udid, eff.platform)
+            except ValueError as e:
+                typer.echo(str(e))
+                raise typer.Exit(2) from None
         # The run-aware set: a real iPhone and a WebDriver endpoint drop `deviceGroup` there.
-        if base.Capability.DEVICE_GROUP not in capabilities_for_run(
-            actuator, target_effs[name], udid
-        ):
+        if base.Capability.DEVICE_GROUP not in capabilities_for_run(actuator, eff, own):
             typer.echo(
                 f"target '{name}' is in a device group, but backend '{actuator}' cannot share a "
                 "device between two apps yet (BE-0447)"
@@ -2112,16 +2129,39 @@ def _acquire_targets(
         name: _select_actuator(backend, eff, engines, worker) for name, eff in target_effs.items()
     }
     setups: dict[str, _TargetSetup] = {}
+    lease_env: dict[str, str] = {}
     try:
         for name, eff in target_effs.items():
             actuator, backends = selected[name]
-            device = acquire_device(eff, udid)
-            udids, lanes = _resolve_lanes(
-                actuator,
-                device.udid_spec,
-                workers,
-                environment_for(actuator, device.udid_spec).resolve_device,
-            )
+            try:
+                # The fake driver drives no device, so a `leased` worker's run borrows none for it.
+                leased = eff.device_provider is not None and eff.device_provider.kind == "leased"
+                device = (
+                    DeviceLease(udid_spec=udid, provision=ProvisionProfile())
+                    if leased and actuator == "fake"
+                    else acquire_device(eff, udid)
+                )
+            except ValueError as e:
+                typer.echo(f"target '{name}': {e}")
+                raise typer.Exit(2) from None
+            try:
+                # Before any device tool runs: a borrowed device may only be reachable through
+                # the variables its lease names (BE-0511).
+                merge_lease_env(lease_env, device.env)
+                os.environ.update(device.env)
+                udids, lanes = _resolve_lanes(
+                    actuator,
+                    device.udid_spec,
+                    workers,
+                    environment_for(actuator, device.udid_spec).resolve_device,
+                )
+            except BaseException as e:
+                # Not in `setups` yet, so the cleanup below would miss it.
+                device.release()
+                if isinstance(e, LeaseEnvConflictError):
+                    typer.echo(f"target '{name}': {e}")
+                    raise typer.Exit(2) from None
+                raise
             setups[name] = _TargetSetup(
                 name=name,
                 eff=eff,
@@ -2137,26 +2177,6 @@ def _acquire_targets(
     return setups
 
 
-def _pool_demand(scenarios: list[Scenario], setups: Mapping[str, _TargetSetup]) -> dict[str, int]:
-    """The most devices any one scenario needs from each pool at once (BE-0428).
-
-    Targets sharing a pool share its device queue, and a scenario holds every declared target's
-    lease for its whole length, so two targets on one pool need two devices from it. A device group
-    is one device however many members it holds (BE-0447), so the count is per group, keyed by the
-    group's first member; a group whose members differ in backend is refused by the
-    config-aware group preflight (BE-0447 unit 4).
-    """
-    demand: dict[str, int] = {}
-    for s in scenarios:
-        per_pool: dict[str, int] = {}
-        for group in s.device_groups:
-            key = setups[group[0]].actuator
-            per_pool[key] = per_pool.get(key, 0) + 1
-        for key, n in per_pool.items():
-            demand[key] = max(demand.get(key, 0), n)
-    return demand
-
-
 def _resolve_multi_target_workers(
     scenarios: list[Scenario], setups: Mapping[str, _TargetSetup], workers: int
 ) -> int:
@@ -2169,7 +2189,8 @@ def _resolve_multi_target_workers(
     Refusing outright would be worse: `--workers` is a throughput knob, and quietly running a
     correct suite more slowly beats failing a run that has enough devices to finish.
     """
-    for actuator, needed in _pool_demand(scenarios, setups).items():
+    actuators = {name: setup.actuator for name, setup in setups.items()}
+    for actuator, needed in pool_demand(scenarios, actuators).items():
         lanes = next(len(s.udids) for s in setups.values() if s.actuator == actuator)
         if needed > lanes:
             typer.echo(
@@ -3050,6 +3071,103 @@ def _check_label(value: str) -> str:
             f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
         )
     return value
+
+
+def device_demand(params: Mapping[str, Any]) -> dict[str, Any]:
+    """What a run with the flags *params* takes from a lease broker, before any device exists.
+
+    For each platform the worker's broker lends: how many devices one scenario needs at once
+    (`pool_demand`), and the models the targets' `runsOn` names. Loads exactly as `run_body` does,
+    and resolves no device (BE-0511).
+
+    Args:
+        params: The parsed flags of `bajutsu run`, keyed by `run_body`'s parameter names.
+
+    Returns:
+        ``{"pools": [{"platform", "count", "models", "unnamed"}], "workers": N}``.
+
+    Raises:
+        typer.Exit: The config or the scenarios do not load, as the run itself would report.
+    """
+    worker_file = params["worker_config"]
+    worker = _load_device_worker_or_exit(Path(worker_file) if worker_file else None)
+    files = list(params["scenario"] or [])
+    explicit = bool(params["target_name"])
+    primary = _resolve_primary_target(params["target_name"], files)
+    erase = params["erase"]
+
+    def load(target: str) -> tuple[LoadedConfig, Effective, list[Scenario]]:
+        loaded, eff, _source, _engines = _resolve_config_and_engines(
+            params["config"],
+            target,
+            offline=params["config_offline"],
+            require_pinned=params["require_pinned_config"],
+            headed=params["headed"],
+            browser=params["browser"],
+            browsers=params["browsers"],
+            kind=params["kind"],
+        )
+        scenarios, *_rest = _load_scenarios(eff, files, target)
+        selected = _filter_scenarios(scenarios, params["tag"], params["exclude"], erase)
+        return loaded, eff, selected
+
+    loaded, eff, scenarios = load(primary)
+    if not explicit and scenarios and not _uses_target(scenarios, primary):
+        primary = scenarios[0].target_names[0]
+        loaded, eff, scenarios = load(primary)
+    # A scenario this worker cannot run fails without a device, so it adds no demand (BE-0450).
+    failures = _worker_capability_failures(loaded, scenarios, eff, params["backend"], worker)
+    scenarios = [s for i, s in enumerate(scenarios) if i not in failures]
+    if not scenarios:
+        return {"pools": [], "workers": 1}
+    if not _uses_target(scenarios, primary):
+        primary = scenarios[0].target_names[0]
+        loaded, eff, _ = load(primary)
+
+    target_effs = {
+        name: _with_worker_device(_with_erase_flag(target_eff, erase), worker)
+        for name, target_eff in _resolve_target_effs(loaded, scenarios, primary, eff).items()
+    }
+    used = list(dict.fromkeys(n for s in scenarios for n in (s.target_names or [primary])))
+    actuators = {
+        name: select_actuator(
+            _worker_backends(_backends(params["backend"], target_effs[name].backend), worker)
+        )
+        for name in used
+    }
+    demand = pool_demand(scenarios, actuators)
+    # A scenario that declares no target holds one device of the primary's pool.
+    if any(not s.target_names for s in scenarios):
+        demand.setdefault(actuators[primary], 1)
+
+    pools: dict[str, dict[str, Any]] = {}
+    for actuator, count in demand.items():
+        platform = platform_of(actuator)
+        if platform is None or platform not in (worker.platforms or ()):
+            continue
+        pool_effs = [target_effs[n] for n in used if actuators[n] == actuator]
+        models = list(dict.fromkeys(m for e in pool_effs for m in declared_models(e)))
+        # A target that names no model takes any borrowed device, unless another condition of its
+        # own (a family, an OS range) may rule the named ones out: the broker then chooses one more
+        # for each such device a scenario holds at once.
+        unnamed = {
+            n
+            for n in used
+            if actuators[n] == actuator
+            and not declared_models(target_effs[n])
+            and set(target_effs[n].conditions) - {"kind"}
+        }
+        extra = max(
+            (sum(g[0] in unnamed for g in s.device_groups or [[primary]]) for s in scenarios),
+            default=0,
+        )
+        pools[platform] = {
+            "platform": platform,
+            "count": count,
+            "models": models,
+            "unnamed": extra if models else 0,
+        }
+    return {"pools": list(pools.values()), "workers": max(1, params["workers"])}
 
 
 def run_body(

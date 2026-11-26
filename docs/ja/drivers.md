@@ -217,12 +217,14 @@ runner は各シナリオを actuator の能力と照合します（`bajutsu/com
 | キー | 意味 |
 |---|---|
 | `version` | スキーマのバージョンです。`1` でなければなりません。 |
-| `environment` | worker が job を実行する場所です。`local`（既定）、`appium`（稼働中の Appium グリッド）、`devicefarm-host`（Device Farm のパッケージ内の実行で、Device Farm が起動してアプリを入れたデバイスを使います）、device cloud のプロバイダ種別のいずれかを書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
+| `environment` | worker が job を実行する場所です。`local`（既定）、`leased`（このホストで、[lease broker](self-hosting.md#lease-broker-からのデバイスの借用be-0511) が貸すデバイスを使います）、`appium`（稼働中の Appium グリッド）、`devicefarm-host`（Device Farm のパッケージ内の実行で、Device Farm が起動してアプリを入れたデバイスを使います）、device cloud のプロバイダ種別のいずれかを書きます。現在わかっているプロバイダ種別は `devicefarm` だけです。 |
 | `appium` | `environment: appium` のときに必須で、それ以外では拒否します。グリッドの `endpoint` の URL と、グリッドが受け持つ 1 つの `platform`（現在は `ios`）を書きます。 |
-| `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になり、`local` の worker は 1 しか受け付けません。 |
+| `lease` | `environment: leased` で必須、ほかでは拒否します。lease の `command`、`acquireTimeout`、`releaseTimeout` を書きます（[BE-0511](../../roadmaps/BE-0511-worker-device-lease-broker/BE-0511-worker-device-lease-broker-ja.md)）。 |
+| `platforms` | `environment: leased` で必須、ほかでは拒否します。broker が貸し出す platform を `ios` と `android` から書きます。 |
+| `maxJobConcurrency` | worker が同時に実行できる job の数で、正の整数です。省くと 1 になります。`local` と `leased` の worker は 1 しか受け付けません。 |
 | `maxTargetsPerJob` | 1 つのシナリオが宣言できる target の数で、正の整数です。すべてのドライバとデバイスグループをまたいで数えるので、Simulator の target とブラウザの target は合わせて 2 です。省くと上限なしになります。 |
 | `drivers` | worker が提供するドライバを `xcuitest`、`adb`、`playwright`、`fake` から選んで並べます。リストにないドライバは使えません。 |
-| `realDevices` | `xcuitest` を提供する `local` の worker が、接続した実機の iPhone も動かすかどうかです。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |
+| `realDevices` | `xcuitest` を提供する `local` と `leased` の worker が、実機の iPhone も動かすかどうかです。Simulator だけを貸す broker では `false` にします。`true` なら、serve は実機のジョブもその worker に振り分けます。省くと `true` とみなします。そうした worker は、これまでも実機のジョブを受けていたからです。Simulator だけの Mac を実機のジョブから外すには `false` にします（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)、BE-0467）。 |
 | `build` | target の `subject.build` を実行してアプリをビルドできるプラットフォームを、`ios` と `android` から選んで並べます。省くと両方とみなします。このキーができる前から、worker はどのアプリもビルドしていたからです。`[]` にすると何もビルドしません。run がビルドを必要とするとき（`subject.path` のアプリが存在しないとき、または `--rebuild` を指定したとき）にリストが target のプラットフォームを含まなければ、`run` はツールチェーンのないマシンでビルドを始めずに、プラットフォーム名を示して終了コード 2 で終わります。worker は、リストにあり自身が動かすプラットフォームごとに `build:<platform>` を広告し、serve は強制ビルドのジョブをその worker に振り分けます（[能力に基づく振り分け](self-hosting.md#能力に基づくキューの振り分けbe-0166)）。 |
 | `commandExecution` | config が宣言したコマンドをこの worker で実行するかどうかを、config の出所（`uploaded`、`remote`、`operator`）ごとに1つのモードで決めます。モードは `allow`、`sandbox`、`named`、`deny` のどれかです。省いたキーは `uploaded: sandbox`、`remote: sandbox`、`operator: allow` になります（[BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）。 |
 | `namedCommands` | worker の運用者が責任を持つスクリプトを、`[A-Za-z][A-Za-z0-9_-]*` に合う名前で並べます。各エントリは、絶対パスの `path` と、config が設定してよい変数を並べた `env` を持ちます。`env` には、`PATH` や `LD_PRELOAD` のような、プロセスがコードを読み込む方法を変える変数を含められません。 |

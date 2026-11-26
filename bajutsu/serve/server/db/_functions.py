@@ -182,6 +182,10 @@ def repository_from_env(default_url: str | None = None) -> SqlRepository | None:
         kwargs["lease_timeout"] = timedelta(
             seconds=_positive_env("BAJUTSU_LEASE_TIMEOUT_SECONDS", timeout, cast=float)
         )
+    if window := os.environ.get("BAJUTSU_DECLINE_WINDOW_SECONDS"):
+        kwargs["decline_window"] = timedelta(
+            seconds=_positive_env("BAJUTSU_DECLINE_WINDOW_SECONDS", window, cast=float)
+        )
     if attempts := os.environ.get("BAJUTSU_LEASE_MAX_ATTEMPTS"):
         kwargs["max_attempts"] = _positive_env("BAJUTSU_LEASE_MAX_ATTEMPTS", attempts, cast=int)
     # Imported in the body, not at module load: the repository calls seven helpers from this

@@ -36,6 +36,7 @@ from bajutsu.common.capability.worker_capability import (
     BATCH_PROVIDER_PLATFORMS,
     BATCH_PROVIDERS,
     DEVICEFARM_HOST,
+    LEASED,
     LOCAL,
     RESERVED_ROUTING_REASON,
     WorkerCapability,
@@ -46,6 +47,7 @@ from bajutsu.common.evidence.sink import RunArtifactWriter
 from bajutsu.common.handoff import REQUEST_LINE_PREFIX
 from bajutsu.common.run_meta.files import DEFAULT_RUNS_DIR
 from bajutsu.common.run_meta.object_store import content_type_for
+from bajutsu.common.runner.device_provider.lease_command import LeaseDeclinedError
 from bajutsu.serve import InMemoryLogBus
 from bajutsu.serve.capabilities import (
     MACHINE_ID_ENV,
@@ -62,6 +64,7 @@ from bajutsu.serve.capabilities import (
     reserved_tokens,
     worker_capabilities,
 )
+from bajutsu.serve.cli.worker_devices import JobDevices
 from bajutsu.serve.cli.worker_relay import ArtifactStreamer, HandoffRelay
 from bajutsu.serve.helpers import unsafe_env_name, valid_sha256, warn_unsafe_env_name
 from bajutsu.serve.jobs import _runs_dir_of
@@ -86,6 +89,11 @@ from bajutsu.serve.upload_artifacts import ARTIFACT_KINDS, OVERRIDE_KINDS, Artif
 from bajutsu.serve.uploads import find_bundle_config, materialize_bundle, validate_bundle_config
 
 _logger = logging.getLogger("bajutsu.worker")
+
+# The key of a result that is not one: the job goes back to the queue (BE-0511).
+_DECLINED = "declined"
+# Tries of the decline post, together well inside the lease timeout.
+_DECLINE_ATTEMPTS, _DECLINE_RETRY_SECONDS, _DECLINE_TIMEOUT_SECONDS = 3, 1.0, 20.0
 
 # Heartbeat well under the control plane's default lease timeout (DEFAULT_LEASE_TIMEOUT_SECONDS) so
 # a legitimately long run is never mistaken for a dead worker and reclaimed (BE-0016).
@@ -290,7 +298,7 @@ def _advertised_capabilities(
                 *parse_capabilities(override),
             }
         )
-    platforms = [p.strip() for p in (platform or "ios").split(",") if p.strip()]
+    platforms = _local_platforms(platform, cap)
     # Fail loudly on a typo'd platform (e.g. `--platform iso`) rather than silently advertising a
     # `platform:iso` token that matches no job — the worker would otherwise poll forever leasing
     # nothing (BE-0166, "determinism first"). The same known set the config schema registry validates.
@@ -303,7 +311,8 @@ def _advertised_capabilities(
     for p in platforms:
         kept, reasons = filter_actuators(PLATFORMS[p], cap, machine)
         if not kept:
-            raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint="--platform")
+            hint = "--worker-config" if cap.platforms is not None else "--platform"
+            raise typer.BadParameter(f"{p}: {'; '.join(reasons)}", param_hint=hint)
     # Every driver the file and host allow, not --platform's alone: a scenario's other targets run
     # on this machine too (an iOS-and-web scenario on a Mac), so their routes are this worker's.
     drivable = _drivable(cap, machine)
@@ -320,6 +329,18 @@ def _advertised_capabilities(
         # The platforms it runs whose app this machine also builds, so a forced build routes here.
         | {build_capability(p) for p in cap.buildable if p in platforms}
     )
+
+
+def _local_platforms(platform: str, cap: WorkerCapability) -> list[str]:
+    """The platforms a worker on its own host serves: ``--platform``, or a leased file's list."""
+    if cap.environment != LEASED:
+        return [p.strip() for p in (platform or "ios").split(",") if p.strip()]
+    if platform:
+        raise typer.BadParameter(
+            "a leased worker takes no --platform: the platforms its broker lends are in worker.yaml",
+            param_hint="--platform",
+        )
+    return list(cap.platforms or ())
 
 
 def _command_policy_tokens_or_exit(
@@ -361,7 +382,11 @@ def _device_reader(
     device-cloud or `appium` worker's devices belong to its provider, and a web or Android worker
     has no `devicectl` to read (BE-0468).
     """
-    if not worker_capability.is_local or platform_capability("ios") not in caps:
+    if (
+        not worker_capability.is_local
+        or worker_capability.environment == LEASED  # its real devices belong to the broker
+        or platform_capability("ios") not in caps
+    ):
         return None
     if worker_capability.real_devices is False:
         # A Simulator-only Mac keeps an iOS device run of a `run-set` off itself (BE-0484).
@@ -664,7 +689,7 @@ def _serve_leases(
     *devices* reads the real-device tokens added to *caps* before each lease (`_device_reader`).
     """
     while not stopped():
-        body = _lease(url, auth_token, wid, _advertised(caps, devices))
+        body = _lease(url, auth_token, wid, _advertised(caps, devices), environment)
         if body is None:
             time.sleep(poll_interval)
             continue
@@ -726,23 +751,32 @@ def _serve_leases(
             _discard_batch_workspace(work, job_work)
 
 
-def _lease(url: str, auth_token: str | None, wid: str, caps: list[str]) -> dict[str, Any] | None:
+def _lease(
+    url: str, auth_token: str | None, wid: str, caps: list[str], environment: str
+) -> dict[str, Any] | None:
     """Ask the control plane for one job; the lease body, or None when there is nothing to run."""
-    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps})
+    request = {"worker_id": wid, "capabilities": caps, "environment": environment}
+    body = _post_lease(url, auth_token, request)
     if not isinstance(body, dict) or not body.get("spec"):
         return None
     return dict(body)
 
 
 def _lease_bundle(
-    url: str, auth_token: str | None, wid: str, caps: list[str], free: int
+    url: str, auth_token: str | None, wid: str, caps: list[str], free: int, environment: str
 ) -> list[dict[str, Any]]:
     """Ask for up to *free* jobs at once (BE-0484); the lease bodies, empty when there is none.
 
     The control plane fills them from one `run-set` group, so the slots that run them can share
     that group's uploads.
     """
-    body = _post_lease(url, auth_token, {"worker_id": wid, "capabilities": caps, "maxJobs": free})
+    request = {
+        "worker_id": wid,
+        "capabilities": caps,
+        "maxJobs": free,
+        "environment": environment,
+    }
+    body = _post_lease(url, auth_token, request)
     if body is None:
         return []
     # A control plane from before BE-0484 ignores `maxJobs` and answers one body. Its job is leased
@@ -835,7 +869,9 @@ def _serve_slots(
                     places.wait(timeout=poll_interval)
                     continue
             # The control plane refuses a larger ask; the slots past it fill on the next poll.
-            bodies = _lease_bundle(url, auth_token, wid, caps, min(free_slots, MAX_LEASE_JOBS))
+            bodies = _lease_bundle(
+                url, auth_token, wid, caps, min(free_slots, MAX_LEASE_JOBS), environment
+            )
             if not bodies:
                 time.sleep(poll_interval)
                 continue
@@ -1155,6 +1191,10 @@ def _finish_job(
         )
         return
 
+    if _DECLINED in result:
+        _post_decline(url, job_id, wid, result, auth_token)
+        return
+
     run_id = result.get("runId")
     _post_result(url, job_id, wid, result, auth_token)
     if on_posted is not None:
@@ -1379,7 +1419,10 @@ def _drivable(cap: WorkerCapability, host: str) -> list[str]:
     from bajutsu.common.capability.capability_preflight import filter_actuators
 
     return [
-        a for actuators in PLATFORMS.values() for a in filter_actuators(actuators, cap, host)[0]
+        a
+        for platform, actuators in PLATFORMS.items()
+        if cap.serves(platform)
+        for a in filter_actuators(actuators, cap, host)[0]
     ]
 
 
@@ -1408,9 +1451,10 @@ def _register_environment_or_exit(environment: str) -> None:
     The provider and its lifecycle hooks (BE-0435) live in the worker that submits, so the AWS role
     is held here and never by the server. A worker that cannot register it would lease jobs only to
     fail each one, so it exits at startup instead, with the reason. A `local` worker registers none,
-    and neither does an `appium` one, whose grid submits nothing (BE-0452).
+    and neither does an `appium` one, whose grid submits nothing (BE-0452), or a `leased` one, whose
+    broker only lends devices (BE-0511).
     """
-    if environment in (LOCAL, APPIUM):
+    if environment in (LOCAL, LEASED, APPIUM):
         return
     if environment == DEVICEFARM_HOST:
         raise typer.BadParameter(
@@ -1810,30 +1854,42 @@ def _run_with_heartbeat(
         if cancel.requested:  # cancelled during the fetch — nothing has touched the device yet
             holder["result"] = cancelled_job_result(job_id)
             return
-        try:
-            job = execute_job_spec(
-                spec,
-                popen=subprocess.Popen,
-                simctl=simctl.real_run,
+        # Borrowed on this heart-beaten thread and after the fetch, so the claim stays renewed
+        # while a broker is slow and no device sits idle through a download (BE-0511).
+        devices = (
+            JobDevices(
+                worker_file=worker_config,
                 cwd=job_work,
-                bus=bus,
-                io=io,
-                worker_config=worker_config,
-                on_job=on_job,
-                secret_env=secret_env,
-                batch_checkpoint=checkpoint,
-                lease_lost=lost,
-                batch_dir=group.path if group is not None else None,
-                # Written before the run tree uploads, so console.log travels with it and is the
-                # durable copy the server's log stream falls back to (BE-0449).
-                before_upload=functools.partial(_write_job_console_log, job_work, bus),
+                stop=lambda: lost.is_set() or cancel.requested,
+                log=functools.partial(bus.publish, job_id),
             )
-            result = job.view()
-            result.pop("lines", None)
-            holder["result"] = result
-        except Exception as e:  # a worker keeps running past one job's failure
-            _logger.exception("job %s failed", job_id)
-            holder["result"] = {"ok": False, "error": str(e)}
+            if environment == LEASED
+            else None
+        )
+        execute = functools.partial(
+            execute_job_spec,
+            spec,
+            popen=subprocess.Popen,
+            simctl=simctl.real_run,
+            cwd=job_work,
+            bus=bus,
+            io=io,
+            worker_config=worker_config,
+            on_job=on_job,
+            secret_env=secret_env,
+            batch_checkpoint=checkpoint,
+            lease_lost=lost,
+            batch_dir=group.path if group is not None else None,
+            before_upload=functools.partial(_finish_job_log, job_work, bus, devices),
+        )
+        holder["result"] = _job_result(
+            execute,
+            devices,
+            job_id=job_id,
+            environment=environment,
+            cancel=cancel,
+            log=functools.partial(bus.publish, job_id),
+        )
 
     runner = threading.Thread(target=_run, daemon=True)
     runner.start()
@@ -1856,6 +1912,46 @@ def _run_with_heartbeat(
         return None, abandoned, holder["work"]
     result = holder.get("result", {"ok": False, "error": "worker produced no result"})
     return result, abandoned, holder["work"]
+
+
+def _finish_job_log(work: Path, bus: InMemoryLogBus, devices: JobDevices | None, job: Job) -> None:
+    """Complete the job's log before the run tree uploads: console.log travels with it and is the
+    durable copy the server's log stream falls back to (BE-0449)."""
+    if devices is not None:
+        devices.report_problems()
+    _write_job_console_log(work, bus, job)
+
+
+def _job_result(
+    execute: Callable[..., Job],
+    devices: JobDevices | None,
+    *,
+    job_id: str,
+    environment: str,
+    cancel: _CancelRelay,
+    log: Callable[[str], None],
+) -> dict[str, Any]:
+    """Run the job and say how it ended, holding a `leased` worker's *devices* only while it runs."""
+    try:
+        job = execute(prepare=devices.prepare if devices is not None else None)
+        result = job.view()
+        result.pop("lines", None)
+        # A job `prepare` stopped never started: a cancel records it cancelled, and a lost lease
+        # drops the result.
+        if devices is not None and job.exit_code is None and cancel.requested:
+            result = cancelled_job_result(job_id)
+    except LeaseDeclinedError as e:
+        # Into the job's live log, so a waiting job says what it waits for; never into a verdict.
+        log(f"waiting for a device: {e}")
+        return {_DECLINED: str(e), "environment": environment}
+    except Exception as e:  # a worker keeps running past one job's failure
+        _logger.exception("job %s failed", job_id)
+        return {"ok": False, "error": str(e)}
+    else:
+        return result
+    finally:
+        if devices is not None:
+            devices.release()
 
 
 def _beat_and_stream(
@@ -2089,6 +2185,49 @@ def _post_result(
         )
     except (URLError, OSError):
         _logger.exception("result post failed for job %s", job_id)
+
+
+def _post_decline(
+    url: str, job_id: str, wid: str, declined: dict[str, Any], auth_token: str | None
+) -> None:
+    """Give back a job whose devices could not be borrowed (BE-0511).
+
+    A post that keeps failing, a control plane without the route included, leaves the lease to
+    lapse, which returns the job to the queue at the cost of a lease attempt.
+    """
+    reason = str(declined[_DECLINED])
+    typer.echo(f"  declined job {job_id}: {reason}")
+    request = {
+        "worker_id": wid,
+        "job_id": job_id,
+        "reason": reason,
+        "environment": declined["environment"],
+    }
+    failure = ""
+    for attempt in range(_DECLINE_ATTEMPTS):
+        if attempt:
+            time.sleep(_DECLINE_RETRY_SECONDS)
+        try:
+            code, body = _post_json(
+                f"{url}/api/worker/decline",
+                request,
+                token=auth_token,
+                timeout=_DECLINE_TIMEOUT_SECONDS,
+            )
+        except (URLError, OSError) as e:
+            failure = str(e)
+            continue
+        # A 409 after a try that got no answer means that try most likely declined the job already.
+        if code == 200 or (code == 409 and failure):
+            return
+        failure = f"HTTP {code}: {body}"
+        if code < 500:  # a refusal a retry cannot change, an older server's 404 included
+            break
+    _logger.warning(
+        "could not decline job %s (%s); its lease will lapse, which spends one of its attempts",
+        job_id,
+        failure,
+    )
 
 
 def _safe_org(org: Any) -> str:

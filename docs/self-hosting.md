@@ -1542,6 +1542,84 @@ deterministic `run` verdict.
 > `bajutsu_unroutable_jobs`. A worker started with `--capabilities platform:…` or `kind:…` used to
 > start, and now refuses to start. Remove the token, since the worker fills both prefixes itself.
 
+### Borrowing devices from a lease broker (BE-0511)
+
+A worker on a shared machine can borrow the devices each job needs. The lender is a *lease broker*.
+A lease broker is a program that lends simulators, emulators, and phones. It keeps two borrowers
+off one device. The worker borrows after it claims a job and returns the devices when the run ends.
+Bajutsu ships no broker. Any command that follows the contract below works.
+
+**Setup.** Declare the broker in the worker's `worker.yaml`, then start the worker with it:
+
+```yaml
+version: 1
+environment: leased
+platforms: [ios, android]        # what the broker serves
+drivers: [xcuitest, adb, playwright, fake]
+lease:
+  command: ["broker-cli", "lease", "--platform", "{platform}", "--device", "{device}"]
+  acquireTimeout: 60s            # the default
+  releaseTimeout: 10s            # the default
+```
+
+```bash
+bajutsu worker --worker-config worker.yaml --server-url http://localhost:8765
+```
+
+`command` is an argument list and no shell reads it. The worker replaces `{platform}` with `ios` or
+`android`. It replaces `{device}` with the model that `runsOn.ios.model` or `runsOn.android.avd`
+names. When the job names no model, the worker drops `{device}` and the flag before it. Write
+`{device}` as a whole element after its flag. The worker refuses a model that begins with `-`.
+
+A `leased` worker takes no `--platform`, since `platforms` already names them. It runs one job at a
+time and routes like a `local` worker, so a plain job reaches it.
+
+**The contract.** The lease command behaves as follows:
+
+1. The command stays running while it holds the device. Bajutsu ends the lease with a termination
+   signal. Bajutsu forces a command to stop once `releaseTimeout` passes.
+2. Within `acquireTimeout`, the command prints one line of JSON to standard output. Bajutsu discards
+   any later output.
+3. A command that exits first, or prints nothing in time, has declined. Its standard error is the
+   reason.
+4. The command ends the lease when its standard input reaches end of file.
+
+The line names the device and the variables its tools need:
+
+```json
+{"device": {"address": "emulator-5588"}, "environment": {"ANDROID_ADB_SERVER_PORT": "5038"}}
+```
+
+**How many devices a job takes.** The worker counts per platform pool. The count is what one
+scenario needs at once. A web target needs none. Borrowing those is all or nothing. The worker then
+borrows whole extra lanes for `--workers` while the broker lends them. A shortfall of extra lanes
+never declines the job. The worker allows 90 seconds in all for borrowing. The run receives the
+devices in one tagged list, such as `--udid ios=AAAA,android=emulator-5588`. A `leased` worker
+ignores a device that a run request names. The devices one scenario needs must agree on every
+variable. Otherwise the job fails and names the variable. The worker gives back an extra lane that disagrees.
+
+**When the broker has no device.** The worker gives the job back through `POST /api/worker/decline`.
+The job returns to the queue and spends no lease attempt. Workers of the declining environment skip
+it for 2 seconds, doubling up to 60 seconds. A `local` worker can still take it at once. The server
+fails the job once its first decline is older than the decline window. Set the window with
+`BAJUTSU_DECLINE_WINDOW_SECONDS` on the server (default `3600`). Upgrade the server before the
+workers, since an older server has no decline route.
+
+**When the worker stops.** Closing the command's input ends each lease. The run the worker spawned
+also notices a missing worker and cancels itself. Its teardown runs to a deadline of its own. For
+that long, the run can still drive a device the broker may lend again.
+
+**Without a worker.** Without `--udid`, these commands borrow for themselves under the same file:
+
+- `bajutsu run`, `record`, and `crawl`.
+- `bajutsu repl`, `audit`, and `doctor`.
+
+A direct run borrows one device per target. That run serves at most one target per platform. For
+parallel lanes, or two targets on one platform, borrow by hand and pass `--udid`.
+
+`bajutsu worker --once` borrows the same way as a direct run. A queued `record` or `crawl` job does
+too. The worker never declines such a job. A busy broker turns it red at once.
+
 ### Evidence upload to object storage (BE-0110)
 
 Evidence upload is optional. The worker upload above writes each run tree to the **artifact store** the control plane serves reports

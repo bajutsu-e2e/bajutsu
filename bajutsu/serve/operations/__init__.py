@@ -142,6 +142,7 @@ from bajutsu.serve.operations.version import server_checkout, server_version
 from bajutsu.serve.operations.worker import (
     worker_artifact,
     worker_batch_run,
+    worker_decline,
     worker_handoff,
     worker_handoff_response,
     worker_heartbeat,
@@ -277,6 +278,7 @@ __all__ = [
     "worker_artifact",
     "worker_artifact_urls",
     "worker_batch_run",
+    "worker_decline",
     "worker_handoff",
     "worker_handoff_response",
     "worker_heartbeat",

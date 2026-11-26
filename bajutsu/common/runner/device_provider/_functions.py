@@ -6,6 +6,7 @@ from bajutsu.common.config import Effective
 
 from ._appium_provider import _AppiumProvider
 from ._devicefarm_host_provider import _DevicefarmHostProvider
+from ._leased_provider import _LeasedProvider
 from ._local_provider import _LocalProvider
 from .device_lease import DeviceLease
 from .device_provider import DeviceProvider
@@ -23,6 +24,7 @@ def _ensure_builtins() -> None:
     _PROVIDERS.setdefault("local", _LocalProvider())
     _PROVIDERS.setdefault("appium", _AppiumProvider())
     _PROVIDERS.setdefault("devicefarm-host", _DevicefarmHostProvider())
+    _PROVIDERS.setdefault("leased", _LeasedProvider())
 
 
 def acquire_device(eff: Effective, requested_udid: str) -> DeviceLease:
