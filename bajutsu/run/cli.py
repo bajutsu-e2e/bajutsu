@@ -40,6 +40,7 @@ from bajutsu.cli._shared import (
     _with_headed,
     _with_worker_device,
     _without_engine_condition,
+    _worker_backends,
     check_listed_browsers,
     parse_engine_flag,
     resolve_system_alert_handling_flag,
@@ -50,6 +51,7 @@ from bajutsu.common.backends import (
     current_host_os,
     default_available,
     ensure_web_runtime,
+    platform_of,
     select_actuator,
     select_actuator_for_scenario,
 )
@@ -104,8 +106,8 @@ from bajutsu.common.runner.device_provider import (
     acquire_device,
     merge_lease_env,
 )
+from bajutsu.common.runner.device_provider.lease_command import declared_models
 from bajutsu.common.runner.device_provider.tagged_udid import entries_for_platform
-from bajutsu.run.pool_demand import pool_demand
 from bajutsu.common.runner.hook_session import HookSession, phases_of, run_tags, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
@@ -151,6 +153,7 @@ from bajutsu.run.device_matrix import (
     render_not_applicable,
 )
 from bajutsu.run.device_matrix import plan as plan_device_matrix
+from bajutsu.run.pool_demand import pool_demand
 from bajutsu.run.step_gate import PromptStepGate
 
 
@@ -2127,7 +2130,13 @@ def _acquire_targets(
         for name, eff in target_effs.items():
             actuator, backends = selected[name]
             try:
-                device = acquire_device(eff, udid)
+                # The fake driver drives no device, so a `leased` worker's run borrows none for it.
+                leased = eff.device_provider is not None and eff.device_provider.kind == "leased"
+                device = (
+                    DeviceLease(udid_spec=udid, provision=ProvisionProfile())
+                    if leased and actuator == "fake"
+                    else acquire_device(eff, udid)
+                )
             except ValueError as e:
                 typer.echo(f"target '{name}': {e}")
                 raise typer.Exit(2) from None
@@ -3028,6 +3037,92 @@ def _check_label(value: str) -> str:
             f"a label must be at most {MAX_LABEL_LENGTH} characters", param_hint="--label"
         )
     return value
+
+
+def device_demand(params: Mapping[str, Any]) -> dict[str, Any]:
+    """What a run with the flags *params* takes from a lease broker, before any device exists.
+
+    For each platform the worker's broker lends: how many devices one scenario needs at once
+    (`pool_demand`), and the models the targets' `runsOn` names. Loads exactly as `run_body` does,
+    and resolves no device (BE-0511).
+
+    Args:
+        params: The parsed flags of `bajutsu run`, keyed by `run_body`'s parameter names.
+
+    Returns:
+        ``{"pools": [{"platform", "count", "models"}], "workers": N}``.
+
+    Raises:
+        typer.Exit: The config or the scenarios do not load, as the run itself would report.
+    """
+    worker_file = params["worker_config"]
+    worker = _load_device_worker_or_exit(Path(worker_file) if worker_file else None)
+    files = list(params["scenario"] or [])
+    explicit = bool(params["target_name"])
+    primary = _resolve_primary_target(params["target_name"], files)
+    erase = params["erase"]
+
+    def load(target: str) -> tuple[LoadedConfig, Effective, list[Scenario]]:
+        loaded, eff, _source, _engines = _resolve_config_and_engines(
+            params["config"],
+            target,
+            offline=params["config_offline"],
+            require_pinned=params["require_pinned_config"],
+            headed=params["headed"],
+            browser=params["browser"],
+            browsers=params["browsers"],
+            kind=params["kind"],
+        )
+        scenarios, *_rest = _load_scenarios(eff, files, target)
+        selected = _filter_scenarios(scenarios, params["tag"], params["exclude"], erase)
+        return loaded, eff, selected
+
+    loaded, eff, scenarios = load(primary)
+    if not explicit and scenarios and not _uses_target(scenarios, primary):
+        primary = scenarios[0].target_names[0]
+        loaded, eff, scenarios = load(primary)
+    # A scenario this worker cannot run fails without a device, so it adds no demand (BE-0450).
+    failures = _worker_capability_failures(loaded, scenarios, eff, params["backend"], worker)
+    scenarios = [s for i, s in enumerate(scenarios) if i not in failures]
+    if not scenarios:
+        return {"pools": [], "workers": 1}
+    if not _uses_target(scenarios, primary):
+        primary = scenarios[0].target_names[0]
+        loaded, eff, _ = load(primary)
+
+    target_effs = {
+        name: _with_worker_device(_with_erase_flag(target_eff, erase), worker)
+        for name, target_eff in _resolve_target_effs(loaded, scenarios, primary, eff).items()
+    }
+    used = list(dict.fromkeys(n for s in scenarios for n in (s.target_names or [primary])))
+    actuators = {
+        name: select_actuator(
+            _worker_backends(_backends(params["backend"], target_effs[name].backend), worker)
+        )
+        for name in used
+    }
+    demand = pool_demand(scenarios, actuators)
+    # A scenario that declares no target holds one device of the primary's pool.
+    if any(not s.target_names for s in scenarios):
+        demand.setdefault(actuators[primary], 1)
+
+    pools: dict[str, dict[str, Any]] = {}
+    for actuator, count in demand.items():
+        platform = platform_of(actuator)
+        if platform is None or platform not in (worker.platforms or ()):
+            continue
+        pool_effs = [target_effs[n] for n in used if actuators[n] == actuator]
+        models: list[str | None] = list(
+            dict.fromkeys(m for e in pool_effs for m in declared_models(e))
+        )
+        # A target that names no model takes any borrowed device, unless another condition of its
+        # own (a family, an OS range) may rule the named ones out: then the broker chooses one more.
+        if models and any(
+            not declared_models(e) and set(e.conditions) - {"kind"} for e in pool_effs
+        ):
+            models.append(None)
+        pools[platform] = {"platform": platform, "count": count, "models": models}
+    return {"pools": list(pools.values()), "workers": max(1, params["workers"])}
 
 
 def run_body(

@@ -355,6 +355,9 @@ def worker_decline(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, A
     )
     if status is None:
         return {"error": "lease lost or not held by this worker"}, 409
+    _logger.warning(
+        "worker %s (%s) declined job %s, now %s: %s", worker_id, environment, job_id, status, reason
+    )
     state.live_log_budget.forget(job_id)
     state.live_artifact_budget.forget(job_id)
     state.live_handoff_budget.forget(job_id)
@@ -365,8 +368,8 @@ def worker_decline(state: ServeState, body: dict[str, Any]) -> tuple[dict[str, A
     if status == "failed":
         result.setdefault("ok", False)
         state.logbus.publish(job_id, f"error: {result.get('error', reason)}")
-    if info is not None:
-        _persist_worker_run(state, info, result, ok=False)
+    # The lease check above found the row, so `info` is there to record the run under.
+    _persist_worker_run(state, info or {}, result, ok=False)
     state.logbus.close(job_id, json.dumps(result))
     close_cancelled(state, stopped)
     return {"status": status}, 200

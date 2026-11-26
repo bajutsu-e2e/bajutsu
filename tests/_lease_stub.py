@@ -29,6 +29,14 @@ if mode == "decline":
     sys.exit(3)
 if mode == "silent":
     time.sleep(30)
+if mode == "queued":
+    sys.stderr.write("3 requests ahead\\n")
+    sys.stderr.flush()
+    time.sleep(30)
+if mode == "dies":
+    print(json.dumps({"device": {"address": "AAAA-1111"}}), flush=True)
+    sys.stderr.write("revoked\\n")
+    sys.exit(7)
 if mode == "garbage":
     print("not json", flush=True)
     time.sleep(30)

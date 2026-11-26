@@ -75,9 +75,7 @@ BATCH_PROVIDERS: frozenset[str] = frozenset(BATCH_PROVIDER_PLATFORMS)
 # booted with its app in place, whatever `subject.path` says.
 DEVICEFARM_HOST = "devicefarm-host"
 
-ENVIRONMENTS: frozenset[str] = frozenset(
-    {LOCAL, LEASED, APPIUM, DEVICEFARM_HOST, *BATCH_PROVIDERS}
-)
+ENVIRONMENTS: frozenset[str] = frozenset({LOCAL, LEASED, APPIUM, DEVICEFARM_HOST, *BATCH_PROVIDERS})
 
 # The routing-token prefixes a worker fills in itself: `environment:<name>` for a provider it
 # registered (BE-0448), `host:<os>` for the operating system it runs on (BE-0450), `machine:<id>`

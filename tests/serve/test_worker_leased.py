@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import typer
 from _lease_stub import events, lease_command
 
 from bajutsu.common.runner.device_provider import LeaseEnvConflictError
@@ -225,6 +226,7 @@ _CONFIG = """
 targets:
   app: { platform: ios, subject: { id: com.x }, runsOn: { ios: { model: "iPhone 16" } } }
   peer: { platform: ios, subject: { id: com.y } }
+  pad: { platform: ios, subject: { id: com.z }, runsOn: { ios: { family: ipad } } }
   droid: { platform: android, subject: { id: com.x } }
   site: { platform: web, subject: { url: "http://localhost:1" } }
 """
@@ -250,8 +252,8 @@ def _demand(tmp_path: Path, scenarios: str, *flags: str) -> dict[str, Any]:
 def _stub_host(monkeypatch: pytest.MonkeyPatch) -> None:
     """Resolve each platform's actuator without this host's device toolchains."""
     actuators = {"ios": "xcuitest", "android": "adb", "web": "playwright"}
-    monkeypatch.setattr("bajutsu.run.demand.select_actuator", lambda b: actuators[b[0]])
-    monkeypatch.setattr("bajutsu.run.demand._worker_backends", lambda backends, _worker: backends)
+    monkeypatch.setattr("bajutsu.run.cli.select_actuator", lambda b: actuators[b[0]])
+    monkeypatch.setattr("bajutsu.run.cli._worker_backends", lambda backends, _worker: backends)
     monkeypatch.setattr("bajutsu.run.cli._worker_capability_failures", lambda *_a: {})
 
 
@@ -280,3 +282,173 @@ def test_demand_gives_a_targetless_scenario_one_device(
     answer = _demand(tmp_path, "- name: solo\n  steps: []\n", "--target", "app")
     assert answer["pools"] == [{"platform": "ios", "count": 1, "models": ["iPhone 16"]}]
 
+
+# --- the device count the worker asks for ---------------------------------------------------
+
+
+def test_the_worker_counts_devices_in_the_jobs_directory(tmp_path: Path) -> None:
+    (tmp_path / "bajutsu.config.yaml").write_text(
+        "targets:\n  app: { platform: ios, subject: { id: com.x } }\n", encoding="utf-8"
+    )
+    (tmp_path / "s.yaml").write_text("- name: solo\n  steps: []\n", encoding="utf-8")
+    worker_file, log = _worker_file(tmp_path)
+    devices = JobDevices(
+        worker_file=worker_file, cwd=tmp_path, stop=lambda: False, log=lambda _line: None
+    )
+    # Relative paths, as a leased job's argv carries them; `--backend fake` needs no toolchain.
+    flags = ["--config", "bajutsu.config.yaml", "--scenario", "s.yaml", "--target", "app"]
+    job = Job(
+        id="j1", cmd=[*_RUN[:3], *flags, "--backend", "fake", "--worker-config", str(worker_file)]
+    )
+    assert devices.prepare(job)
+    assert events(log) == []  # the fake backend drives no device, so nothing is borrowed
+    assert "--udid" not in job.cmd
+
+
+def test_devices_that_cannot_be_counted_fail_the_job_with_the_runs_message(
+    tmp_path: Path,
+) -> None:
+    worker_file, log = _worker_file(tmp_path)
+    devices = JobDevices(
+        worker_file=worker_file, cwd=tmp_path, stop=lambda: False, log=lambda _line: None
+    )
+    job = Job(id="j1", cmd=[*_RUN, "--config", "absent.yaml", "--scenario", "absent.yaml"])
+    with pytest.raises(ValueError, match="could not count the devices"):
+        devices.prepare(job)
+    assert events(log) == []
+
+
+def test_a_job_already_cancelled_borrows_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker_file, log = _worker_file(tmp_path)
+    devices, job, _ = _devices(worker_file, monkeypatch, _pools(("ios", 1, [])), stop=lambda: True)
+    assert not devices.prepare(job)
+    assert events(log) == []
+
+
+def test_a_stop_during_the_extra_lanes_releases_everything(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker_file, log = _worker_file(tmp_path, "limit:3")
+    asked: list[None] = []
+
+    def stop() -> bool:
+        asked.append(None)
+        return len(asked) > 2  # before the job and before the mandatory borrow
+
+    devices, job, _ = _devices(
+        worker_file, monkeypatch, _pools(("ios", 1, [])), workers=3, stop=stop
+    )
+    assert not devices.prepare(job)
+    assert _ended(log) == 1
+
+
+def test_demand_prints_one_json_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from bajutsu.run import demand
+
+    monkeypatch.setattr("bajutsu.cli.bootstrap", lambda **_kwargs: None)
+    monkeypatch.setattr(demand, "run_demand", lambda _args: {"pools": [], "workers": 1})
+    demand.main()
+    assert json.loads(capsys.readouterr().out) == {"pools": [], "workers": 1}
+
+    def refuse(_args: list[str]) -> dict[str, Any]:
+        raise typer.Exit(2)
+
+    monkeypatch.setattr(demand, "run_demand", refuse)
+    with pytest.raises(SystemExit) as stopped:
+        demand.main()
+    assert stopped.value.code == 2
+
+
+def test_a_condition_the_named_models_may_miss_gets_one_more_device(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stub_host(monkeypatch)
+    scenarios = (
+        "- name: named\n  targets: [app]\n  steps: []\n- name: any\n  targets: [pad]\n  steps: []\n"
+    )
+    answer = _demand(tmp_path, scenarios)
+    assert answer["pools"] == [{"platform": "ios", "count": 1, "models": ["iPhone 16", None]}]
+
+
+def test_a_lease_lost_mid_run_is_named_in_the_job_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker_file, _ = _worker_file(tmp_path, "dies")
+    devices, job, lines = _devices(worker_file, monkeypatch, _pools(("ios", 1, [])))
+    assert devices.prepare(job)
+    for _ in range(200):
+        if devices._held.devices[0][1].problem() is not None:
+            break
+        threading.Event().wait(0.05)
+    devices.release()
+    assert any("ended before the run released it" in line for line in lines)
+
+
+def test_a_nearly_spent_budget_is_named_in_the_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker_file, _ = _worker_file(tmp_path, "decline")
+    devices, job, _ = _devices(worker_file, monkeypatch, _pools(("ios", 1, [])), budget=20.0)
+    with pytest.raises(LeaseDeclinedError, match="of the 20 s borrow budget"):
+        devices.prepare(job)
+
+
+@pytest.mark.parametrize(("code", "tries"), [(503, 3), (404, 1), (None, 3)])
+def test_a_decline_that_does_not_land_is_retried(
+    monkeypatch: pytest.MonkeyPatch, code: int | None, tries: int
+) -> None:
+    posts: list[str] = []
+
+    def post(url: str, _body: dict[str, Any], **_kwargs: Any) -> tuple[int, Any]:
+        posts.append(url)
+        if code is None:
+            raise OSError("connection reset")
+        return code, {}
+
+    monkeypatch.setattr(worker_mod, "_post_json", post)
+    monkeypatch.setattr(worker_mod, "_DECLINE_RETRY_SECONDS", 0)
+    declined = {"declined": "busy", "environment": "leased"}
+    worker_mod._post_decline("http://cp", "j1", "w1", declined, None)
+    assert len(posts) == tries
+
+
+def test_a_dropped_request_udid_is_said_in_the_job_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    worker_file, _ = _worker_file(tmp_path)
+    bus = InMemoryLogBus()
+    published: list[str] = []
+    monkeypatch.setattr(bus, "publish", lambda _job, line: published.append(line))
+    worker_job.execute_job_spec(
+        {"job_id": "j1", "cmd": [*_RUN, "--udid", "AAAA"]},
+        cwd=tmp_path,
+        bus=bus,
+        worker_config=worker_file,
+        prepare=lambda _job: False,
+    )
+    assert any("ignoring the requested device" in line for line in published)
+
+
+def test_a_cancel_during_the_borrow_records_the_job_cancelled(tmp_path: Path) -> None:
+    class _Devices:
+        def prepare(self, _job: Job) -> bool:
+            return False
+
+        def release(self) -> None:
+            pass
+
+    cancel = worker_job.CancelRelay()
+    cancel.request()
+    result = worker_mod._job_result(
+        lambda **_kwargs: Job(id="j1", cmd=list(_RUN)),
+        _Devices(),  # type: ignore[arg-type]
+        job_id="j1",
+        environment="leased",
+        cancel=cancel,
+        log=lambda _line: None,
+    )
+    assert result["cancelled"] is True

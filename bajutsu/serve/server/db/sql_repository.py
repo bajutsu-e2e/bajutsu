@@ -1966,10 +1966,6 @@ def _reclaim_row(
             attempts=attempts,
             leased_by=None,
             leased_at=None,
-            # A worker that held the job had its devices, so an earlier wait for one is over.
-            decline_count=0,
-            first_declined_at=None,
-            not_before=None,
             # The paused `record` died with the lease, so its handoff ends too.
             handoff_pending=False,
             handoff_response=None,

@@ -438,7 +438,10 @@ def test_two_targets_on_two_pools_demand_one_device_each() -> None:
             }
         )
     ]
-    assert pool_demand(scenarios, {n: s.actuator for n, s in setups.items()}) == {"fake": 1, "playwright": 1}
+    assert pool_demand(scenarios, {n: s.actuator for n, s in setups.items()}) == {
+        "fake": 1,
+        "playwright": 1,
+    }
 
 
 def test_a_pool_with_too_few_devices_is_refused_up_front(

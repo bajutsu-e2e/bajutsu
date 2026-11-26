@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -25,6 +26,8 @@ from bajutsu.common.config import Effective
 _MAX_ANSWER_BYTES = 65536
 _STDERR_TAIL_BYTES = 4096
 
+_logger = logging.getLogger(__name__)
+
 
 class LeaseDeclinedError(ValueError):
     """The broker lent no device: its command exited, or stayed silent, before naming one."""
@@ -38,11 +41,13 @@ class BorrowedDevice:
         address: What the run drives, in place of a udid.
         env: The variables the run's device tools must see.
         release: Ends the lease; safe to call more than once.
+        problem: Why the lease no longer holds, when its command exited before release; else None.
     """
 
     address: str
     release: Callable[[], None]
     env: Mapping[str, str] = field(default_factory=dict)
+    problem: Callable[[], str | None] = lambda: None
 
 
 def declared_models(eff: Effective) -> list[str]:
@@ -116,29 +121,55 @@ def borrow_device(
         target=_keep_tail, args=(proc.stderr, stderr_tail), daemon=True, name="lease-stderr"
     )
     errors.start()
-    release = _releaser(proc, release_timeout)
+    released = threading.Event()
+    release = _releaser(proc, release_timeout, released)
 
     try:
         if not answered.wait(acquire_timeout):
-            raise LeaseDeclinedError(
-                f"the lease command printed no line within {acquire_timeout:g} seconds"
-            )
+            raise _silent(acquire_timeout, stderr_tail)  # noqa: TRY301  # released below
         if not line or not line[0].endswith(b"\n"):
-            with contextlib.suppress(subprocess.TimeoutExpired):
-                proc.wait(timeout=release_timeout)
-            errors.join(timeout=1.0)
-            said = stderr_tail.decode(errors="replace").strip()
-            status = proc.returncode
-            ended = f"exit status {status}" if status is not None else "output closed"
-            raise LeaseDeclinedError(
-                f"the lease command ended before naming a device ({ended})"
-                + (f": {said}" if said else "")
-            )
+            raise _ended_early(proc, errors, stderr_tail, release_timeout)  # noqa: TRY301  # same
         address, env = _parse_answer(line[0])
     except BaseException:
         release()
         raise
-    return BorrowedDevice(address=address, env=env, release=release)
+
+    def problem() -> str | None:
+        if released.is_set() or proc.poll() is None:
+            return None
+        said = stderr_tail.decode(errors="replace").strip()
+        return (
+            f"the lease on {address} ended before the run released it "
+            f"(exit status {proc.returncode})" + (f": {said}" if said else "")
+        )
+
+    return BorrowedDevice(address=address, env=env, release=release, problem=problem)
+
+
+def _silent(acquire_timeout: float, stderr_tail: bytearray) -> LeaseDeclinedError:
+    said = stderr_tail.decode(errors="replace").strip()
+    return LeaseDeclinedError(
+        f"the lease command printed no line within {acquire_timeout:g} seconds"
+        + (f": {said}" if said else "")
+    )
+
+
+def _ended_early(
+    proc: subprocess.Popen[bytes],
+    errors: threading.Thread,
+    stderr_tail: bytearray,
+    release_timeout: float,
+) -> LeaseDeclinedError:
+    """The decline of a command that closed its output before naming a device, with its reason."""
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=release_timeout)
+    errors.join(timeout=1.0)
+    said = stderr_tail.decode(errors="replace").strip()
+    status = proc.returncode
+    ended = f"exit status {status}" if status is not None else "output closed"
+    return LeaseDeclinedError(
+        f"the lease command ended before naming a device ({ended})" + (f": {said}" if said else "")
+    )
 
 
 def _read_answer(stream: IO[bytes], line: list[bytes], answered: threading.Event) -> None:
@@ -160,7 +191,9 @@ def _keep_tail(stream: IO[bytes], tail: bytearray) -> None:
             del tail[:-_STDERR_TAIL_BYTES]
 
 
-def _releaser(proc: subprocess.Popen[bytes], release_timeout: float) -> Callable[[], None]:
+def _releaser(
+    proc: subprocess.Popen[bytes], release_timeout: float, released: threading.Event
+) -> Callable[[], None]:
     """End the lease once: a termination signal, a bounded wait, then a forced end."""
     lock = threading.Lock()
     done = False
@@ -171,15 +204,31 @@ def _releaser(proc: subprocess.Popen[bytes], release_timeout: float) -> Callable
             if done:
                 return
             done = True
-        if proc.poll() is None:
+        if proc.poll() is not None:
+            _logger.warning(
+                "the lease command %s had already exited (status %s) when its lease was released",
+                proc.args,
+                proc.returncode,
+            )
+        else:
+            released.set()
             proc.send_signal(signal.SIGTERM)
             try:
                 proc.wait(timeout=release_timeout)
             except subprocess.TimeoutExpired:
                 # One wedged command must not hold the job's `finally` open.
+                _logger.warning(
+                    "the lease command %s ignored the termination signal for %g seconds; killing it",
+                    proc.args,
+                    release_timeout,
+                )
                 proc.kill()
-                with contextlib.suppress(subprocess.TimeoutExpired):
+                try:
                     proc.wait(timeout=release_timeout)
+                except subprocess.TimeoutExpired:
+                    _logger.warning(
+                        "the lease command %s survived a kill; its device may stay lent", proc.args
+                    )
         # Also ends the lease of a helper the command left behind (contract point 4).
         if proc.stdin is not None:
             with contextlib.suppress(OSError):

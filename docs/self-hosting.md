@@ -1617,6 +1617,9 @@ that long, the run can still drive a device the broker may lend again.
 A direct run borrows one device per target. That run serves at most one target per platform. For
 parallel lanes, or two targets on one platform, borrow by hand and pass `--udid`.
 
+`bajutsu worker --once` borrows the same way as a direct run. A queued `record` or `crawl` job does
+too. The worker never declines such a job. A busy broker turns it red at once.
+
 ### Evidence upload to object storage (BE-0110)
 
 Evidence upload is optional. The worker upload above writes each run tree to the **artifact store** the control plane serves reports

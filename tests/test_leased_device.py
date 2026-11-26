@@ -299,3 +299,139 @@ def test_the_mcp_probe_releases_its_lease_and_restores_the_environment(
         assert (spec, os.environ["STUB_PORT"]) == ("AAAA-1111", "5038")
     assert "STUB_PORT" not in os.environ
     assert "terminated ios" in events(log)
+
+
+def test_a_lease_that_ends_early_is_reported(tmp_path: Path) -> None:
+    command, _ = lease_command(tmp_path, "dies")
+    borrowed = _borrow(command)
+    for _ in range(200):
+        if borrowed.problem() is not None:
+            break
+        threading.Event().wait(0.05)
+    problem = borrowed.problem()
+    assert problem is not None
+    assert "ended before the run released it" in problem
+    assert "revoked" in problem
+    borrowed.release()
+
+
+def test_a_released_lease_has_no_problem(tmp_path: Path) -> None:
+    command, _ = lease_command(tmp_path)
+    borrowed = _borrow(command)
+    assert borrowed.problem() is None
+    borrowed.release()
+    assert borrowed.problem() is None
+
+
+def test_a_forced_release_is_logged(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    command, _ = lease_command(tmp_path, "stubborn")
+    _borrow(command, release_timeout=0.3).release()
+    assert "ignored the termination signal" in caplog.text
+
+
+def test_a_silent_commands_reason_reaches_the_decline(tmp_path: Path) -> None:
+    command, _ = lease_command(tmp_path, "queued")
+    with pytest.raises(broker.LeaseDeclinedError, match="3 requests ahead"):
+        _borrow(command, acquire_timeout=2.0)
+
+
+def test_the_provider_without_a_command_or_for_another_platform_refuses() -> None:
+    from bajutsu.common.config import DeviceProvider
+
+    eff = resolve(load_config(_CONFIG), "ios")
+    bare = replace(eff, device_provider=DeviceProvider(kind="leased"))
+    with pytest.raises(ValueError, match="needs a lease command"):
+        dp.acquire_device(bare, "booted")
+    with pytest.raises(ValueError, match="no entry for platform"):
+        dp.acquire_device(bare, "android=x")
+    assert entries_for_platform("AAAA,,", "ios") == "AAAA"
+
+
+def test_a_fake_run_on_a_leased_worker_borrows_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.run import cli as run_cli
+
+    command, log = lease_command(tmp_path)
+    worker = _worker(command)
+    effs = {"ios": _eff("ios", worker)}
+    monkeypatch.setattr(run_cli, "_select_actuator", lambda *_a: ("fake", ["fake"]))
+    setups = run_cli._acquire_targets(effs, "fake", [], "booted", 1, worker)
+    assert setups["ios"].device.udid_spec == "booted"
+    assert events(log) == []
+
+
+def test_lease_block_rejects_an_empty_program_and_duplicate_platforms() -> None:
+    for text, reason in [
+        (_yaml([" "]), "needs a program"),
+        (_yaml(["b"], platforms="[ios, ios]"), "twice"),
+        ("version: 1\ndrivers: [fake]\nlease: {command: [b]}\n", "belongs to environment"),
+    ]:
+        with pytest.raises(WorkerCapabilityError, match=reason):
+            parse_worker_capability(text)
+    assert _worker(["b"], extra="  releaseTimeout: 3\n").lease is not None
+
+
+def test_the_mcp_probe_restores_a_variable_that_was_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.mcp.tools import _probe_device
+
+    command, _ = lease_command(tmp_path)
+    monkeypatch.setattr("bajutsu.mcp.tools.select_actuator", lambda *_a, **_k: "xcuitest")
+    monkeypatch.setattr(
+        "bajutsu.mcp.tools.first_run_device", lambda eff, _actuator, spec: (eff, spec)
+    )
+    monkeypatch.setenv("STUB_PORT", "before")
+    with _probe_device(resolve(load_config(_CONFIG), "ios"), "booted", _worker(command)):
+        assert os.environ["STUB_PORT"] == "5038"
+    assert os.environ["STUB_PORT"] == "before"
+
+
+def test_a_run_refuses_an_untagged_platform_and_a_declined_borrow(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.common.scenario import Scenario
+    from bajutsu.run import cli as run_cli
+
+    command, _ = lease_command(tmp_path, "decline")
+    worker = _worker(command)
+    effs = {"ios": _eff("ios", worker)}
+    monkeypatch.setattr(run_cli, "_select_actuator", lambda *_a: ("xcuitest", ["xcuitest"]))
+    with pytest.raises(typer.Exit):  # a direct run the broker declines
+        run_cli._acquire_targets(effs, "", [], "booted", 1, worker)
+    grouped = Scenario.model_validate({"name": "g", "targets": [["ios", "droid"]], "steps": []})
+    effs["droid"] = _eff("droid", worker)
+    with pytest.raises(typer.Exit):
+        run_cli._reject_unshareable_groups([grouped], effs, "", [], "tv=1", worker)
+
+
+def test_the_demand_re_infers_the_primary_a_filter_or_the_worker_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.run import cli as run_cli
+    from bajutsu.run.demand import run_demand
+
+    (tmp_path / "c.yaml").write_text(_CONFIG, encoding="utf-8")
+    scenarios = tmp_path / "s.yaml"
+    scenarios.write_text(
+        "- name: a\n  targets: [ios]\n  tags: [skip]\n  steps: []\n"
+        "- name: b\n  targets: [droid]\n  steps: []\n",
+        encoding="utf-8",
+    )
+    command, _ = lease_command(tmp_path)
+    worker_file = tmp_path / "w.yaml"
+    worker_file.write_text(_yaml(command), encoding="utf-8")
+    monkeypatch.setattr(run_cli, "select_actuator", lambda _b: "adb")
+    monkeypatch.setattr(run_cli, "_worker_backends", lambda backends, _worker: backends)
+    flags = [
+        *("--config", str(tmp_path / "c.yaml"), "--scenario", str(scenarios)),
+        *("--worker-config", str(worker_file)),
+    ]
+    only_droid = {"pools": [{"platform": "android", "count": 1, "models": []}], "workers": 1}
+    monkeypatch.setattr(run_cli, "_worker_capability_failures", lambda *_a: {})
+    assert run_demand([*flags, "--exclude", "skip"]) == only_droid
+    monkeypatch.setattr(run_cli, "_worker_capability_failures", lambda *_a: {0: "cannot"})
+    assert run_demand(flags) == only_droid
+    monkeypatch.setattr(run_cli, "_worker_capability_failures", lambda *_a: {0: "no", 1: "no"})
+    assert run_demand(flags) == {"pools": [], "workers": 1}

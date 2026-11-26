@@ -46,8 +46,13 @@ class _Held:
     devices: list[tuple[str, BorrowedDevice]] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
 
-    def release(self) -> None:
+    def release(self, log: Callable[[str], None]) -> None:
         for platform, device in self.devices:
+            # A broker may have lent this device again while the run drove it, so the job's own log
+            # carries the cause of what that run then saw.
+            if (problem := device.problem()) is not None:
+                _logger.warning("%s", problem)
+                log(problem)
             try:
                 device.release()
             except Exception:
@@ -117,7 +122,7 @@ class JobDevices:
 
     def release(self) -> None:
         """End every lease held; safe to call more than once."""
-        self._held.release()
+        self._held.release(self._log)
 
     def _demand(self, job: Job, flags: list[str]) -> tuple[list[dict[str, Any]], int]:
         """The run's pools and `--workers`, counted in the run's own directory and environment."""
@@ -173,7 +178,7 @@ class JobDevices:
                 self._held.env = more.env
                 more = _Held()
             finally:
-                more.release()
+                more.release(self._log)
         return True
 
     def _take(
@@ -188,13 +193,20 @@ class JobDevices:
         left = deadline - time.monotonic()
         if left <= 0:
             raise LeaseDeclinedError(f"the borrow budget of {self._budget:g} seconds is spent")
-        device = borrow_device(
-            broker.command,
-            platform=platform,
-            device=model,
-            acquire_timeout=min(broker.acquire_timeout, left),
-            release_timeout=broker.release_timeout,
-        )
+        try:
+            device = borrow_device(
+                broker.command,
+                platform=platform,
+                device=model,
+                acquire_timeout=min(broker.acquire_timeout, left),
+                release_timeout=broker.release_timeout,
+            )
+        except LeaseDeclinedError as e:
+            if left >= broker.acquire_timeout:
+                raise
+            raise LeaseDeclinedError(
+                f"{e} (only {left:.0f} s of the {self._budget:g} s borrow budget were left)"
+            ) from e
         # Held before the merge, so a conflict releases this device with the rest.
         held.devices.append((platform, device))
         merge_lease_env(held.env, device.env)

@@ -648,6 +648,11 @@ def execute_job_spec(
     )
     # Bind the job's ids so every operational record on this worker correlates to it (BE-0055);
     # `run_id` is the run's own id, minted by `run_job`, so it binds only once the run has started.
+    if leased and (job.cmd != argv or spec.get("udids")):
+        log_bus.publish(
+            job.id,
+            "ignoring the requested device(s): this worker's devices come from its lease broker",
+        )
     if on_job is not None:
         on_job(job)
     with oplog.job_context(job_id=job.id, org=org, actor=spec.get("actor")):

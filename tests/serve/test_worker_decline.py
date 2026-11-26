@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -19,10 +19,10 @@ from bajutsu.serve.server.models import Base, JobRecord
 
 
 @pytest.fixture
-def repo(serve_engine: Callable[..., Engine]) -> Iterator[SqlRepository]:
+def repo(serve_engine: Callable[..., Engine]) -> SqlRepository:
     engine = serve_engine()
     Base.metadata.create_all(engine)
-    yield SqlRepository(engine)
+    return SqlRepository(engine)
 
 
 def _state(repo: SqlRepository, tmp_path: Path) -> srv.ServeState:
@@ -48,14 +48,18 @@ def _set(repo: SqlRepository, job_id: str, **values: object) -> None:
         session.commit()
 
 
-def _decline(state: srv.ServeState, job_id: str, worker: str = "w1") -> tuple[dict, int]:
+def _decline(
+    state: srv.ServeState, job_id: str, worker: str = "w1"
+) -> tuple[dict[str, object], int]:
     return ops.worker_decline(
         state,
         {"worker_id": worker, "job_id": job_id, "reason": "no device", "environment": "leased"},
     )
 
 
-def _lease(repo: SqlRepository, environment: str | None = "leased", worker: str = "w1") -> list[str]:
+def _lease(
+    repo: SqlRepository, environment: str | None = "leased", worker: str = "w1"
+) -> list[str]:
     return [j.id for j in repo.lease_jobs(worker, environment=environment)]
 
 
@@ -156,3 +160,29 @@ def test_the_window_is_a_server_setting(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("BAJUTSU_DECLINE_WINDOW_SECONDS", "never")
     with pytest.raises(ValueError, match="BAJUTSU_DECLINE_WINDOW_SECONDS"):
         repository_from_env()
+
+
+def test_a_failed_decline_closes_the_log_stream_with_the_reason(
+    repo: SqlRepository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(repo, tmp_path)
+    _enqueue(repo, "j1")
+    assert _lease(repo) == ["j1"]
+    _set(repo, "j1", first_declined_at=datetime.now(UTC) - timedelta(hours=2))
+    published: list[str] = []
+    closed: list[str] = []
+    monkeypatch.setattr(state.logbus, "publish", lambda _job, line: published.append(line))
+    monkeypatch.setattr(state.logbus, "close", lambda _job, payload="": closed.append(payload))
+    assert _decline(state, "j1")[0] == {"status": "failed"}
+    assert published == ["error: no device was lent within 3600 seconds: no device"]
+    assert len(closed) == 1
+
+
+def test_a_lease_lost_between_the_check_and_the_decline_is_a_409(
+    repo: SqlRepository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _state(repo, tmp_path)
+    _enqueue(repo, "j1")
+    assert _lease(repo) == ["j1"]
+    monkeypatch.setattr(repo, "decline_job", lambda *_a, **_k: None)
+    assert _decline(state, "j1")[1] == 409
