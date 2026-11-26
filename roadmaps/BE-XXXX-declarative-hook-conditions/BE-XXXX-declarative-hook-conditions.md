@@ -16,9 +16,9 @@
 ## Introduction
 
 This item widens the `when` block that decides whether a `hook` runs. Today the block reads scenario
-tags alone. It gains `targets`, `platforms`, `routes`, and `env`.
-A *route* is a kind of destination.
-Examples are the iOS Simulator and an iOS real device.
+tags alone.
+It gains `targets`, `platforms`, `routes`, and `env`. A *route* is the kind of destination
+a target runs on, such as the iOS Simulator or a real device.
 
 The widened block also applies to a second kind of `hook`. Today `when` guards external commands
 alone. After this item it also guards the `setup` and `cleanup` steps that wrap a scenario. Every
@@ -69,13 +69,14 @@ route is a live WebDriver endpoint. The `fake` backend has no route, so a `route
 holds there.
 
 ```yaml
-hooks:
-  beforeRun:
-    - cmd: "./scripts/start-mock.sh"
-      when: { env: { CI: null } }          # only where CI is unset
-  beforeScenario:
-    - cmd: "./scripts/trust-certificate.sh"
-      when: { platforms: [ios], routes: [ios-device] }
+defaults:
+  hooks:
+    beforeRun:
+      - cmd: "./scripts/start-mock.sh"
+        when: { env: { CI: null } }          # only where CI is unset
+    beforeScenario:
+      - cmd: "./scripts/trust-certificate.sh"
+        when: { platforms: [ios], routes: [ios-device] }
 ```
 
 ### How the fields combine
@@ -101,6 +102,12 @@ The place of a condition decides which target `targets`, `platforms`, and `route
 An entry merged from `defaults` or a template belongs to the target that received it. Suppose
 `defaults.hooks` holds an entry with `when: { targets: [ios] }`. The copy that `android` received
 never runs, even in a scenario that drives both targets.
+
+A condition written directly under `targets.<name>.hooks` can be unsatisfiable from the start. Its `targets`
+or `platforms` may leave out the judged target. Its `routes` may name no route of that target's
+platform. Such a condition fails to load, as a `when` with no constraint does. The check reads each
+entry as written, before `defaults` or a template merges in. A merged copy that never runs stays
+valid.
 
 A scenario drives the targets it declares. A scenario that declares none drives the run's own target.
 In a scenario, `{ targets: [app], routes: [ios-device] }` asks whether `app` runs on a real device.
@@ -178,8 +185,8 @@ an entry whose condition the scenario does not meet. This item keeps that rule i
 A condition that names `env` or `routes` waits for the second stage as a whole. The first stage
 checks conditions that name neither field.
 
-A mismatch exits 2 in both stages. The second stage skips deselected scenarios. Their result
-depends on the machine rather than on the files. A token inside a skipped block needs no value, so
+A mismatch exits 2 in both stages. The second stage skips deselected scenarios. The files alone do not decide their result.
+The `env` field depends on the machine, and a route depends on flags such as `--backend` and `--udid`. A token inside a skipped block needs no value, so
 Bajutsu does not check it.
 
 ### Preflight, routing, code generation, and evidence
@@ -188,10 +195,14 @@ Bajutsu does not check it.
   skipped block never stops a run.
 - **Routing under `serve`.** `serve` picks a worker by the capabilities a job needs. It drops a
   block's needs when `tags`, `exclude`, `targets`, or `platforms` rule the block out. It also
-  drops them when `routes` lists the route of no judged target. An `env` block keeps its needs, since
+  drops them when `routes` lists the route of no judged target. A worker does not change a route.
+  `serve` already derives each route from the config and the request to route the job (BE-0467). An `env` block keeps its needs, since
   `serve` does not know a worker's environment.
 - **Code generation.** `bajutsu codegen` does not accept a conditional block, nor a `cleanup` rule with `when`.
-  The `if` step has the same limit. A generated test has no run that could decide the condition.
+  The `if` step has the same limit. A block gated on `env` has no run
+  that could decide it.
+  Deciding the static fields would need the run's target and platform rules inside `codegen`. A
+  later item can add that.
 - **Command policy.** The worker still checks every declared command (BE-0492). A condition that does not hold
   changes nothing here.
 - **Evidence.** A skipped command shows as `skipped (when)` with its condition, as today. A skipped
@@ -224,6 +235,7 @@ the same `hooks`. The fields name no particular app, so per-app choices stay in 
 
 - [ ] Schema: the four new fields of `when`, with their load errors.
 - [ ] Schema: the narrowed load check on run-level entries.
+- [ ] Schema: the load error for a target's own condition that can never hold.
 - [ ] Evaluation: one predicate over a scenario, its driven targets, their routes, and the environment.
 - [ ] Command `hooks`: apply the predicate to scenario-level and run-level lists.
 - [ ] Setup and cleanup: the conditional block and `when` on a cleanup rule.
