@@ -23,12 +23,13 @@ change.
 
 ## Motivation
 
-A hosted runner has a three-core virtual Central Processing Unit (CPU) and 7 GB of memory. Simulator daemons and the logging system compete for it all job long. So does the
-push daemon. We looked at one job that did not pass. Its
-[run](https://github.com/bajutsu-e2e/bajutsu/actions/runs/45312745997) holds the record.
-Over a 339-second window,
-`diagnosticd` and `apsd` took about 31％ of CPU time. The `diagnosticd` share counts both copies,
-the Simulator one and the runner one. Python, `xcodebuild`, and the app took near one percent each.
+A hosted runner has three virtual Central Processing Unit (CPU) cores and 7 GB of memory. Simulator
+daemons, the logging system, and the push daemon compete for those cores all job long. One job that
+did not pass shows the cost
+([run](https://github.com/bajutsu-e2e/bajutsu/actions/runs/45312745997)). Over a 339-second window,
+`diagnosticd` and `apsd` took about 31 percent of CPU time. The `diagnosticd` share counts both
+copies, the Simulator one and the runner one. Python, `xcodebuild`, and the app took near one
+percent each.
 
 We compared a stock Simulator with one that had 173 `launchd` services turned off. Both arms
 rebooted once before the tests. Each lane ran three times per arm ([run](https://github.com/bajutsu-e2e/bajutsu/actions/runs/45757812584) has details). All 18
@@ -75,7 +76,7 @@ three points:
 | Use a larger sample with a fixed threshold | Unit 4 sets both. |
 
 BE-0494 read free memory once, after the app install. Its slimmed runs read less free memory than
-its stock runs. Our figure is the lowest reading over a whole job. It rose from 25–72％ to 52–83％.
+its stock runs. Our figure is the lowest reading over a whole job. It rose from 25–72 to 52–83 percent.
 The two readings are not comparable, so the earlier result stays unexplained.
 
 We will judge success by one observable difference. Reduced jobs should report fewer
