@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-parse-json-step-ja.md)
+**English** · [日本語](BE-0516-parse-json-step-ja.md)
 
-# BE-XXXX — Read values out of `JSON` text with a parseJson step
+# BE-0516 — Read values out of `JSON` text with a parseJson step
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-parse-json-step.md) |
+| Proposal | [BE-0516](BE-0516-parse-json-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0516") |
 | Topic | Scenario authoring features |
 | Related | [BE-0440](../BE-0440-http-step-field-extraction/BE-0440-http-step-field-extraction.md), [BE-0472](../BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations.md) |
 <!-- /BE-METADATA -->

@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-http-status-wait-ja.md)
+**English** · [日本語](BE-0515-http-status-wait-ja.md)
 
-# BE-XXXX — Wait for a status on the http step
+# BE-0515 — Wait for a status on the http step
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-http-status-wait.md) |
+| Proposal | [BE-0515](BE-0515-http-status-wait.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0515") |
 | Topic | Scenario authoring features |
 | Related | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps.md), [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md) |
 <!-- /BE-METADATA -->

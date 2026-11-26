@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-email-imap-pop3-ja.md)
+**English** · [日本語](BE-0514-email-imap-pop3-ja.md)
 
-# BE-XXXX — Receive mail for the email step over IMAP and POP3
+# BE-0514 — Receive mail for the email step over IMAP and POP3
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-email-imap-pop3.md) |
+| Proposal | [BE-0514](BE-0514-email-imap-pop3.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
 | Topic | Scenario authoring features |
 | Related | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) |
 <!-- /BE-METADATA -->

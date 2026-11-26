@@ -1,14 +1,14 @@
-[English](BE-XXXX-email-imap-pop3.md) · **日本語**
+[English](BE-0514-email-imap-pop3.md) · **日本語**
 
-# BE-XXXX — `email` ステップのメール受信を IMAP と POP3 にする
+# BE-0514 — `email` ステップのメール受信を IMAP と POP3 にする
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-email-imap-pop3-ja.md) |
+| 提案 | [BE-0514](BE-0514-email-imap-pop3-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)、[BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md) |
 <!-- /BE-METADATA -->

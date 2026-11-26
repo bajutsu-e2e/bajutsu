@@ -1,14 +1,14 @@
-[English](BE-XXXX-http-status-wait.md) · **日本語**
+[English](BE-0515-http-status-wait.md) · **日本語**
 
-# BE-XXXX — `http` ステップの状態コード待機
+# BE-0515 — `http` ステップの状態コード待機
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-http-status-wait-ja.md) |
+| 提案 | [BE-0515](BE-0515-http-status-wait-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0515") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0036](../BE-0036-utility-steps/BE-0036-utility-steps-ja.md)、[BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md) |
 <!-- /BE-METADATA -->
