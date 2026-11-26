@@ -211,8 +211,15 @@ runs:
             /usr/bin/vm_stat
             /usr/bin/memory_pressure
             # A single-sample top reports CPU averaged since boot; only a two-sample one measures the
-            # last interval. One line, one second, prefixed so the telemetry parser prefers it.
-            /usr/bin/top -l 2 -n 0 -s 1 | /usr/bin/grep '^CPU usage' | /usr/bin/tail -1 | /usr/bin/sed 's/^/Interval /'
+            # last interval. Its CPU line is prefixed so the telemetry parser prefers it. The second
+            # sample's processes, ranked by that interval's CPU, name what is loading the host, which
+            # the memory ranking above misses for any busy process with a small footprint. The second
+            # sample's load and disk lines are dropped, so each sample still counts them once.
+            /usr/bin/top -l 2 -n 15 -o cpu -s 1 -stats pid,command,cpu,time,mem,state \
+              | /usr/bin/awk '/^Processes:/ { n++ }
+                  n == 2 && /^CPU usage/ { print "Interval " \$0 }
+                  n == 2 && rows { print }
+                  n == 2 && /^PID/ { print; rows = 1 }'
           } >>"$telemetry" 2>&1
           sleep 20
         done

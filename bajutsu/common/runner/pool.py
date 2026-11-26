@@ -96,6 +96,7 @@ def device_pool(  # noqa: C901, PLR0915
     network: bool = False,
     log_predicate: str | None = None,
     log_subsystem: str | None = None,
+    log_level: str = "info",
     secret_values: list[str] | None = None,
     provision: ProvisionProfile | None = None,
     identity: RunIdentity | None = None,
@@ -127,6 +128,7 @@ def device_pool(  # noqa: C901, PLR0915
             hooks the page per lease.
         log_predicate: An `os_log` predicate scoping captured device logs. None captures none.
         log_subsystem: The app log subsystem to capture. None captures none.
+        log_level: The `log stream --level` for captured device logs.
         secret_values: Raw secret values to redact from evidence.
         provision: The device provider's readiness report (BE-0236) — a cloud device handed over
             already booted / with the app installed lets the environment skip that setup. None (the
@@ -484,6 +486,7 @@ def device_pool(  # noqa: C901, PLR0915
                 udid=udid,
                 log_predicate=log_predicate,
                 log_subsystem=log_subsystem,
+                log_level=log_level,
                 redact=eff.redact,
                 secrets=secret_values,
                 unavailable=frozenset(skipped),
@@ -649,6 +652,7 @@ def device_pool(  # noqa: C901, PLR0915
                         udid=udid,
                         log_predicate=log_predicate,
                         log_subsystem=log_subsystem,
+                        log_level=log_level,
                         redact=member_eff.redact,
                         secrets=secret_values,
                         # The member shares the primary's device and driver, so the same route gaps.

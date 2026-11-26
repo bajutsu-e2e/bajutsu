@@ -46,8 +46,8 @@ class FileSink:
     recordings under run_dir/<scenario_id>/. Interval captures come from the driver
     (`driver_interval`, web / Android) when it supplies one, else the simctl path,
     which needs a `udid`; without either they are skipped. `log_predicate` narrows the
-    simctl device-log stream (e.g. by subsystem); `log_subsystem` is the app's os_log
-    subsystem for appTrace.
+    simctl device-log stream (e.g. by subsystem) and `log_level` sets its `log stream --level`;
+    `log_subsystem` is the app's os_log subsystem for appTrace.
     """
 
     def __init__(
@@ -57,6 +57,7 @@ class FileSink:
         log_predicate: str | None = None,
         log_subsystem: str | None = None,
         redact: Redact | None = None,
+        log_level: str = "info",
         secrets: list[str] | None = None,
         driver_interval: DriverInterval | None = None,
         prestarted_intervals: list[intervals.Interval] | None = None,
@@ -75,6 +76,7 @@ class FileSink:
         # real bytes (see `_interval_filename`).
         self.video_extension = video_extension
         self.log_predicate = log_predicate
+        self.log_level = log_level
         self.log_subsystem = log_subsystem  # for appTrace: the app's os_log subsystem
         self.redactor = Redactor(redact, values=secrets)
         # Every byte this sink writes goes through the run's artifact writer, which holds the run
@@ -225,7 +227,9 @@ class FileSink:
         if kind == "video":
             return intervals.start_video(self.udid, target, confirm_started=True)
         if kind == "deviceLog":
-            return intervals.start_device_log(self.udid, target, self.log_predicate)
+            return intervals.start_device_log(
+                self.udid, target, self.log_predicate, level=self.log_level
+            )
         if kind == "appTrace" and self.log_subsystem:
             return intervals.start_app_trace(
                 self.udid,
