@@ -26,6 +26,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -275,6 +276,7 @@ class RenderConfig:
     artifact_url: str
     run_url: str
     sha: str
+    updated_at: str  # passed in, so the renderer stays free of the clock
     base_url: str
     log_tail_kb: int
     size_warn_mb: int
@@ -333,8 +335,12 @@ def _header(runs: list[RunView], cfg: RenderConfig) -> list[str]:
     verdict = "incomplete" if incomplete else ("failed" if failed else "passed")
     sha = cfg.sha[:7]
     head = f"### Bajutsu run {verdict}: {len(scenarios) - failed} passed, {failed} failed"
-    meta = [m for m in (f"commit `{sha}`" if sha else "", _link("workflow run", cfg.run_url)) if m]
-    return [head, " · ".join(meta)] if meta else [head]
+    meta = (
+        f"commit `{sha}`" if sha else "",
+        _link("workflow run", cfg.run_url),
+        f"last updated {cfg.updated_at}",
+    )
+    return [head, " · ".join(m for m in meta if m)]
 
 
 def _notices(runs: list[RunView], cfg: RenderConfig) -> list[str]:
@@ -546,6 +552,7 @@ def _publish() -> int:
         artifact_url=artifact_url or (run_url if not upload else ""),
         run_url=run_url,
         sha=os.environ.get("GITHUB_SHA", ""),
+        updated_at=datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
         base_url=_env("EVIDENCE_BASE_URL"),
         log_tail_kb=_int("LOG_TAIL_KB", 1024),
         size_warn_mb=_int("SIZE_WARN_MB", 500),

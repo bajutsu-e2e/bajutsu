@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -84,6 +85,7 @@ def _cfg(**kw: Any) -> Any:
         "artifact_url": "https://example.test/zip",
         "run_url": "https://example.test/run",
         "sha": "abcdef1234567",
+        "updated_at": "2026-01-02 03:04 UTC",
         "base_url": "",
         "log_tail_kb": 1024,
         "size_warn_mb": 500,
@@ -93,6 +95,11 @@ def _cfg(**kw: Any) -> Any:
     }
     base.update(kw)
     return pe.RenderConfig(**base)
+
+
+def test_header_names_when_the_comment_was_last_updated(tmp_path: Path) -> None:
+    runs = pe.load_runs(_make_run(tmp_path, [_passing()]))
+    assert "· last updated 2026-01-02 03:04 UTC\n" in pe.render(runs, _cfg())
 
 
 def test_renders_failed_scenario_step_and_reason(tmp_path: Path) -> None:
@@ -339,7 +346,9 @@ def test_cmd_stage_then_publish_without_issue_writes_summary_only(
     assert outputs["artifact-name"] == "wf-job"
     assert outputs["screenshot-2"] == ""
     assert pe.main(["x", "publish"]) == 0
-    assert "Bajutsu run failed" in (tmp_path / "summary.md").read_text()
+    summary = (tmp_path / "summary.md").read_text()
+    assert "Bajutsu run failed" in summary
+    assert re.search(r"last updated \d{4}-\d\d-\d\d \d\d:\d\d UTC", summary)
 
 
 def test_publish_warns_and_exits_zero_when_api_fails(
