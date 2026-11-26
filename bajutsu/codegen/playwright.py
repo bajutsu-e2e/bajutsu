@@ -421,7 +421,8 @@ def _emit_step(step: Step) -> list[str]:  # noqa: C901, PLR0911, PLR0912
         # Locator.selectText() selects the whole content — the web peer of select-all (BE-0265).
         return _act(step.select.into.as_selector(), "selectText()")
     if step.copy_ is not None:
-        return ["await page.keyboard.press('Control+c');"]
+        # `ControlOrMeta`, as for paste below: a bare Ctrl+C copies nothing in Chromium on macOS.
+        return ["await page.keyboard.press('ControlOrMeta+c');"]
     if step.paste is not None:
         sel = step.paste.into.as_selector()
         loc = _locator(sel)
