@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
+| Implementing PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561) |
 | Topic | Hosting the web UI |
 | Related | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md) |
 <!-- /BE-METADATA -->
@@ -211,7 +212,7 @@ and its mirror gain a section on the upload script.
 
 Log:
 
-- Everything but the key allowlist shipped, and the editor case is in place. The allowlist waits for
+- [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561): everything but the key allowlist shipped, and the editor case is in place. The allowlist waits for
   [BE-0509](../BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md), which creates it. Until
   then the script authenticates with the shared token. A server with OAuth refuses that token. The
   table lists where the implementation differs from the design.

@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
+| 実装 PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md) |
 <!-- /BE-METADATA -->
@@ -102,7 +103,7 @@ run を作ったマシンは、各アーティファクトを書くときに、�
 
 ログ：
 
-キーの許可リストを除く全体を実装し、editor のケースも入れました。許可リストは、リスト自体を作る
+[#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561) でキーの許可リストを除く全体を実装し、editor のケースも入れました。許可リストは、リスト自体を作る
 [BE-0509](../BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys-ja.md) を待ちます。それまで
 スクリプトは共有トークンで認証します。OAuth を設定したサーバは、共有トークンを受け付けません。実装が
 設計と異なる点は、次の表のとおりです。
