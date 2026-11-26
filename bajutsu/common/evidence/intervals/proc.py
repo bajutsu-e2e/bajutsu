@@ -12,4 +12,5 @@ class Proc(Protocol):
 
     def await_stderr(self, needle: str, timeout: float) -> float | None: ...
 
-    def await_stdout(self, timeout: float) -> float | None: ...
+    def await_stdout(self, timeout: float) -> float | None:
+        """Wait for the first byte on stdout; the instant it appeared, or None."""
