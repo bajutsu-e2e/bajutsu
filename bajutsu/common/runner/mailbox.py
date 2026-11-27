@@ -4,7 +4,8 @@ The deterministic parse/match/selection logic is pure (`bajutsu.common.mailbox`)
 place that touches the network. The registry is keyed on transport `kind`, so adding one is *register
 an adapter*, not *branch the runner*; it ships `imap` and `pop3` on the standard library (BE-0514).
 Every call opens its own connection, because a POP3 connection shows a fixed snapshot of the inbox.
-Neither adapter deletes mail or marks it as read.
+Neither adapter deletes mail. Neither marks mail as read, except where a POP3 server refuses `TOP`
+and the `RETR` fallback runs.
 
 Error messages name what failed without ever quoting the password or message content.
 """
