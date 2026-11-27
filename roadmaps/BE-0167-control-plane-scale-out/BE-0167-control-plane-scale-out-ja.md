@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0167](BE-0167-control-plane-scale-out-ja.md) |
 | 提案者 | [@hirosassa](https://github.com/hirosassa) |
-| 状態 | **承認済み** |
+| 状態 | **却下** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0167") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) |
@@ -15,6 +15,14 @@
 <!-- /BE-METADATA -->
 
 ## はじめに
+
+> **却下。この項目の前提はもう成り立たず、新しい項目「ロードバランサ配下で動く制御プレーンのレプリカ」が置き換えます。**
+> この項目は、ワーカーがジョブの終了後に結果を送ると想定していました。その前提では、ログのストリームは
+> レプリカをまたぎません。[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md) がこの動作を変えました。現在のワーカーは、ジョブの実行中にログ行を送ります。
+> そのため、レプリカには実行中のログを運ぶ共有の Redis のバスが要ります。この設計には、そのバスがありません。
+> この項目が計画したアプリ側の作業も、大半はほかの項目ですでに入っています。残る作業は範囲が異なり、より小さく、
+> 新しい項目が現在のコードに基づいてその範囲を定めます。待っても設計が成り立つ時期は来ないので、`Deferred`
+> ではなく `Rejected` を選びます。
 
 セルフホストの制御プレーン（[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、
 現在 `deploy/self-host/` の compose スタックで、**単一**の `bajutsu serve --asgi --backend=server`
@@ -85,6 +93,9 @@ Mac プールを増やしても、制御プレーンは1つのコンテナのま
 - [ ] ロードバランサの方針。ラウンドロビンより最小接続数、TLS はロードバランサで終端。
 - [ ] ワーカーのリース・結果の経路がレプリカをまたいで動くことの確認。
 - [ ] ロードバランサ配下で N 個のアプリレプリカを動かす compose 配線と、その文書化。
+
+2026-11-27：PR が入る前に却下しました。この項目はレプリカをまたぐログのストリームがないと想定していましたが、
+[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md) でワーカーが実行中のログ行を送るようになりました。残る作業は、新しい項目「ロードバランサ配下で動く制御プレーンのレプリカ」が現在のコードに基づいて引き継ぎます。
 
 ## 参考
 
