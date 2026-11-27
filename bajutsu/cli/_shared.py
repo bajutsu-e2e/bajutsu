@@ -1085,6 +1085,7 @@ def _install_command_gate_or_exit(
     config_dir: Path | None,
     secret_values: Sequence[str] = (),
     scenario_source: str = "",
+    client_roots: Sequence[Path] = (),
 ) -> CommandGate:
     """Install this process's command gate from `--config-source` and the worker's file, or exit 2.
 
@@ -1110,6 +1111,7 @@ def _install_command_gate_or_exit(
             config_dir=config_dir,
             secret_values=list(secret_values),
             scenario_source=scenario_source or None,
+            client_roots=tuple(client_roots) if scenario_source else (),
         )
     )
 

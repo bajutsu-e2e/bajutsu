@@ -3645,6 +3645,8 @@ def run_body(
         config_dir=loaded.root or eff.base_dir,
         secret_values=secret_values,
         scenario_source=scenario_source,
+        # A hooks component among the scenario files came with them (BE-0512).
+        client_roots=sorted({p.parent for s in all_scenarios if (p := s.source_path) is not None}),
     )
     # A hook command the policy refuses — or one it sandboxes with no `hooks.sandbox` block to run
     # it in — fails the run here, before any build or device reservation, rather than after every

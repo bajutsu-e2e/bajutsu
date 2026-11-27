@@ -44,6 +44,8 @@ class CommandGate:
             evidence.
         records: The `commandExecutions` entries, in the order the run met the commands.
         scenario_source: Where the scenario files came from; None means the config's own source.
+        client_roots: The directories holding those scenario files. A `hooks` component file under
+            one came with them, so it is judged by *scenario_source* rather than by the config's.
     """
 
     policy: CommandPolicy = field(default_factory=CommandPolicy)
@@ -52,13 +54,58 @@ class CommandGate:
     records: list[dict[str, Any]] = field(default_factory=list)
     # Where the scenario files came from when that differs from the config (BE-0501).
     scenario_source: ConfigSource | None = None
+    client_roots: tuple[Path, ...] = ()
+    # The config's own source, kept once `for_scenario` swaps the policy's for the scenario's.
+    config_source: ConfigSource | None = None
+    # The `hooks` component file that added the command this gate judges (BE-0512), for the record.
+    component: str | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def for_scenario(self) -> CommandGate:
         """This gate for a scenario's own commands: judged by its source, kept in the same record."""
         if self.scenario_source is None:
             return self
-        return replace(self, policy=replace(self.policy, source=self.scenario_source))
+        return replace(
+            self,
+            policy=replace(self.policy, source=self.scenario_source),
+            config_source=self.config_source or self.policy.source,
+        )
+
+    def for_entry(self, component: str | None) -> CommandGate:
+        """This gate for a command a `hooks` component file added, or itself for a direct one.
+
+        Two files bear on such a command, the one that applies the component and the component's
+        own, so it runs under the stricter mode of their two sources (BE-0512).
+        """
+        if component is None:
+            return self
+        path = Path(component)
+        own = self._source_of(path)
+        return replace(
+            self,
+            policy=replace(
+                self.policy, component_source=own if own != self.policy.source else None
+            ),
+            component=self._shown(path),
+        )
+
+    def _source_of(self, path: Path) -> ConfigSource:
+        """Where a component file came from: with the scenario files when it lies among them."""
+        resolved = path.resolve()
+        if self.scenario_source is not None and any(
+            resolved.is_relative_to(root.resolve()) for root in self.client_roots
+        ):
+            return self.scenario_source
+        return self.config_source or self.policy.source
+
+    def _shown(self, path: Path) -> str:
+        """*path* as a report names it: relative to the config's directory when inside it."""
+        if self.config_dir is not None:
+            try:
+                return path.resolve().relative_to(self.config_dir.resolve()).as_posix()
+            except ValueError:
+                pass
+        return str(path)
 
     def check(self, kind: CommandKind, field_name: str, cmd: str) -> str:
         """Decide *cmd* (declared at *field_name*); return the action, recording a refusal.
@@ -123,6 +170,10 @@ class CommandGate:
         }
         if exit_code is not None:
             entry["exitCode"] = exit_code
+        if self.component is not None:
+            entry["component"] = self.component
+            if self.policy.component_source is not None:
+                entry["componentSource"] = self.policy.component_source
         with self._lock:
             self.records.append(entry)
 

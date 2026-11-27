@@ -530,7 +530,7 @@ class HookRunner:
                         when=str(entry.when),
                     )
                 )
-                self._gate_for(context).record_skip(
+                self._gate_for(context, entry).record_skip(
                     self._record_field(list_name, entry.qualified_name or str(index), context),
                     entry.cmd if entry.cmd is not None else f"use:{entry.use}",
                     cwd=self._cwd(entry.cwd, cwd_base) if entry.cmd is not None else None,
@@ -664,7 +664,7 @@ class HookRunner:
             code, reason = -1, f"could not start: {e}"
         if reason is None and code != 0:
             reason = f"exited {code}"
-        self._gate_for(context).record(
+        self._gate_for(context, entry).record(
             field_name,
             entry.cmd if entry.cmd is not None else f"use:{entry.use}",
             sandboxed=sandboxed,
@@ -705,9 +705,12 @@ class HookRunner:
         )
         return record, failure, values
 
-    def _gate_for(self, context: HookContext) -> CommandGate:
-        """The gate that judges this entry, a scenario's own by the scenario's source (BE-0501)."""
-        return self._gate if context.level is None else self._gate.for_scenario()
+    def _gate_for(self, context: HookContext, entry: HookCommand) -> CommandGate:
+        """The gate that judges *entry*: a scenario's own by the scenario's source (BE-0501), and
+        one a `hooks` component added by the stricter of that and the component file's (BE-0512).
+        """
+        gate = self._gate if context.level is None else self._gate.for_scenario()
+        return gate.for_entry(component_of(entry))
 
     def _record_field(self, list_name: str, slot: str, context: HookContext) -> str:
         """How `manifest.json` names the command's declaring field (BE-0492)."""
@@ -773,7 +776,7 @@ class HookRunner:
                 env.pop("BAJUTSU_OUTPUT", None)  # never a stale value from the worker's own
             return [named.path], env, None, False
         assert entry.cmd is not None  # the schema admits exactly one of `cmd` / `use`
-        action = self._gate_for(context).check("command", field_name, entry.cmd)
+        action = self._gate_for(context, entry).check("command", field_name, entry.cmd)
         argv = shlex.split(entry.cmd)
         if not argv:
             raise ValueError(f"`cmd` {entry.cmd!r} splits into no command")
@@ -806,7 +809,7 @@ class HookRunner:
     ) -> ResolvedNamedCommand:
         """The worker's script for `use:`, with the variables this entry sets (BE-0492)."""
         assert entry.use is not None
-        self._gate_for(context).check("named", field_name, f"use:{entry.use}")
+        self._gate_for(context, entry).check("named", field_name, f"use:{entry.use}")
         from bajutsu.common.capability.command_policy import NamedCommand
 
         named: Mapping[str, NamedCommand] = {
@@ -1098,11 +1101,12 @@ def hook_refusal(
     for target, phase in phases.items():
         for list_name, index, entry in phase.entries():
             kind: CommandKind = "named" if entry.use is not None else "command"
-            action = gate.policy.action(kind)
+            judge = gate.for_entry(component_of(entry))
+            action = judge.policy.action(kind)
             field_name = f"{prefix}{HOOK_FIELD}.{list_name}[{entry.qualified_name or index}].cmd"
             if action == "refuse":
                 try:
-                    gate.refuse(field_name, entry.cmd or f"use:{entry.use}")
+                    judge.refuse(field_name, entry.cmd or f"use:{entry.use}")
                 except CommandRefused as e:
                     return str(e)
             if action == "sandbox" and phase.sandbox is None:
@@ -1111,7 +1115,30 @@ def hook_refusal(
                     f"of this {gate.policy.source} config, and target {target!r} declares no "
                     "`hooks.sandbox` block to run them in (BE-0491)"
                 )
+            if action == "sandbox" and (why := _outside_bundle(entry, gate.config_dir)) is not None:
+                return f"{field_name} cannot run in the sandbox: {why}"
     return None
+
+
+def component_of(entry: HookCommand) -> str | None:
+    """The `hooks` component file that added *entry*, or None for an entry written directly."""
+    return entry.origin.component if entry.origin is not None else None
+
+
+def _outside_bundle(entry: HookCommand, bundle: Path | None) -> str | None:
+    """Why a component's command cannot reach its directory in the container, or None (BE-0512).
+
+    The container mounts the config's directory alone, and a component's command runs from the
+    component's own directory, where its scripts sit; one outside that mount would run elsewhere.
+    """
+    if entry.origin is None or entry.cmd is None or entry.cwd is None or bundle is None:
+        return None
+    if Path(entry.cwd).resolve().is_relative_to(bundle.resolve()):
+        return None
+    return (
+        f"the hooks component {entry.origin.component} runs it from {entry.cwd}, outside the "
+        f"config directory {bundle} that the container mounts; keep the component inside it"
+    )
 
 
 class WorkerIndex:

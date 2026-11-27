@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bajutsu.common.capability.command_gate import CommandGate
@@ -28,6 +28,7 @@ from bajutsu.common.runner.hook_commands import (
     HookRecord,
     HookRunner,
     _default_log,
+    component_of,
     duplicate_hook_name,
     raw_root,
     run_phase,
@@ -254,8 +255,18 @@ def _sandboxes(
     from bajutsu.common.capability import command_gate as gate_module
 
     judge = gate if gate is not None else gate_module.current()
-    own = judge.policy.action("command") == "sandbox"
-    scenario = judge.for_scenario().policy.action("command") == "sandbox"
+    scenario_judge = judge.for_scenario()
+    # A scenario's own entry a component in the config's tree added runs under the stricter of the
+    # two sources (BE-0512), which may sandbox it where the scenario's source alone would not.
+    joined = replace(scenario_judge.policy, component_source=judge.policy.source)
+    scenario = "sandbox" in (scenario_judge.policy.action("command"), joined.action("command"))
+
+    def sandboxes(phase: HookPhases) -> bool:
+        return any(
+            judge.for_entry(component_of(entry)).policy.action("command") == "sandbox"
+            for _, _, entry in phase.entries()
+        )
+
     return {
         target: SandboxRuntime(
             sandbox=phase.sandbox,
@@ -268,5 +279,5 @@ def _sandboxes(
         )
         for target, phase in phases.items()
         if phase.sandbox is not None
-        and ((own and phase.any_command) or (scenario and target in scenario_targets))
+        and (sandboxes(phase) or (scenario and target in scenario_targets))
     }
