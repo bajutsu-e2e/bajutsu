@@ -105,6 +105,13 @@ def test_a_run_level_joined_condition_needs_one_scenario_matching_both() -> None
     assert joined.holds(WhenFacts(tags=[("db",), ("db", "smoke")]))
 
 
+def test_a_joined_condition_needs_one_judged_target_matching_both() -> None:
+    joined = _when(targets=["web"]).with_application(_when(platforms=["ios"]))
+    phone = JudgedTarget("phone", "ios", "ios-simulator")
+    assert not joined.holds(WhenFacts(targets=[_WEB, phone]))
+    assert joined.holds(WhenFacts(targets=[JudgedTarget("web", "ios", "ios-simulator")]))
+
+
 def test_a_joined_condition_reads_what_each_part_reads() -> None:
     joined = _when(platforms=["web"]).with_application(_when(env={"CI": "1"}))
     assert joined.reads_target and not joined.reads_tags and joined.needs_run
@@ -340,3 +347,18 @@ def test_a_dropped_paired_rule_keeps_the_report_position_of_the_next() -> None:
     )
     assert kept == []
     assert [b.label for b in skipped] == ["hooks.cleanup[1] (on: always)"]
+
+
+def test_a_target_group_in_a_gated_component_flattens_into_its_block(tmp_path: Path) -> None:
+    # The component's step expansion flattens a target group before the application's `when`
+    # wraps the steps, so the block holds the group's steps, each stamped with its target.
+    _write(
+        tmp_path / "hooks" / "g.hook.yaml",
+        "setup:\n  - target: web\n    steps: [{ tap: { id: a } }]\n",
+    )
+    config = _config(
+        tmp_path, "    hooks:\n      use: [{ hook: ./hooks/g.hook.yaml, when: { tags: [x] } }]\n"
+    )
+    [block] = resolve(load_config_file(config), "web").run_defaults.setup
+    assert block.when == _when(tags=["x"])
+    assert [(s.target, s.tap.id if s.tap else None) for s in block.steps or []] == [("web", "a")]
