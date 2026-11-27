@@ -367,7 +367,7 @@ targets:
 | `device_provider` | `--worker-config` | このターゲットのデバイスの取得元です。config はこれを指定しなくなりました。コマンドが従う `worker.yaml` の `appium` environment が、グリッドのエンドポイントを、グリッドのプラットフォームのターゲットに渡します（[マシンが実行できるもの](#マシンが実行できるもの設定の外be-0450)）。`leased` environment は、`platforms` に含まれるターゲットに [lease broker](self-hosting.md#lease-broker-からのデバイスの借用be-0511) のデバイスを貸します。ほかのターゲットはビルトインの `local` provider（`--udid` の経路）を使います。このエンドポイントは live の W3C WebDriver トランスポートで端から端まで駆動します（[iOS デバイスクラウド](ios-device-cloud.md#ライブ--appium-エンドポイントのプロバイダー)、[BE-0236](../../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction-ja.md)、[BE-0238](../../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md)） |
 | `hooks.before_run` / `.after_run` / `.before_scenario` / `.after_scenario` / `.sandbox` | `hooks.beforeRun` / `.afterRun` / `.beforeScenario` / `.afterScenario` / `.sandbox` | run の前後と各シナリオの前後で実行する外部コマンドです。各エントリは `{cmd | use, name, cwd, env, timeout, on, mask}` の形を取ります（[後述](#run-とシナリオの前後で実行する外部コマンドhooksbe-0491)）。コマンドは `$BAJUTSU_OUTPUT` を通じて値を返し、シナリオは `${hooks.<name>.<key>}` として読みます。コマンドを実行するかどうか、どこで実行するかは、run を実行する worker が決めます。worker の `worker.yaml` の `commandExecution` ブロックが config の出所ごとにモードを定め、アップロードされたバンドルのコマンドは既定で run ごとに 1 つの Docker コンテナの中で実行します（[セルフホスティング](self-hosting.md#worker-が実行する-config-のコマンドbe-0492)、[BE-0492](../../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)）。この 4 リストは `services.server` を置き換えました。準備完了の判定は、サーバを起動するスクリプトの側に移っています（[BE-0491](../../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)） |
 | `run_defaults.system_alerts` / `.ios_tip_kit_handling` | `hooks.interrupts` の `systemAlert` と `tipKit` のエントリ | システムアラートガードと TipKit ガードに、アプリ単位の既定値を与えます。シナリオ自身の `interrupts` がこの上に重なります（[BE-0177](../../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config-ja.md)、[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)）。`systemAlert` のエントリは、別のプロンプトについてエントリを書いているシナリオの中でも、自分の名指すプロンプトには答えます。答えるときは run が通知を出し、シナリオ側は同じプロンプトのエントリを書けば上書きできます。重ね方の規則は[後述](#システムアラートと-tipkithooksinterrupts)のとおりで、[シナリオ](scenarios.md#層の重ね方1-つのキーは-3-か所から届く)でも説明しています。`tipKit: dismiss` は TipKit ガードの既定値になります（iOS 専用、ビルトイン既定は**オフ**）。`--ios-tipkit-handling`/`--no-ios-tipkit-handling` は、すべてのシナリオについてこの値を上書きします |
-| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | ターゲットのすべてのシナリオを包むステップです。`setup` はシナリオ自身の `setup` より先に、`cleanup` はシナリオ自身の `cleanup` より後に動き（規則は、シナリオの `cleanup` の規則と同じ `on: always`、`success`、`failure` を取ります）、`interrupts` はシナリオのものより先に確認します。hook のステップは `use: { component: <file>, with: … }` でコンポーネントを呼べます。ローダは config を読み込むときに、config ファイルのディレクトリを基準にコンポーネントを解決し、スイートのルートの外を指す参照を拒否します（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md)）。`group:` と `setMocks` は引き続き hook では使えません。シナリオは `preconditions.inheritSetup: false` で、宣言したすべてのターゲットの `hooks.setup` を飛ばせます。cleanup はその場合も動きます。`hooks.interrupts` の `systemAlert` と `tipKit` のエントリは前の行の 2 つのフィールドに解決するので、`.interrupts` は画面のエントリだけを持ちます |
+| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | ターゲットのすべてのシナリオを包むステップです。`setup` はシナリオ自身の `setup` より先に、`cleanup` はシナリオ自身の `cleanup` より後に動き（規則は、シナリオの `cleanup` の規則と同じ `on: always`、`success`、`failure` を取ります）、`interrupts` はシナリオのものより先に確認します。hook のステップは `use: { component: <file>, with: … }` でコンポーネントを呼べます。ローダは config を読み込むときに、config ファイルのディレクトリを基準にコンポーネントを解決し、スイートのルートの外を指す参照を拒否します（[BE-0174](../../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment-ja.md)）。`group:` と `setMocks` は引き続き hook では使えません。シナリオは `preconditions.inheritSetup: false` で、宣言したすべてのターゲットの `hooks.setup` を飛ばせます。cleanup はその場合も動きます。`hooks.setup` のエントリには `when` と `steps` からなる条件付きブロックを、`hooks.cleanup` のルールには `when` を書けます。どちらも、このターゲットを判定します（[scenarios](scenarios.md#条件付きの-setup-ブロックと-cleanup-ルール)）。`hooks.interrupts` の `systemAlert` と `tipKit` のエントリは前の行の 2 つのフィールドに解決するので、`.interrupts` は画面のエントリだけを持ちます |
 | `locale` | `runsOn.ios.locale` | iOS: launch 時に適用されます（`simctl` の launch 引数）。ビルトイン既定は `en_US` です。XCUITest バックエンドでは、cold spawn のたびに **Simulator 自身のシステム言語**も固定します。デバイスのグローバル設定ドメインに書き込み、SpringBoard がその言語で描画するよう再起動します。そのため、プロセス外の権限プロンプトのボタンのテキストは、Simulator がたまたま持っていた言語ではなく、この `locale` が予測するものになります。`preconditions.device.ios.locale` が固定済みの値と異なるシナリオは、warm な runner を再利用せず cold respawn を強制します（[BE-0320](../../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism-ja.md)）。label の対応表（英語と日本語）にない言語では、`handleSystemAlert` ステップはボタンの位置で答えます。同じ言語の `interrupts` にある `systemAlert` のエントリは、デバイスを操作する前にシナリオを失敗させます（[BE-0445](../../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer-ja.md)） |
 | `launch_env` / `launch_args` | `subject.launch.env` / `subject.launch.args` | シナリオの `preconditions.subject.launch.env` は環境変数にキーごとにマージし、`.args` は引数の後ろに追記します。`launch.args` は iOS 専用です |
 | `reinstall` | `subject.reinstall` | iOS と Android: 各シナリオの前にどこまで状態を戻すかを、弱いものから順の 1 本の段階で決めます。`overwrite` はアプリの上に install してデータを残します。`clean` は uninstall してから install します。`erase` はデバイス全体を wipe してから install します（デバイス全体の wipe がない Android では `clean` と同じです）。install には `subject.path` が必要です。シナリオの `preconditions.subject.reinstall` が優先し、どちらも未設定なら組み込みの `clean` を使います（[BE-0452](../../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md)）。`bajutsu run --erase` はすべてのシナリオを `erase` に引き上げ、`--no-erase` は `erase` を `clean` に下げます。`erase` は廃止した `run.erase: true` の後継です。`run.erase` を書くと、このキーを示してロード時に失敗します。`subject` グループを持たない `defaults` では `defaults.platforms.<platform>.subject.reinstall: erase` と書きます（[BE-0473](../../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts-ja.md)） |
@@ -501,7 +501,7 @@ targets:
 | `timeout` | すべて | コマンドに許す秒数です。既定は 300 です |
 | `on` | `afterRun`、`afterScenario` | `always`、`success`、`failure` のいずれかです。既定は `always` です。シナリオの `cleanup` ルールと同じ語を使います |
 | `mask` | すべて | true にすると、このエントリの出力値を `${secrets.*}` の値と同じようにエビデンスでマスクします。既定は false です |
-| `when` | すべて | このエントリを実行するシナリオのタグです。`{ tags, exclude }` と書きます（[下記](#一部のシナリオでだけエントリを実行するwhenbe-0497)）。省略すると、すべてのシナリオで実行します |
+| `when` | すべて | このエントリを実行する条件です。シナリオのタグ、ターゲット、プラットフォーム、route、環境変数で絞り込めます（[下記](#一部のシナリオでだけエントリを実行するwhenbe-0497)）。省略すると、常に実行します |
 
 #### 実行の順序とライフサイクル
 
@@ -542,44 +542,87 @@ hooks を実行します。各リストの中では、シナリオが宣言し�
 
 #### 一部のシナリオでだけエントリを実行する（`when`、BE-0497）
 
-準備が必要なのは、スイートの一部のシナリオだけということがよくあります。エントリの `when` ブロックには、
-そのエントリを実行するシナリオのタグを書きます。タグが一致しなければ、Bajutsu はエントリをスキップします。
+準備が必要なのは、スイートの一部のシナリオだけ、あるいはシナリオを実行する一部の場所だけということが
+よくあります。エントリの `when` ブロックには、その両方を書けます。条件が成り立たなければ、Bajutsu は
+エントリをスキップします。
 
 ```yaml
-hooks:
-  beforeRun:
-    - name: mock
-      cmd: "./scripts/start-mock.sh"
-      when: { tags: [offline] }            # run が offline のシナリオを選んだときに起動する
-  afterRun:
-    - cmd: "./scripts/stop-mock.sh"
-      when: { tags: [offline] }
-  beforeScenario:
-    - name: account
-      cmd: "./scripts/create-payment-account.sh"
-      when: { tags: [payments], exclude: [readonly] }
-  afterScenario:
-    - cmd: "./scripts/delete-payment-account.sh"
-      when: { tags: [payments], exclude: [readonly] }
+defaults:
+  hooks:
+    beforeRun:
+      - name: mock
+        cmd: "./scripts/start-mock.sh"
+        when: { tags: [offline], env: { CI: null } }   # offline のシナリオで、CI の外のとき
+    beforeScenario:
+      - cmd: "./scripts/trust-certificate.sh"
+        when: { platforms: [ios], routes: [ios-device] }
+      - name: account
+        cmd: "./scripts/create-payment-account.sh"
+        when: { tags: [payments], exclude: [readonly] }
 ```
 
-| フィールド | 意味 |
+| フィールド | 条件が成り立つとき |
 |---|---|
-| `when.tags` | このタグのどれか 1 つ以上を持つシナリオに一致します。省略または空のときは、何も制約しません |
-| `when.exclude` | このタグのどれか 1 つでも持つシナリオには一致しません。`exclude` は `tags` より優先します |
+| `when.tags` | シナリオが、このタグのどれか 1 つ以上を持つとき |
+| `when.exclude` | シナリオが、このタグを 1 つも持たないとき。`exclude` は `tags` より優先します |
+| `when.targets` | 判定対象のターゲットが、このリストにあるとき。config が宣言していない名前は読み込みに失敗します |
+| `when.platforms` | 判定対象のターゲットのプラットフォームが、このリストにあるとき。値は `ios`、`android`、`web`、`fake` です |
+| `when.routes` | 判定対象のターゲットの route が、このリストにあるとき。値は `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` です |
+| `when.env` | `bajutsu run` のプロセスで、書いた変数がすべて一致するとき |
 
-一致の規則は、`bajutsu run` の `--tag` と `--exclude` がシナリオを選ぶ規則と同じです。タグは文字列全体で
-比較し、大文字と小文字を区別します。両方のリストが空の `when` は、読み込みに失敗します。
+1 つのリストの中の値は「または」で、異なるフィールドどうしは「かつ」で組み合わせます。すべての
+フィールドが空の `when` は、読み込みに失敗します。
 
-条件は、コンポーネントとデータを展開した後のタグを読みます。そのため、`tags` に `${row.*}` を書けば、
-データの行ごとに異なるタグを持てます。
+`tags` と `exclude` の規則は、`bajutsu run` の `--tag` と `--exclude` がシナリオを選ぶ規則と同じです。
+タグは文字列全体で比較し、大文字と小文字を区別します。条件は、コンポーネントとデータを展開した後のタグを
+読みます。そのため、`tags` に `${row.*}` を書けば、データの行ごとに異なるタグを持てます。
 
-エントリがどのシナリオを読むかは、リストによって決まります。
+**route** は、ターゲットが動く宛先の種類です。設定の対応表と同じ名前を使います
+（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。
+route は `--backend` と `--udid` で決まります。iOS のターゲットは、Simulator なら `ios-simulator`、
+実機なら `ios-device`、WebDriver のエンドポイントなら `ios-live` で動きます。`fake` のバックエンドには
+route がないので、`routes` の条件は成り立ちません。
 
-- **`beforeScenario` と `afterScenario`**：前後に実行する対象のシナリオを読みます。`afterScenario` の
-  エントリは、`when` と `on` の両方を満たしたときに実行します。
-- **`beforeRun` と `afterRun`**：run のシナリオ集合を読み、どれか 1 つが一致すれば実行します。`when` に
-  空でない `tags` がなければ、config の読み込みに失敗します。
+##### 条件が判定するターゲット
+
+`targets`、`platforms`、`routes` の 3 つは、同じ 1 つのターゲットについての条件です。そのターゲットは、
+条件を書いた場所で決まります。
+
+| 条件を書いた場所 | 判定対象のターゲット |
+|---|---|
+| `targets.<name>.hooks` のエントリ、setup ブロック、cleanup ルール | 持ち主の `<name>` |
+| `target` を書いた setup ブロック | そのターゲット |
+| シナリオのエントリ、setup ブロック、cleanup ルール | シナリオが駆動するいずれかのターゲット |
+
+`defaults` やテンプレートからマージしたエントリは、受け取ったターゲットのものになります。たとえば
+`defaults.hooks` に `when: { targets: [ios] }` のエントリがあるとします。`android` のターゲットが
+受け取った写しは、両方のターゲットを駆動するシナリオでも実行されません。
+
+`targets.<name>.hooks` に直接書いた条件が決して成り立たないときは、読み込みに失敗します。`targets` や
+`platforms` が持ち主を含まない場合と、`routes` が持ち主のプラットフォームの route を 1 つも含まない
+場合です。この検査は、`defaults` やテンプレートをマージする前の、ターゲット自身の記述を読みます。
+そのため、マージで受け取った写しは、実行されなくても読み込みに成功します。
+
+##### 環境変数
+
+`env` は、変数名から文字列または null への対応です。文字列は、大文字と小文字を区別した完全一致を
+求めます。null は、変数が未設定であることを求めます。空文字列を設定した変数は、設定済みとして扱います。
+値は必ず引用符で囲みます。引用符のない `true` や `1` は、YAML のパーサが真偽値や数値として読むので、
+読み込みに失敗します。
+
+`env` は `bajutsu run` のプロセスの環境を読みます。`serve` の下では、そのプロセスは worker で動くので、
+worker の環境で決まります。エントリ自身の `env` フィールドは関係しません。レポートは条件を書いたとおりに
+表示し、変数の実際の値は表示しません。
+
+##### エントリが読むシナリオ
+
+| リスト | 読むシナリオ |
+|---|---|
+| `beforeScenario`、`afterScenario` | 前後に実行する対象のシナリオ。`afterScenario` のエントリは、`when` と `on` の両方を満たしたときに実行します |
+| `beforeRun`、`afterRun` | run のシナリオ集合。`tags` は、どれか 1 つのシナリオが一致すれば成り立ちます |
+
+`beforeRun` と `afterRun` では、`tags` のない `exclude` は読み込みに失敗します。そのような条件は、すべての
+シナリオが除外タグを持つときしかエントリをスキップしないからです。
 
 シナリオ集合には、エントリのターゲットを駆動するシナリオが入ります。
 
@@ -590,19 +633,31 @@ hooks:
 | `audit` | `audit` が再生するシナリオ |
 | `record`、`crawl`、`repl` | 空。これらのコマンドはシナリオファイルを実行しません |
 
-空の集合は、どの条件にも一致しません。`record`、`crawl`、`repl` でも必要なサーバには、`when` を
-付けません。Bajutsu は、最初の `beforeRun` エントリの前に集合を確定します。`afterRun` のエントリは、
-キャンセル後も同じ集合で判断します。
+`tags` か `exclude` を含む条件は、空の集合では成り立ちません。ほかのフィールドはシナリオを読まないので、
+それらだけの条件は `record`、`crawl`、`repl` でも成り立ちます。各コマンドは、最初の hook の前に持ち主の
+route を求めます。Bajutsu は、最初の `beforeRun` エントリの前に、集合と route と環境のスナップショットを
+確定します。`afterRun` のエントリは、キャンセル後も同じ事実で判断します。
 
 Bajutsu は、`beforeScenario` のエントリと、それを片付ける `afterScenario` のエントリを結び付けません。
 両方に同じ `when` を書きます。条件の広い片付けのエントリは、そのまま実行されます。片付けの
 エントリからは、スキップしたエントリの `BAJUTSU_HOOK__<name>__<key>` 変数は未設定に見えます。
 
-`${hooks.<name>.<key>}` を読むシナリオは、読む先のエントリの `when` に一致しなければなりません。`run` と
-`audit` は、`--tag` と `--exclude` の選択に関係なく、展開後のすべてのシナリオを検査します。一致しない
-シナリオがあれば、終了コード 2 になります。エラーは、エントリ、条件、シナリオのタグを示します。選択されず、
-`targets` も書いていないシナリオは、実行できるターゲットが config に 1 つもないときだけ失敗します。検査は、
-ターゲットの `setup` と `cleanup` のステップにあるトークンにも及びます。
+##### 条件付きエントリの出力を読む
+
+`${hooks.<name>.<key>}` を読むシナリオは、読む先のエントリの `when` を満たさなければなりません。満たさない
+シナリオがあれば、終了コード 2 になります。エラーは、エントリ、条件、シナリオのタグ、駆動するターゲットを
+示します。検査は 2 段階で行います。
+
+| 条件のフィールド | 検査するシナリオ | 時点 |
+|---|---|---|
+| `tags`、`exclude`、`targets`、`platforms` | `--tag` と `--exclude` の選択に関係なく、展開後のすべてのシナリオ | 読み込むとき |
+| `env`、`routes` | 選択されたシナリオ | 各 route が決まった後、最初の hook の前 |
+
+`env` か `routes` を含む条件は、まとめて 2 段階目で検査します。ファイルだけでは決まらないからです。
+`env` はマシンに、route は `--backend` や `--udid` のようなフラグに依存します。選択されず、`targets` も
+書いていないシナリオは、実行できるターゲットが config に 1 つもないときだけ 1 段階目で失敗します。検査は、
+ターゲットの `setup` と `cleanup` のステップにあるトークンにも及びます。ただし、実行しない setup ブロックと
+cleanup ルールの中のトークンは検査しません。
 
 スキップしたエントリは、ログファイルも出力ファイルも書きません。レポートは、エントリを `skipped (when)` と
 条件で表示します。[`commandExecutions`](self-hosting.md#コマンドの記録) には `skipped` の判断が残ります。

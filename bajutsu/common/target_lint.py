@@ -164,7 +164,7 @@ def required_route_tokens(
     if tags or exclude:
         expanded = select_scenarios(expanded, list(tags), list(exclude))
     needs: dict[str, list[str]] = {}
-    for plan in _plans(expanded, effective, target):
+    for plan in _plans(expanded, effective, target, backend=backend, grid=grid):
         for name, eff in plan.effs.items():
             actuator = offline_actuator(eff, backend_override(backend, eff.backend))
             for token, why in target_route_needs(
@@ -180,6 +180,11 @@ def required_route_tokens(
     return needs
 
 
+# Stands for the endpoint an Appium grid's worker supplies (BE-0467), which the config does not
+# name: any WebDriver URL puts an iOS target on the live route, as `target_route_needs` does too.
+_GRID_UDID = "http://grid.invalid"
+
+
 @dataclass(frozen=True)
 class _Plan:
     """One expanded scenario with the targets it runs on, as the run resolves them."""
@@ -192,9 +197,21 @@ class _Plan:
 
 
 def _plans(
-    expanded: list[Scenario], effective: Callable[[str], Effective], target: str | None
+    expanded: list[Scenario],
+    effective: Callable[[str], Effective],
+    target: str | None,
+    *,
+    backend: str = "",
+    grid: bool = False,
 ) -> list[_Plan]:
-    """Each scenario paired with its declared targets, or *target* for one declaring none."""
+    """Each scenario paired with its declared targets, or *target* for one declaring none.
+
+    The fold decides each conditional setup block and cleanup rule as the run would (BE-0513),
+    from the routes *backend* and *grid* put each target on. The environment is the worker's, which
+    nothing here can see, so a condition on `env` counts as holding and its block keeps its needs.
+    """
+    from bajutsu.common.backends import backend_override
+    from bajutsu.common.runner.conditions import condition_context
     from bajutsu.common.runner.pipeline import with_lifecycle_phases
 
     plans: list[_Plan] = []
@@ -206,7 +223,19 @@ def _plans(
             )
         effs = {name: effective(name) for name in names}
         declared = bool(s.target_names)
-        folded = with_lifecycle_phases(effs[names[0]], [s], effs if declared else None)[0]
+        udids = dict.fromkeys(names, _GRID_UDID) if grid else None
+        conditions = condition_context(
+            effs,
+            actuators={
+                name: offline_actuator(eff, backend_override(backend, eff.backend))
+                for name, eff in effs.items()
+            },
+            udids=udids,
+            known_env=False,
+        )
+        folded = with_lifecycle_phases(
+            effs[names[0]], [s], effs if declared else None, conditions=conditions
+        )[0]
         grouped = frozenset(n for g in s.device_groups if len(g) >= 2 for n in g)
         plans.append(_Plan(s, folded, effs, declared, grouped))
     return plans

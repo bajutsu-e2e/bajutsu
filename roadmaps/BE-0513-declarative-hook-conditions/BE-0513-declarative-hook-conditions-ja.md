@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0513](BE-0513-declarative-hook-conditions-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0513") |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups-ja.md)、[BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)、[BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks-ja.md)、[BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md) |
@@ -229,19 +229,23 @@ route はワーカーによって変わりません。`serve` はジョブを振
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スキーマ: `when` の新しい4フィールドと、読み込みエラー
-- [ ] スキーマ: 実行全体のエントリに対する読み込み時の検査の緩和
-- [ ] スキーマ: ターゲットに直接書いた成り立たない条件の読み込みエラー
-- [ ] 判定: シナリオ、動かすターゲット、その route、環境変数を受け取る1つの述語
-- [ ] コマンド `hook`: シナリオ単位と実行全体のリストへの述語の適用
-- [ ] setup と cleanup: 条件ブロックと、cleanup ルールの `when`
-- [ ] 最初のステップより前の条件ブロックの判定
-- [ ] 出力トークン: 2段階の検査
-- [ ] 条件ブロックに対する事前検査、`serve` のルーティング、`codegen` の振る舞い
-- [ ] 証跡: スキップしたブロックのレポート表示
-- [ ] 利用者向け文書: `docs/configuration.md`、`docs/scenarios.md`、`docs/codegen.md`
-- [ ] 設計文書: `DESIGN.md` と `docs/architecture.md`
-- [ ] 各文書の日本語版
+- [x] スキーマ: `when` の新しい4フィールドと、読み込みエラー
+- [x] スキーマ: 実行全体のエントリに対する読み込み時の検査の緩和
+- [x] スキーマ: ターゲットに直接書いた成り立たない条件の読み込みエラー
+- [x] 判定: シナリオ、動かすターゲット、その route、環境変数を受け取る1つの述語
+- [x] コマンド `hook`: シナリオ単位と実行全体のリストへの述語の適用
+- [x] setup と cleanup: 条件ブロックと、cleanup ルールの `when`
+- [x] 最初のステップより前の条件ブロックの判定
+- [x] 出力トークン: 2段階の検査
+- [x] 条件ブロックに対する事前検査、`serve` のルーティング、`codegen` の振る舞い
+- [x] 証跡: スキップしたブロックのレポート表示
+- [x] 利用者向け文書: `docs/configuration.md`、`docs/scenarios.md`、`docs/codegen.md`
+- [x] 設計文書: `DESIGN.md` と `docs/architecture.md`
+- [x] 各文書の日本語版
+
+ログは次のとおりです。
+
+PR_LINK で 13 の単位をまとめて実装しました。run は、最初の hook の前に、各ターゲットのプラットフォームと route、環境のスナップショットを 1 回だけ確定します。コマンドの hook、setup ブロック、cleanup ルール、事前検査、レポートは、どれもこの事実で条件を判定します。`serve` のルーティングとターゲットの lint は環境を不明として判定するので、`env` で絞ったブロックは必要な能力を残します。
 
 ## 参考
 

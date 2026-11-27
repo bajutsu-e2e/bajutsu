@@ -11,6 +11,7 @@ _MODIFIERS = (
     "name",
     "from_",
     "target",
+    "when",
     "report_group",
     "report_group_id",
 )

@@ -9,10 +9,11 @@ the scenario's machine-checked assertions (prime directive 1).
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
-from typing import Literal, Self
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
 from bajutsu.common.scenario.tags import tags_match
@@ -46,35 +47,160 @@ def invalid_hook_name(value: str) -> str | None:
     return None
 
 
-class HookWhen(_Model):
-    """`when`: the scenario tags a hook entry runs for (BE-0497).
+# The platforms a `when.platforms` entry may name: a target's declared `platform` (BE-0513).
+HOOK_PLATFORMS = ("ios", "android", "web", "fake")
 
-    The rule is the one `--tag` and `--exclude` apply to selection, through the same predicate.
+# The destinations a `when.routes` entry may name, the route names BE-0467 already gives each
+# environment. Spelled here because the scenario models may not import `capability`, whose
+# `settings_support.Route` lists the same names; a test keeps the two in step.
+HOOK_ROUTES = ("ios-simulator", "ios-device", "ios-live", "android", "web")
+
+# The routes each platform can run on, which the load check on a target's own condition reads to
+# refuse a `routes` that names none of its owner's. `fake` has no route at all.
+PLATFORM_ROUTES: dict[str, tuple[str, ...]] = {
+    "ios": ("ios-simulator", "ios-device", "ios-live"),
+    "android": ("android",),
+    "web": ("web",),
+    "fake": (),
+}
+
+_EMPTY_WHEN = (
+    "a `when` needs at least one non-empty field among `tags`, `exclude`, `targets`, `platforms`, "
+    "`routes`, and `env`; leave `when` out for an entry that always runs"
+)
+
+
+@dataclass(frozen=True)
+class JudgedTarget:
+    """One target a `when` may judge: its name, its declared platform, and its route (BE-0513).
+
+    `route` is None for a backend with no route (`fake`), and while the run has not yet worked the
+    route out — the load-time stage, which never decides a condition that names `routes`.
+    """
+
+    name: str
+    platform: str
+    route: str | None = None
+
+
+@dataclass(frozen=True)
+class WhenFacts:
+    """What a `when` is decided against (BE-0497, BE-0513).
+
+    Args:
+        tags: One tag collection per scenario the condition reads: the scenario's own for a
+            scenario-level entry, the selected scenarios that drive the owner for a run-level one.
+            Empty, a condition naming `tags` or `exclude` never holds.
+        targets: The targets `targets`, `platforms`, and `routes` judge, any one of which may
+            satisfy them: the owner alone for a target's entry, every driven target for a
+            scenario's own.
+        env: The environment of the `bajutsu run` process.
+    """
+
+    tags: Sequence[Sequence[str]] = ()
+    targets: Sequence[JudgedTarget] = ()
+    env: Mapping[str, str] = field(default_factory=dict)
+
+
+class HookWhen(_Model):
+    """`when`: where and for which scenarios a hook entry or block runs (BE-0497, BE-0513).
+
+    Values inside one list combine with "or", different fields with "and". `tags` and `exclude` use
+    the predicate `--tag` and `--exclude` apply to selection; `targets`, `platforms`, and `routes`
+    describe one and the same judged target; `env` reads the process environment, where a null asks
+    for an unset variable. Every field is a plain comparison of strings, never a probe or a model.
     """
 
     tags: list[str] = Field(default_factory=list)
     exclude: list[str] = Field(default_factory=list)
+    targets: list[str] = Field(default_factory=list)
+    platforms: list[Literal["ios", "android", "web", "fake"]] = Field(default_factory=list)
+    routes: list[Literal["ios-simulator", "ios-device", "ios-live", "android", "web"]] = Field(
+        default_factory=list
+    )
+    env: dict[str, str | None] = Field(default_factory=dict)
+
+    @field_validator("env", mode="before")
+    @classmethod
+    def _env_strings(cls, value: Any) -> Any:
+        # A YAML `true` or `1` would otherwise compare as "True" or never match at all; the author
+        # meant a string, so the fix is a pair of quotes.
+        if isinstance(value, dict):
+            for name, wanted in value.items():
+                if wanted is not None and not isinstance(wanted, str):
+                    raise ValueError(
+                        f"`when.env.{name}` must be a quoted string or null, got "
+                        f"{type(wanted).__name__} {wanted!r}; quote the value so YAML keeps it a string"
+                    )
+        return value
 
     @model_validator(mode="after")
     def _constrains_something(self) -> Self:
-        if not self.tags and not self.exclude:
-            raise ValueError(
-                "a hook entry's `when` needs a non-empty `tags` or `exclude`; leave `when` out for "
-                "an entry that always runs"
-            )
+        if not (
+            self.tags or self.exclude or self.targets or self.platforms or self.routes or self.env
+        ):
+            raise ValueError(_EMPTY_WHEN)
         return self
 
+    @property
+    def reads_tags(self) -> bool:
+        """Whether the condition reads the scenario's tags."""
+        return bool(self.tags or self.exclude)
+
+    @property
+    def reads_target(self) -> bool:
+        """Whether the condition reads the judged target."""
+        return bool(self.targets or self.platforms or self.routes)
+
+    @property
+    def needs_run(self) -> bool:
+        """Whether only the run can decide it: `env` and `routes` depend on the machine and flags."""
+        return bool(self.env or self.routes)
+
+    def holds(self, facts: WhenFacts) -> bool:
+        """Whether this condition holds for *facts*."""
+        if self.reads_tags and not any(
+            tags_match(tags, self.tags, self.exclude) for tags in facts.tags
+        ):
+            return False
+        if self.reads_target and not any(self.target_holds(t) for t in facts.targets):
+            return False
+        return all(
+            name not in facts.env if wanted is None else facts.env.get(name) == wanted
+            for name, wanted in self.env.items()
+        )
+
+    def target_holds(self, target: JudgedTarget) -> bool:
+        """Whether *target* meets `targets`, `platforms`, and `routes` together."""
+        return (
+            (not self.targets or target.name in self.targets)
+            and (not self.platforms or target.platform in self.platforms)
+            and (not self.routes or target.route in self.routes)
+        )
+
     def matches(self, tags: Iterable[str]) -> bool:
-        """Whether a scenario carrying *tags* meets this condition."""
-        return tags_match(tags, self.tags, self.exclude)
+        """Whether a scenario carrying *tags* meets the tag half of this condition."""
+        return not self.reads_tags or tags_match(tags, self.tags, self.exclude)
 
     def __str__(self) -> str:
-        """The condition as reports and errors word it, listing only the fields that constrain."""
-        parts = [
-            f"{field}: [{', '.join(values)}]"
-            for field, values in (("tags", self.tags), ("exclude", self.exclude))
-            if values
-        ]
+        """The condition as reports and errors word it, listing only the fields that constrain.
+
+        `env` prints as written, never the value a variable actually holds, which may be a secret.
+        """
+        lists: tuple[tuple[str, Sequence[str]], ...] = (
+            ("tags", self.tags),
+            ("exclude", self.exclude),
+            ("targets", self.targets),
+            ("platforms", self.platforms),
+            ("routes", self.routes),
+        )
+        parts = [f"{name}: [{', '.join(values)}]" for name, values in lists if values]
+        if self.env:
+            pairs = ", ".join(
+                f"{name}: {'null' if wanted is None else repr(wanted)}"
+                for name, wanted in self.env.items()
+            )
+            parts.append(f"env: {{{pairs}}}")
         return ", ".join(parts)
 
 
@@ -103,7 +229,7 @@ class HookCommand(_Model):
     on: HookOutcome = "always"
     # Masks this entry's output values in evidence, as a `${secrets.*}` value already is.
     mask: bool = False
-    # Runs the entry only for a scenario whose tags match; absent, it runs for every scenario.
+    # Runs the entry only where the condition holds (BE-0497, BE-0513); absent, it always runs.
     when: HookWhen | None = None
 
     @model_validator(mode="after")
@@ -115,7 +241,7 @@ class HookCommand(_Model):
             )
         if "when" in self.model_fields_set and self.when is None:
             # `when:` with its body commented out would otherwise widen the entry to every scenario.
-            raise ValueError("a hook entry's `when` needs a non-empty `tags` or `exclude`")
+            raise ValueError(_EMPTY_WHEN)
         if self.cmd is not None and not self.cmd.strip():
             raise ValueError("a hook entry's `cmd` cannot be empty")
         if self.name is not None and (why := invalid_hook_name(self.name)) is not None:

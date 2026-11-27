@@ -64,14 +64,16 @@ class HookSandbox(_Model):
 
 
 def reject_run_level_exclude_only(entries: list[Any], where: str) -> None:
-    """Fail a run-level entry whose `when` names no `tags`.
+    """Fail a run-level entry whose `when` names `exclude` without `tags`.
 
     Such a condition skips only when *every* scenario of the run carries an excluded tag, which is
-    not what an author who writes it means (BE-0497).
+    not what an author who writes it means (BE-0497). The other fields need no scenario, so a
+    condition made of them alone is fine at run level (BE-0513).
     """
     for i, entry in enumerate(entries):
-        if isinstance(entry, HookCommand) and entry.when is not None and not entry.when.tags:
+        when = entry.when if isinstance(entry, HookCommand) else None
+        if when is not None and when.exclude and not when.tags:
             raise ValueError(
-                f"{where}[{i}].when needs a non-empty `tags`: a run-level entry runs when any "
+                f"{where}[{i}].when names `exclude` without `tags`: a run-level entry runs when any "
                 "scenario of the run matches, so `exclude` alone would almost never skip it"
             )

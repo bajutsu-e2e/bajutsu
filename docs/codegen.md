@@ -161,6 +161,11 @@ capture of a resolved element's property. A static generated test has no runtime
 them. Rather than emit a silent no-op stub, all three targets raise a `CodegenError` at generation
 time and name `bajutsu run` as the faithful path for a scenario that uses them (BE-0297).
 
+A conditional `setup` block and a `cleanup` rule with `when` raise the same `CodegenError`
+([BE-0513](../roadmaps/BE-0513-declarative-hook-conditions/BE-0513-declarative-hook-conditions.md)).
+A block gated on an environment variable or a route has no run that could decide it. Deciding the
+other fields would need the run's target and platform rules inside `codegen`.
+
 ## Playwright (web) target
 
 `--emit playwright` renders a scenario as a **Playwright test in TypeScript** (`@playwright/test`),

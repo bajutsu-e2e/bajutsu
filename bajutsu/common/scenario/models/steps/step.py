@@ -56,6 +56,7 @@ from bajutsu.common.scenario.models.actions import (
     TypeText,
 )
 from bajutsu.common.scenario.models.assertions import Assertion, Wait
+from bajutsu.common.scenario.models.hook_command import HookWhen
 from bajutsu.common.scenario.models.mocks import Mock
 from bajutsu.common.scenario.models.selector import Selector
 
@@ -169,6 +170,11 @@ class Step(_Model):
     # enclosing scenario
     # (`_check_target_requirements` does, from `Scenario`'s own validator).
     target: str | None = None
+    # Turns a `steps` group into a conditional block of a `setup` list (BE-0513): its steps run only
+    # where the condition holds, decided before the scenario's first step from the same facts a
+    # hook command reads, never the screen. `target` is then optional. Allowed only at the top
+    # level of a `setup` list, which the scenario and the target's `hooks` check.
+    when: HookWhen | None = None
     # Report-internal: which `group` (and which occurrence of it) `expand()` pulled this step out
     # of, so `report.html` can fold it back together. Never exposed in `bajutsu schema`
     # (`SkipJsonSchema` keeps both off the authoring surface), but not rejected on ordinary
@@ -251,26 +257,41 @@ class Step(_Model):
         # off the one step the runner executes; setting one here would vanish with expansion,
         # silently, so it is refused at load time instead.
         if self.steps is None:
+            if self.when is not None:
+                raise ValueError(
+                    "when: a step takes `when` only as a conditional block of `setup`, holding "
+                    "`when` and `steps`; branch on the screen with an `if` step instead"
+                )
             return self
-        if not self.target:
+        if "when" in self.model_fields_set and self.when is None:
+            # `when:` with its body commented out would otherwise turn the block into a target
+            # group that runs everywhere, the case a cleanup rule's `when` refuses too.
+            raise ValueError(
+                "steps: a conditional block's `when` cannot be null; leave it out for a target group"
+            )
+        block = self.when is not None
+        kind = "conditional block" if block else "target group"
+        if not block and not self.target:
             raise ValueError("steps: target is required on a target group (§6.2)")
         if not self.steps:
-            raise ValueError("steps: a target group's steps must not be empty (§6.2)")
+            raise ValueError(f"steps: a {kind}'s steps must not be empty (§6.2)")
         for field in _MODIFIERS:
-            if field == "target":
+            if field in ("target", "when"):
                 continue
             if getattr(self, field) is not None:
                 alias = type(self).model_fields[field].alias or field
-                raise ValueError(f"steps: {alias} is not supported on a target group (§6.2)")
+                raise ValueError(f"steps: {alias} is not supported on a {kind} (§6.2)")
         for child in self.steps:
             if child.steps is not None:
+                inner = "conditional block" if child.when is not None else "target group"
+                article = "another" if inner == kind else "a"
                 raise ValueError(
-                    "steps: a target group cannot nest directly inside another target group (§6.2)"
+                    f"steps: a {inner} cannot nest directly inside {article} {kind} (§6.2)"
                 )
-            if child.target is not None:
+            if self.target is not None and child.target is not None:
                 raise ValueError(
-                    "steps: a step nested directly inside a target group must omit target — "
-                    "the group already fixed it (§6.2)"
+                    f"steps: a step nested directly inside a {kind} must omit target — "
+                    f"the {kind} already fixed it (§6.2)"
                 )
         return self
 
