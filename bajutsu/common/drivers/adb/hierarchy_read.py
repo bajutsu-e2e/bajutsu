@@ -43,6 +43,10 @@ class HierarchyRead:
     `heads_up` is the heads-up notification the body's SystemUI windows showed, read before
     narrowing drops them (BE-0496). None on the dump fallback, which never carries those windows, and
     whenever no heads-up was pinned.
+
+    `settled` is whether the device's own settle closed on two agreeing dumps (BE-0505). False means
+    the server gave up on a tree that may be part old and part new. None on the dump fallback and on a
+    server that sends no such header, where the driver takes the tree as it always has.
     """
 
     text: str
@@ -51,3 +55,4 @@ class HierarchyRead:
     root: ET.Element | None = None
     narrowed: bool = False
     heads_up: HeadsUpBanner | None = None
+    settled: bool | None = None

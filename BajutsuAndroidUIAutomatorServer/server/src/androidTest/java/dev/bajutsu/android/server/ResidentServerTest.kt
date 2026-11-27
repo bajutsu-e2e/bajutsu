@@ -237,6 +237,9 @@ class ResidentServerTest {
         paramOf(target, "budgetMs")?.toLongOrNull()?.coerceIn(0L, DEFAULT_WAIT_BUDGET_MS)
             ?: DEFAULT_WAIT_BUDGET_MS
 
+    /** What one [settled] call ended with: the last read, and whether two reads agreed on it. */
+    private class Settle<T>(val value: T, val closed: Boolean)
+
     /**
      * One request's allowance for waiting on the device, and the record of where it went.
      *
@@ -944,14 +947,14 @@ class ResidentServerTest {
         // never outrun the body it is stamped on, or a stale tree would certify as caught up.
         val mark = readMark.current()
         val budget = WaitBudget("act tree", device, ACT_TREE_BUDGET_MS)
-        val body = settledDump(device, budget)
+        val dump = settledDump(device, budget)
         budget.report()
         respond(
             out,
             "200 OK",
             "application/xml; charset=utf-8",
-            body,
-            published + (READ_MARK_HEADER to mark.toString()),
+            dump.value,
+            published + (READ_MARK_HEADER to mark.toString()) + (SETTLED_HEADER to dump.closed.toString()),
         )
     }
 
@@ -1050,6 +1053,15 @@ class ResidentServerTest {
      */
     private fun matchingBounds(xml: ByteArray, want: List<String>): List<Rect> {
         val found = mutableListOf<Rect>()
+        forEachAppNode(xml) { parser, _ ->
+            val have = IDENTITY_FIELDS.map { parser.getAttributeValue(null, it.second) ?: "" }
+            if (have == want) parseBounds(parser.getAttributeValue(null, "bounds"))?.let(found::add)
+        }
+        return found
+    }
+
+    /** Call `visit` on each `<node>` of `xml` outside SystemUI's windows, with its depth. */
+    private fun forEachAppNode(xml: ByteArray, visit: (XmlPullParser, Int) -> Unit) {
         val parser = Xml.newPullParser()
         parser.setInput(xml.inputStream(), "UTF-8")
         var nodeDepth = 0
@@ -1063,9 +1075,7 @@ class ResidentServerTest {
                         val pkg = parser.getAttributeValue(null, "package")
                         if (pkg != null && pkg in SYSTEM_DECOR_PACKAGES) decorNodeDepth = nodeDepth
                     }
-                    if (decorNodeDepth != null) continue
-                    val have = IDENTITY_FIELDS.map { parser.getAttributeValue(null, it.second) ?: "" }
-                    if (have == want) parseBounds(parser.getAttributeValue(null, "bounds"))?.let(found::add)
+                    if (decorNodeDepth == null) visit(parser, nodeDepth)
                 }
                 XmlPullParser.END_TAG -> {
                     if (parser.name != "node") continue
@@ -1074,7 +1084,6 @@ class ResidentServerTest {
                 }
             }
         }
-        return found
     }
 
     /** `[l,t][r,b]` as a [Rect], or null when the attribute is missing or malformed. */
@@ -1112,9 +1121,12 @@ class ResidentServerTest {
         // `awaitPostdate` has already advanced `current()` past `since`, so this undercount never
         // drops the mark back below the actuation it must clear.
         val mark = readMark.current()
-        val body = settledDump(device, budget)
+        val dump = settledDump(device, budget)
         budget.report()
-        val headers = mutableMapOf(READ_MARK_HEADER to mark.toString())
+        val headers = mutableMapOf(
+            READ_MARK_HEADER to mark.toString(),
+            SETTLED_HEADER to dump.closed.toString(),
+        )
         // Only when the host asked, like `nativeZ` below: the records serve a verification run, and
         // the log alone runs to kilobytes that no driver read parses. Taken after the settle, unlike
         // the read mark: they describe what reached the cache up to the served body, and an event
@@ -1136,7 +1148,7 @@ class ResidentServerTest {
             out,
             "200 OK",
             "application/xml; charset=utf-8",
-            body,
+            dump.value,
             headers,
         )
     }
@@ -1231,9 +1243,14 @@ class ResidentServerTest {
      * can look idle between two node republishes), which is why the barrier is two agreeing reads, not
      * one idle. Bounded and condition-driven (settle, not a fixed sleep — Bajutsu determinism); a read
      * that never settles (an animation) costs at most [SETTLE_DUMPS] reads and returns the last one,
-     * exactly as the host's `AdbDriver._CATCHUP_DWELL_S` accepts a tear that outlasts its dwell.
+     * flagged as unclosed so the host can tell it from a settled tree (BE-0505).
      */
-    private fun <T> settled(budget: WaitBudget, label: String, read: () -> T, sameAs: (T, T) -> Boolean): T {
+    private fun <T> settled(
+        budget: WaitBudget,
+        label: String,
+        read: () -> T,
+        sameAs: (T, T) -> Boolean,
+    ): Settle<T> {
         budget.capDumpWaits()
         var previous = read()
         budget.lap("dump")
@@ -1242,7 +1259,7 @@ class ResidentServerTest {
             // wait reads again, and its timeout is what a late answer would otherwise lose to.
             if (budget.spent()) {
                 Log.d(TAG, "$label stopped settling when its wait budget ran out")
-                return previous
+                return Settle(previous, closed = false)
             }
             budget.awaitIdle()
             // Drop the platform's node cache before the re-read (BE-0490), so the pair that closes the
@@ -1256,19 +1273,37 @@ class ResidentServerTest {
             budget.capDumpWaits()
             val current = read()
             budget.lap("dump")
-            if (sameAs(current, previous)) return current
+            if (sameAs(current, previous)) return Settle(current, closed = true)
             previous = current
         }
-        return previous.also { Log.d(TAG, "$label did not settle after $SETTLE_DUMPS dumps") }
+        Log.d(TAG, "$label did not settle after $SETTLE_DUMPS dumps")
+        return Settle(previous, closed = false)
     }
 
     /**
-     * Dump the hierarchy once it has stopped tearing, comparing the whole dumped XML. Used by
-     * [respondSource], which answers an arbitrary host-side selector and so cannot narrow the
-     * comparison the way [settledActBounds] does for `/act`.
+     * Dump the hierarchy once it has stopped tearing, comparing every node outside SystemUI's windows.
+     * [respondSource] answers an arbitrary host-side selector, so it cannot narrow the comparison to
+     * one target the way [settledActBounds] does; it drops only the decor, whose clock and icons
+     * change on a quiet app screen (BE-0505). The returned body still carries every window, because
+     * the host reads the heads-up notification off that decor.
      */
-    private fun settledDump(device: UiDevice, budget: WaitBudget): ByteArray =
-        settled(budget, "hierarchy", { dumpHierarchy(device) }, ByteArray::contentEquals)
+    private fun settledDump(device: UiDevice, budget: WaitBudget): Settle<ByteArray> =
+        settled(budget, "hierarchy", { dumpHierarchy(device) }) { a, b ->
+            a.contentEquals(b) || appNodes(a) == appNodes(b)
+        }
+
+    /** Every node outside SystemUI's windows, as its depth and attributes, in document order. */
+    private fun appNodes(xml: ByteArray): List<String> {
+        val found = mutableListOf<String>()
+        forEachAppNode(xml) { parser, depth ->
+            found.add(
+                (0 until parser.attributeCount).joinToString("\u0000", prefix = "$depth\u0000") {
+                    "${parser.getAttributeName(it)}=${parser.getAttributeValue(it)}"
+                },
+            )
+        }
+        return found
+    }
 
     /**
      * Like [settledDump], but scoped to the identity `/act` has already resolved: settles once two
@@ -1295,7 +1330,7 @@ class ResidentServerTest {
                 seenXml = xml
             }
             seenBounds
-        }) { a, b -> a == b }
+        }) { a, b -> a == b }.value
     }
 
     /**
@@ -1435,6 +1470,11 @@ class ResidentServerTest {
         // when none came, which is also what an older server returns — see `publishHeader`. Kept in
         // sync with the host side (`bajutsu/common/backend_cli/adb_resident.py` `_ACT_PUBLISH_HEADER`).
         const val ACT_PUBLISH_HEADER = "X-Bajutsu-Act-Publish"
+
+        // The response header GET /source and a confirmed POST /act stamp on their tree: `true` when
+        // two consecutive dumps agreed, `false` when [settled] gave up (BE-0505). An older server
+        // sends none. Kept in sync with the host side (`adb_resident` `_SETTLED_HEADER`).
+        const val SETTLED_HEADER = "X-Bajutsu-Settled"
 
         // The response headers GET /source?events=1 stamps with [ReadMark]'s event records (BE-0490 Unit 3):
         // the newest cache-evicting event per window, and the bounded log of recent event types. Read

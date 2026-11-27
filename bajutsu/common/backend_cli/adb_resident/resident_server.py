@@ -208,6 +208,7 @@ class ResidentServer:
             root=root,
             narrowed=narrowed,
             heads_up=banner,
+            settled=read.settled,
         )
 
     def _read_with_recovery(self, since: float | None) -> HierarchyRead:

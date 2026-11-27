@@ -14,6 +14,7 @@ from ._functions import _ACT_PUBLISH_HEADER as _ACT_PUBLISH_HEADER
 from ._functions import _NATIVE_Z_HEADER as _NATIVE_Z_HEADER
 from ._functions import _NO_ENDPOINT_STATUS as _NO_ENDPOINT_STATUS
 from ._functions import _READ_MARK_HEADER as _READ_MARK_HEADER
+from ._functions import _SETTLED_HEADER as _SETTLED_HEADER
 from ._functions import _STALE_STATUS as _STALE_STATUS
 from ._functions import _SYSTEM_DECOR_PACKAGES as _SYSTEM_DECOR_PACKAGES
 from ._functions import _act_read as _act_read

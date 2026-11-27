@@ -304,7 +304,7 @@ class AdbDriver(CoordinateTreeDriver):
     # fraction of a second — short enough that a still-moving tree passes as settled and a tap fires on
     # a stale coordinate. Bounding by elapsed time instead keeps the window spanning a real animation
     # whatever the read costs: the loop polls until two consecutive reads share a frame projection, or
-    # `_SETTLE_DEADLINE_S` elapses. A screen whose key was already proved stable — by `_settle`'s own
+    # `_SETTLE_DEADLINE_S` elapses and `_MIN_DEVICE_WAITS` polls have completed. A screen whose key was already proved stable — by `_settle`'s own
     # poll, or by a catch-up dwell-close — still settles in a single read; every other screen polls,
     # including a static one right after an actuation, which clears `_settled_key`. `_SETTLE_POLL_S`
     # is a small non-zero cadence so a fast read does not busy-spin (on the dump path the read
@@ -315,6 +315,14 @@ class AdbDriver(CoordinateTreeDriver):
     # read simply returns early on stability.
     _SETTLE_DEADLINE_S = 8.0  # ceiling on waiting for the tree to stop moving (spans a fling)
     _SETTLE_POLL_S = 0.1  # inter-read cadence on a fast channel; negligible against the dump read
+    # The floor of completed reads under both wall-clock ceilings (`_SETTLE_DEADLINE_S` for the
+    # settle poll, `_READ_LAG_S` for the catch-up barrier): each wait ends on the later of the two, so
+    # a slow host cannot shrink the number of chances to observe the tree (BE-0505). One more than
+    # the three that eight seconds buys at the resident server's 3.5s per-request wait budget.
+    _MIN_DEVICE_WAITS = 4
+    # How many times `query` reads again while the device says its settle never closed, before it
+    # returns the latest tree with a warning (BE-0505).
+    _UNSETTLED_REREADS = 3
     # Scroll-into-view (BE-0210): an action target that resolves to nothing in the current viewport
     # is scrolled toward and re-queried a bounded number of times before failing — a condition wait,
     # not a fixed sleep. Direction is always upward (content up, revealing rows below) — the
@@ -512,6 +520,9 @@ class AdbDriver(CoordinateTreeDriver):
         # the newest accessibility event the resident reader had seen. None on the dump path. Set by
         # `_read_source` on every read, before `_advance_catchup` folds that read into the barrier.
         self._read_mark: float | None = None
+        # Whether the device's settle closed on the most recent read (BE-0505). None on the dump path
+        # and on an older server, which say nothing; only an explicit False marks a tree unfit.
+        self._device_settled: bool | None = None
         # Each opted-in view's own measured position from the last resident read (BE-0355). Empty on
         # the dump fallback, which carries no such reading.
         self._native_z: dict[str, float] = {}
@@ -604,7 +615,30 @@ class AdbDriver(CoordinateTreeDriver):
         return self._run(args)
 
     def query(self) -> list[base.Element]:
-        """A settled tree read, answered from a gesture's own reply when it carried one.
+        """A tree the device did not report as unsettled, read again while it does.
+
+        A tree the device gave up settling may be part old and part new, so a selector resolved against
+        it can miss an element that is on screen (BE-0505). Each re-read is itself a condition wait on
+        the device's settle. A screen that never settles costs `_UNSETTLED_REREADS` extra reads, then
+        the latest tree is returned with a warning.
+        """
+        tree = self._read_once()
+        for _ in range(self._UNSETTLED_REREADS):
+            if self._device_settled is not False:
+                return tree
+            tree = self._read_once()
+        if self._device_settled is False:
+            logger.warning(
+                "the device could not settle the tree in %d reads; resolving from the latest one",
+                self._UNSETTLED_REREADS + 1,
+            )
+        return tree
+
+    def _read_once(self) -> list[base.Element]:
+        """One read, answered from a gesture's own reply when it carried one.
+
+        What the settle poll and the catch-up barrier read through: both already loop, so `query`'s
+        re-reads nested inside them would multiply the worst case.
 
         The device dumps the caught-up tree into the `/act` reply of a gesture whose publish it
         confirmed (BE-0407 unit 19), so the read the host would take next has already happened — a
@@ -650,6 +684,11 @@ class AdbDriver(CoordinateTreeDriver):
         """
         if read is None or read.mark is None:
             return  # the ordinary absence: an older server, or a gesture it could not confirm
+        if read.settled is False:
+            # The device's own settle gave up on this tree, and a bare `query()` would hand it to a
+            # selector unconfirmed. Reading instead costs the one round trip the seed saves.
+            logger.debug("device reply's tree never settled; reading again instead of seeding")
+            return
         if mark is not None and read.mark <= mark:
             # Not ordinary at all: the reply confirmed a publish *and* carried a tree whose own mark
             # does not postdate the gesture, so the server's two marks disagree. Silence would leave
@@ -678,6 +717,7 @@ class AdbDriver(CoordinateTreeDriver):
             logger.debug("device reply carried a degenerate tree; reading again instead of seeding")
             return
         self._read_mark = read.mark
+        self._device_settled = read.settled
         self._native_z = read.native_z
         self._raw_reply = read.text
         self._parsed_root = read.root if read.narrowed else None
@@ -770,6 +810,7 @@ class AdbDriver(CoordinateTreeDriver):
             try:
                 read = self._fetch_hierarchy(since)
                 self._read_mark = read.mark
+                self._device_settled = read.settled
                 self._native_z = read.native_z
                 logger.debug(
                     "resident read in %.2fs: mark %s, blocked on %s",
@@ -834,6 +875,7 @@ class AdbDriver(CoordinateTreeDriver):
         # The dump subprocess carries no event mark, so the barrier reverts to its wall-clock budget,
         # and no measured position either, so every element reports the honest absence.
         self._read_mark = None
+        self._device_settled = None
         self._native_z = {}
         self._heads_up = None
         self._note_banner_guard_off()
@@ -990,7 +1032,10 @@ class AdbDriver(CoordinateTreeDriver):
         it would spend the barrier on a tree the read path is itself still retrying.
         """
         catchup = self._catchup
-        if catchup is None or self._is_transient_empty(els):
+        if catchup is None:
+            return
+        catchup.reads += 1
+        if self._is_transient_empty(els):
             return
         if catchup.actuation_mark is not None:
             if self._read_mark is not None and self._read_mark > catchup.actuation_mark:
@@ -1043,6 +1088,8 @@ class AdbDriver(CoordinateTreeDriver):
     def _await_catchup(self) -> None:
         """Re-read until the pending actuation shows in the tree, or its lag budget is spent.
 
+        Spent means both `_READ_LAG_S` has passed and `_MIN_DEVICE_WAITS` reads have completed.
+
         The one thing the two-consecutive-equal-reads settle below cannot do on its own: a lagging
         Android tree is *self-consistently* lagging, so any number of reads agree with each other and
         agree on the pre-actuation frames. What separates a caught-up read from a stale one is
@@ -1051,7 +1098,8 @@ class AdbDriver(CoordinateTreeDriver):
         tap that only moved a mirrored value — BE-0332 arms the barrier for center-resolving taps too).
         """
         while (catchup := self._catchup) is not None:
-            if time.monotonic() >= catchup.deadline:
+            now = time.monotonic()
+            if now >= catchup.deadline and catchup.reads >= self._MIN_DEVICE_WAITS:
                 # Loudly, not silently: the actuator may be about to resolve a coordinate from a tree
                 # that never published the last actuation, which is the failure whose bare `expect`
                 # mismatch cost a full artifact investigation to explain. Both causes are named because
@@ -1061,17 +1109,19 @@ class AdbDriver(CoordinateTreeDriver):
                 # names the actuator neutrally because BE-0332 arms this for taps, not only pans;
                 # asserting the lag would send an investigator after a bug that never happened.
                 logger.warning(
-                    "read lag: the last gesture did not show in the tree within %.1fs — either the "
+                    "read lag: the last gesture did not show in the tree within %.1fs (%d reads) — "
+                    "either the "
                     "tree never published it, or it moved no frame (e.g. a pan already at the end of "
                     "the content, or a tap that changed only a mirrored value). Resolving from the "
                     "current screen. Waited on %s",
-                    self._READ_LAG_S,
+                    now - catchup.armed_at,
+                    catchup.reads,
                     self._catchup_evidence(catchup),
                 )
                 self._catchup = None
                 return
             time.sleep(self._SETTLE_POLL_S)
-            self.query()  # `_advance_catchup` closes the barrier once the tree has caught up
+            self._read_once()  # `_advance_catchup` closes the barrier once the tree has caught up
 
     def settled_query(self) -> list[base.Element]:
         """A tree fit to resolve an actuation target from (`base.SettledReadProvider`).
@@ -1099,8 +1149,8 @@ class AdbDriver(CoordinateTreeDriver):
         on a device-mark postdate: that proves order (this read is not stale relative to the gesture),
         not rest (the tree stopped moving) — a fling can keep publishing well past the first read that
         postdates the gesture's mark, so trusting that alone would resurrect the very bug this fast
-        path exists to avoid. The poll itself is bounded by a wall-clock deadline, not a fixed read
-        count, so it spans a real animation whatever the read costs — the resident channel's fast read
+        path exists to avoid. The poll ends on the later of a wall-clock deadline and a floor of
+        completed reads (BE-0505), so it spans a real animation whatever the read costs — the resident channel's fast read
         (BE-0245) would otherwise collapse the window and let a still-moving tree pass as settled.
 
         A pending pan is waited out first (`_await_catchup`), then the stability poll runs as before.
@@ -1110,21 +1160,26 @@ class AdbDriver(CoordinateTreeDriver):
         """
         self._await_catchup()
         t0 = time.monotonic()
-        tree = self.query()
+        tree = self._read_once()
         key = self._last_stable_key
-        if self._settled_key is not None and key == self._settled_key:
+        if (
+            self._settled_key is not None
+            and key == self._settled_key
+            and self._device_settled is not False
+        ):
             return tree
         # From here, not from `t0`: the budget is sized for the *polling* reads, so folding the first
         # read into it would cost the ~2.4s dump path a whole attempt — the shrink the constant's own
         # comment warns against. `t0` stays for the elapsed figure the log reports.
         deadline = time.monotonic() + self._SETTLE_DEADLINE_S
         reads = 1
-        while time.monotonic() < deadline:
+        while time.monotonic() < deadline or reads - 1 < self._MIN_DEVICE_WAITS:
             time.sleep(self._SETTLE_POLL_S)
-            tree = self.query()
+            tree = self._read_once()
             reads += 1
             new_key = self._last_stable_key
-            if new_key == key:
+            # A tree the device could not settle proves nothing, even when its frames agree.
+            if new_key == key and self._device_settled is not False:
                 # Proved, not merely observed: this is the first time two consecutive reads have
                 # actually agreed, so — unlike `_last_stable_key` — trusting a future match against
                 # this key on the fast path above is sound.
