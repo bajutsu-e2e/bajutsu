@@ -1273,7 +1273,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
 - **`POST /api/runs/import` takes a run that finished elsewhere.** The route needs the `editor` role.
-  An `editor` API key reaches it, so a script can import into a server with OAuth. It accepts a zip of one run, which `scripts/upload_run.py` builds and sends
+  An `editor` API key reaches it, so a script can import into a server with OAuth. The route accepts
+  a zip of one run, which `scripts/upload_run.py` builds and sends
   ([BE-0510](../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import.md)).
   [Self-hosting](self-hosting.md#importing-a-finished-run) covers the checks and the answers.
 - **Every job runs on a worker (BE-0449).** `serve` queues every kind of job for a
