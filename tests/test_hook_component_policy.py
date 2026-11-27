@@ -273,3 +273,10 @@ def test_the_notice_names_the_component_and_its_source(tmp_path: Path) -> None:
         "component scenarios/hooks/u.hook.yaml (uploaded): refused under commandExecution deny "
         "(BE-0492)"
     )
+
+
+def test_the_notice_names_a_component_of_the_configs_own_source_alone(tmp_path: Path) -> None:
+    gate = _gate(tmp_path).for_entry(str(tmp_path / "hooks" / "u.hook.yaml"))
+    gate.record("hooks.beforeScenario[seed].cmd", "./seed.sh", exit_code=0)
+    [notice] = command_notices(gate.records)
+    assert "from the operator config via the hooks component hooks/u.hook.yaml: ran" in notice
