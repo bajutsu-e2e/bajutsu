@@ -781,7 +781,7 @@ The roadmap item fixes four criteria for keeping the change, before any measured
 The subcommand assigns a job to an arm by the mode its own log printed. A job counts when it meets
 three conditions:
 
-- A manual run started it.
+- The job is `run` or `actuation`, from a manual run on `main`.
 - It started at or after the `--since` time.
 - The fetch read its log.
 
@@ -792,7 +792,7 @@ The verdict takes one of four values.
 | `adopt` | Every criterion passes |
 | `reject` | At least one criterion does not pass |
 | `trace` | The counts pass, but a job did not pass with the change on |
-| `incomplete` | An arm holds fewer than twenty jobs |
+| `incomplete` | An arm holds other than exactly twenty jobs |
 
 A `trace` verdict needs a person. Run each listed scenario again with the suspect service left
 on. A pass then counts against the change.

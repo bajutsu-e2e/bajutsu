@@ -574,6 +574,7 @@ def _job(
                 "conclusion": "failure" if failed or red else "success", "started_at": started},
         "ci": {"run_id": "9"},
         "run_event": event,
+        "run_branch": "main",
         "simulator_services": {"mode": mode, "start": 166, "end": end} if mode else None,
         "log_signals": signals if mode else None,
         "scenarios": [{"scenario": failed, "ok": False}] if failed else [],
@@ -634,6 +635,11 @@ def test_adoption_leaves_a_job_that_did_not_pass_to_a_person() -> None:
 def test_adoption_counts_only_fresh_dispatches() -> None:
     records = [
         *_arms([], _STOCK_SIGNAL),
+        {**_job("reduced", video=1), "run_branch": "feature"},
+        {
+            **_job("reduced", video=1),
+            "api": {"job_name": "golden (xcuitest)", "started_at": "2026-12-01T01:00:00Z"},
+        },
         _job("reduced", video=1, event="pull_request"),
         _job("reduced", video=1, started="2026-11-26T01:00:00Z"),
     ]
@@ -658,9 +664,11 @@ def test_adoption_lists_a_measured_job_that_stopped_before_printing_its_arm() ->
     assert result["unattributed_jobs"] == ["run (xcuitest) (run 9): no route line"]
 
 
-def test_adoption_is_incomplete_until_each_arm_is_full() -> None:
+def test_adoption_is_incomplete_unless_each_arm_holds_exactly_the_plan() -> None:
     result = _adopt([_job("reduced"), _job("stock", video=1)])
     assert result["verdict"] == "incomplete"
+    # An extra reduced job would add to that arm's totals for free.
+    assert _adopt([*_arms([], _STOCK_SIGNAL), _job("reduced")])["verdict"] == "incomplete"
     assert _adopt([])["video_start_p"] is None
 
 

@@ -875,7 +875,8 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str) -> dict[str, A
 
     A job belongs to an arm by the mode its own log printed, and only a `workflow_dispatch` run
     started at or after `since` (an ISO-8601 UTC timestamp) counts, which leaves the pilot runs and
-    every pull-request run out. A measured job with no arm in its log (unreadable, or stopped before
+    every pull-request run out. Only the `run` and `actuation` jobs of a run on `main` count, and
+    each arm must hold exactly `ADOPTION_JOBS_PER_ARM` of them. A measured job with no arm in its log (unreadable, or stopped before
     the reduce step printed one) is listed as unattributed rather than dropped in silence.
     """
     arms: dict[str, list[Mapping[str, Any]]] = {arm: [] for arm in _ARMS}
@@ -884,10 +885,14 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str) -> dict[str, A
         started = str((r.get("api") or {}).get("started_at") or "")
         if r.get("run_event") != "workflow_dispatch" or started < since:
             continue
+        # Only the two measured jobs of a run on `main` belong to an arm: a lane that later applies
+        # the list (unit 5) or a dispatch on another ref would add jobs the plan never counted.
+        if r.get("run_branch") != "main" or not _MEASURED_JOBS.match(_job_label(r)):
+            continue
         mode = (r.get("simulator_services") or {}).get("mode")
         if mode in arms:
             arms[mode].append(r)
-        elif _MEASURED_JOBS.match(_job_label(r)):
+        else:
             # A readable log with no route line is a job that stopped before or inside the reduce
             # step, the failure the change itself is likeliest to cause, so it must not vanish.
             why = "log unreadable" if r.get("log_signals") is None else "no route line"
@@ -917,7 +922,8 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str) -> dict[str, A
         "recoveries": recoveries(reduced) <= recoveries(stock),
         "scenarios": None if untraced else True,
     }
-    if min(reduced["jobs"], stock["jobs"]) < ADOPTION_JOBS_PER_ARM:
+    # Criteria 2 and 3 compare totals, so an over-full arm biases the verdict as much as a short one.
+    if reduced["jobs"] != ADOPTION_JOBS_PER_ARM or stock["jobs"] != ADOPTION_JOBS_PER_ARM:
         verdict = "incomplete"
     elif any(v is False for v in criteria.values()):
         verdict = "reject"
@@ -951,7 +957,7 @@ _VERDICTS = {
     "adopt": "every criterion passes: adopt the reduced list",
     "reject": "a criterion fails: keep the stock Simulator",
     "trace": "the numbers pass; trace each job that did not pass with the change on",
-    "incomplete": "an arm has fewer jobs than planned: dispatch more, or raise fetch's --limit",
+    "incomplete": "an arm does not hold exactly the planned jobs: dispatch more, or narrow --since",
 }
 
 
