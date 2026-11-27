@@ -370,7 +370,7 @@ The misses it retires:
 
 Each of these now triggers the lanes, because a package and a module match the sweep alike.
 
-Four tests keep the classification honest:
+Five tests keep the classification honest:
 
 - `test_run_path_closure_is_gated_or_excluded` walks the static `ast` import closure of the run path.
   The test fails when a file it reaches belongs to no lane and to no periphery entry. Suppose the run
@@ -389,7 +389,8 @@ Four tests keep the classification honest:
   but claimed by no lane turns the gate red.
 
 We measured the over-trigger cost of the inverted default before it shipped. We replayed the last 80
-merged pull requests. On each of them, all three lanes triggered as under the old positive list. The script `scripts/e2e_overfire_report.py` holds that measurement.
+merged pull requests. On every one of them, the sweep decided each lane as the old list did.
+`scripts/e2e_overfire_report.py` produces that measurement.
 
 The `changes` job narrows one step further in the one case it can prove safe (BE-0322). Take a change
 confined to a lane's scenario files. The change triggers the jobs that declare a changed scenario.
@@ -470,7 +471,8 @@ The hardest E2E cases to diagnose are the ones where no process exits abnormally
   that the adb backend reads the element tree from. The emulator's own renderer can wedge instead.
   The job can also run out its `timeout-minutes`.
 
-No process exits in any of those cases, so a sweep of the diagnostic reports finds nothing. The device's
+No process exits abnormally in any of those cases. A sweep of the diagnostic reports thus finds
+nothing. The device's
 render service may have wedged, or the machine may have starved it. The state that would tell the two
 apart disappears before anyone opens the job.
 
@@ -567,7 +569,7 @@ ride there.
   action.
   - Its cheap tier runs on every job and collects four items. They are the tail of
     `CoreSimulator.log` and the booted device's own CoreSimulator log directory. The tier also sweeps
-    diagnostic reports beyond `.ips` and `.crash`, to the stall, spin, and jetsam reports that this
+    diagnostic reports beyond `.ips` and `.crash`, to the `.hang`, `.spin`, and jetsam reports that this
     class of red run leaves. Last comes a snapshot of the machine.
   - That snapshot holds `sw_vers`, `sysctl`, `xcodebuild -version`, and `simctl list`. It keys each
     red run against a runner image and a hardware generation.
