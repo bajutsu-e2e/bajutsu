@@ -7,13 +7,16 @@
 |---|---|
 | 提案 | [BE-0376](BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **却下** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0376") |
 | トピック | Platform support |
 | 関連 | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
+
+> **却下。隔離は CI では発火せず、ローカルでの効果も費用に見合いません。**
+> `ios-e2e.yml` のジョブはすべて具体的な `--udid` を固定し、交換の段は `--udid booted` を要求します。予定している変更のどれを入れても、この設計は発火しません。そのため保留ではなく却下とします。CI で効かせるには、要求をプール経由で回す別の設計が必要です。下の Unit 2（結びつきの記録）は、赤い結果に停止の合図を記録する別項目へ移します。
 
 実行のパイプラインには、erase では回復しないところまで劣化した iOS Simulator から、シナリオを別のデバイスへ移す仕組みがあります。次の起動時に交換用のデバイスを要求する形で、[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md) が入れたものです。この昇格はクラッシュのハンドラの内部、`run_one` の `except BackendCrashError`（`bajutsu/runner/pipeline.py:452`）だけに置かれています。到達できるのは、試行が**クラッシュした**シナリオに限られます。
 
@@ -134,6 +137,8 @@ actuation レーン自身も恩恵を受けられるようにすべきでしょ�
 - [ ] Unit 2 — 失敗したシナリオの診断への、結びつきの記録
 - [ ] Unit 3 — テスト(判定への中立性の回帰テストを含む)
 - [ ] Unit 4 — ドキュメント(`architecture.md`、`run-loop.md` とその `ja` 側)
+
+2026-11-27 の記録です。作業の単位を始める前に却下しました。`ios-e2e.yml` のジョブはすべて `--udid` を固定するため、CI では隔離が発火しません。`--udid booted` の実行が届くのは開発者の Mac だけで、スパイクと台数の上限の費用に見合いません。Unit 2 は別項目へ移します。
 
 ## 参考
 
