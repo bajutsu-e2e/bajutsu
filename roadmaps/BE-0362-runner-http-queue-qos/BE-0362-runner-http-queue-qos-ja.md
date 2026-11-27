@@ -151,8 +151,8 @@ Bajutsu の iOS のジョブは、GitHub が提供する macOS のランナー�
   得られるまで、runner が逆転の報告を引き起こすかどうかは未計測のままであり、この単位は未了のままです。
 - 2026-11-28：単位 1（[#2607](https://github.com/bajutsu-e2e/bajutsu/pull/2607)）で、前のエントリが
   求めていた計測の経路を用意しました。ホスト側の `BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_<NAME>` という
-  変数が、`<NAME>` として runner のプロセスへ届くようになりました。Bajutsu 自身が渡す変数を上書きする
-  ことはありません。`fault-injection` ジョブと `visual` ジョブは、この仕組みで
+  変数が、`<NAME>` として runner のプロセスへ届くようになりました。`BAJUTSU_` で始まる名前は
+  受け付けないので、この仕組みで Bajutsu 自身の変数を設定できません。`fault-injection` ジョブと `visual` ジョブは、この仕組みで
   `PERFC_LOG_REPORTS_TO_STDERR=1` を設定します。続くステップが、捕捉した runner のログにある
   Thread Performance Checker の報告を数えてジョブのサマリーに書きます。このステップがジョブを失敗させる
   ことはありません。この変数を設定した最初の実行で得られた結果は、次のエントリに記録します。

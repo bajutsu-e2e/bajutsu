@@ -154,8 +154,8 @@ Log:
   stays open.
 - 2026-11-28: Unit 1 ([#2607](https://github.com/bajutsu-e2e/bajutsu/pull/2607)) adds the
   measurement route the previous entry asked for. A host variable named
-  `BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_<NAME>` now reaches the runner process as `<NAME>`, and it
-  never overrides a variable Bajutsu forwards itself. The `fault-injection` and `visual` jobs use it
+  `BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_<NAME>` now reaches the runner process as `<NAME>`. A name in
+  the `BAJUTSU_` namespace is refused, so the passthrough cannot set any of Bajutsu's own variables. The `fault-injection` and `visual` jobs use it
   to set `PERFC_LOG_REPORTS_TO_STDERR=1`. A step that never fails the job then counts any Thread
   Performance Checker report in the captured runner logs into the job summary. The finding from the
   first run carrying the variable is recorded in the next entry.

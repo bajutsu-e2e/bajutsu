@@ -929,7 +929,7 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
     ) -> _Spawned:
         """`_spawn_runner`'s body once `_runner_port` is set: patch, spawn, and build the driver."""
-        # The operator's passthrough goes first, so it can never override what Bajutsu itself sends.
+        # The passthrough excludes the BAJUTSU_ namespace itself; listing it first is the second guard.
         forwarded = {
             **_runner_process_env(os.environ),
             "BAJUTSU_RUNNER_PORT": str(self._runner_port),

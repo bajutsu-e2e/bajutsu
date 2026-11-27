@@ -949,13 +949,24 @@ RUNNER_PROCESS_ENV_PREFIX = "BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_"
 def _runner_process_env(environ: Mapping[str, str]) -> dict[str, str]:
     """The prefixed host env vars, keyed by the name the runner process should see them under.
 
-    A bare prefix (an empty stripped name) is skipped, since it names no variable.
+    A bare prefix (an empty stripped name) is skipped, since it names no variable. So is any name in
+    the `BAJUTSU_` namespace, with a warning: several of the runner's protocol variables
+    (`BAJUTSU_ATTACH`, `BAJUTSU_DEEPLINK`) are sent only on some spawns, so letting the spawn's own
+    values win would not stop one injected into a spawn that leaves it unset — and an injected
+    `BAJUTSU_ATTACH` silently skips the app launch while the run still reports green.
     """
-    return {
-        name[len(RUNNER_PROCESS_ENV_PREFIX) :]: value
-        for name, value in environ.items()
-        if name.startswith(RUNNER_PROCESS_ENV_PREFIX) and len(name) > len(RUNNER_PROCESS_ENV_PREFIX)
-    }
+    forwarded: dict[str, str] = {}
+    for name, value in environ.items():
+        target = name.removeprefix(RUNNER_PROCESS_ENV_PREFIX)
+        if target == name or not target:
+            continue
+        if target.startswith("BAJUTSU_"):
+            _logger.warning(
+                "ignoring %s: the BAJUTSU_ namespace is reserved for Bajutsu itself", name
+            )
+            continue
+        forwarded[target] = value
+    return forwarded
 
 
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:

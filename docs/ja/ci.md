@@ -546,7 +546,8 @@ testmanagerd 自身の観測を記録します。記録するのは、正確な 
 
 `xcodebuild` は自分の環境変数をランナープロセスへ渡しません。そこで、ホスト側の
 `BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_<NAME>` という変数は、接頭辞を外した `<NAME>` として
-ランナープロセスに届きます。Bajutsu 自身が設定する変数を上書きすることはありません。`fault-injection`
+ランナープロセスに届きます。`<NAME>` が `BAJUTSU_` で始まる場合は警告を出して無視するので、この仕組みで
+Bajutsu 自身の変数を設定したり上書きしたりできません。`fault-injection`
 ジョブと `visual` ジョブは、この仕組みで `PERFC_LOG_REPORTS_TO_STDERR=1` を設定します。この設定により、
 Thread Performance Checker は優先度逆転のレポートを、捕捉したランナーログへ出力します。後続のステップが
 レポートの件数をジョブのサマリーに書きますが、ジョブを失敗させることはありません

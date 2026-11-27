@@ -530,8 +530,9 @@ ride there.
     163 MB for a single spawn. The targeted extracts below exist to replace that whole-archive
     collection.
   - A host variable named `BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_<NAME>` reaches the runner process
-    as `<NAME>`, since `xcodebuild` does not pass its own environment through. The variable never
-    overrides a value Bajutsu sets itself. The `fault-injection` and `visual` jobs use it to set
+    as `<NAME>`, since `xcodebuild` does not pass its own environment through. A `<NAME>` in the
+    `BAJUTSU_` namespace is ignored with a warning, so the passthrough cannot set or override any of
+    Bajutsu's own variables. The `fault-injection` and `visual` jobs use it to set
     `PERFC_LOG_REPORTS_TO_STDERR=1`. That switch makes Thread Performance Checker print its
     priority-inversion reports into the captured runner log. A follow-up step counts any report into
     the job summary and never fails the job
