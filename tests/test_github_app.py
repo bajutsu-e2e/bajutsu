@@ -16,7 +16,12 @@ from cryptography.hazmat.primitives.asymmetric import ed25519, padding, rsa
 
 from bajutsu.common.config_source import GitConfigSpec
 from bajutsu.common.github import GitHubAccessError
-from bajutsu.common.github.app import _app_jwt, _fetch, installation_token
+from bajutsu.common.github.app import (
+    _app_jwt,
+    _fetch,
+    installation_token,
+    repository_installation_token,
+)
 
 _SPEC = GitConfigSpec("github.com", "acme", "repo", None, None)
 
@@ -100,6 +105,22 @@ def test_installation_token_skips_the_lookup_when_pinned() -> None:
     tok = installation_token("12345", _rsa_pem(), _SPEC, installation_id="42", fetch=fake_fetch)
     assert tok == "ghs_pinned"
     assert calls == [("https://api.github.com/app/installations/42/access_tokens", "POST")]
+
+
+def test_a_repository_token_resolves_that_repositorys_installation() -> None:
+    seen: list[str] = []
+
+    def fake_fetch(url: str, jwt: str, method: str) -> bytes:
+        seen.append(f"{method} {url}")
+        return json.dumps({"id": 7, "token": "ghs_x"}).encode()
+
+    tok = repository_installation_token("12345", _rsa_pem(), "acme/app", fetch=fake_fetch)
+
+    assert tok == "ghs_x"
+    assert seen == [
+        "GET https://api.github.com/repos/acme/app/installation",
+        "POST https://api.github.com/app/installations/7/access_tokens",
+    ]
 
 
 def test_installation_token_maps_a_malformed_body() -> None:

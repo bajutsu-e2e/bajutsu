@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from _shared import FakeObjectStore, project
 
 from bajutsu.serve import operations as ops
@@ -114,6 +115,48 @@ def test_resolve_pick_label_fallback(tmp_path: Path) -> None:
     assert status == 200
     assert payload["selector"]["label"] == "Continue"
     assert payload["rung"] == "label"
+
+
+@pytest.mark.parametrize(
+    ("body", "status", "needle"),
+    [
+        ({"runId": "run1", "stepId": "00-s/step0", "point": [0.5, 0.5]}, 400, "target"),
+        (
+            {"target": "demo", "runId": "run1", "stepId": "00-s/step0", "point": ["x", 0]},
+            400,
+            "point",
+        ),
+        (
+            {"target": "nope", "runId": "run1", "stepId": "00-s/step0", "point": [0.5, 0.5]},
+            400,
+            "nope",
+        ),
+    ],
+    ids=["no target", "point not numeric", "unknown target"],
+)
+def test_resolve_pick_refuses_a_malformed_request(
+    tmp_path: Path, body: dict[str, object], status: int, needle: str
+) -> None:
+    state, _runs = _state(tmp_path)
+
+    payload, got = ops.resolve_scenario_pick(state, body)
+
+    assert got == status
+    assert needle in payload["error"]
+
+
+def test_resolve_pick_refuses_elements_that_are_not_a_list(tmp_path: Path) -> None:
+    state, runs = _state(tmp_path)
+    step_dir = runs / "run1" / "00-s" / "step0"
+    step_dir.mkdir(parents=True)
+    (step_dir / "elements.json").write_text(json.dumps({"not": "a list"}), encoding="utf-8")
+
+    payload, status = ops.resolve_scenario_pick(
+        state, {"target": "demo", "runId": "run1", "stepId": "00-s/step0", "point": [0.5, 0.5]}
+    )
+
+    assert status == 400
+    assert "not a valid element list" in payload["error"]
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,7 @@ import os
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from bajutsu.common.config_source import _bajutsu_cache_root
 from bajutsu.common.run_meta.object_store import EvidenceTarget
@@ -91,6 +91,9 @@ from bajutsu.serve.state import (
     SessionManager,
     StoreBundle,
 )
+
+if TYPE_CHECKING:
+    from bajutsu.serve.group_notify import GroupSink
 
 __all__ = [
     "JOB_KINDS",
@@ -832,6 +835,7 @@ def serve(
     config_provenance: dict[str, str] | None = None,
     themes_dir: Path | None = None,
     default_theme: str | None = None,
+    group_sinks: dict[str, GroupSink] | None = None,
 ) -> None:
     state = _build_state(
         runs_dir=runs_dir,
@@ -872,6 +876,12 @@ def serve(
     # configuration its org last bound on that session's first request. Nothing runs here: the seam
     # fires on a slot miss, and stays inert on a deployment with no database to remember into.
     state.restore_binding = partial(restore_org_binding, state)
+    # Deliver group events to the operator's sinks (BE-0500), after the verdict and apart from it.
+    if group_sinks:
+        from bajutsu.serve.group_notify.runtime import start_group_notify
+
+        state.group_sinks = group_sinks
+        start_group_notify(state, os.environ)
     hint = str(config) if config else "open a config.yml in the UI"
     if not gate.allowed_hosts(host):
         # A wildcard bind can't enumerate its reachable hostnames, so the Host allowlist is off

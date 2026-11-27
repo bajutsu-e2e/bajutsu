@@ -11,6 +11,7 @@ from ._shared import _JSON as _JSON
 from .api_key import ApiKey
 from .audit_log import AuditLog
 from .base import Base
+from .group_event import GroupEvent
 from .job_group import JobGroup
 from .job_record import JobRecord
 from .oidc_jti import OidcJti
@@ -27,6 +28,7 @@ __all__ = [
     "ApiKey",
     "AuditLog",
     "Base",
+    "GroupEvent",
     "JobGroup",
     "JobRecord",
     "OidcJti",

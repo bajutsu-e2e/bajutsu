@@ -41,6 +41,16 @@ def render_metrics(state: ServeState) -> tuple[str, int]:
         state.max_concurrent,
     )
 
+    from bajutsu.serve.group_notify.delivery import ABANDONED
+
+    lines.append(
+        "# HELP bajutsu_group_events_abandoned_total Group events given up on, by sink format"
+        " (BE-0500); unknown is a sink no definition on this process names."
+    )
+    lines.append("# TYPE bajutsu_group_events_abandoned_total counter")
+    for fmt, count in sorted(ABANDONED.items()):
+        lines.append(f'bajutsu_group_events_abandoned_total{{format="{_escape(fmt)}"}} {count}')
+
     if state.repository is not None:
         snap = state.repository.metrics_snapshot()
         _gauge(

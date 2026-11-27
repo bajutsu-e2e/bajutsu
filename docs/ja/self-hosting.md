@@ -1108,6 +1108,101 @@ org を退役させたときも、その org のマシンセッションは終�
 列挙したリポジトリを改名、移管、削除したら、エントリを消したうえで、すでに発行されたセッションも失効させて
 ください。
 
+### run-set を GitHub の check run として公開する（任意、BE-0500）
+
+GitHub Actions のジョブは、`run-set` のグループを登録したらすぐに終われます。グループの結果は、`serve` が
+1つの check run としてプルリクエストに書き込みます。check の名前は、デフォルトでは `bajutsu / <target>` です。
+check は、グループの進行に合わせて queued、in progress、結論の順に変わります。この機能がなければ、ジョブは
+グループの結論が出るまで `GET /api/run-set/<groupId>` をポーリングし続けます。そのあいだ、runner は何も
+せずに待ちます。
+
+この機能には、次の3つの前提が要ります。
+
+- CI のジョブが OpenID Connect（OIDC）トークンで認証していること（前の節を参照してください）。check は、
+  マシンセッションが検証したリポジトリにだけ書き込まれます。
+- **Checks: write** の権限を持つ GitHub App を、公開先の各リポジトリにインストールしてあること。
+- App の資格情報を `serve` の環境に設定してあること。Git の config ソースが読む変数と同じものです
+  （[GitHub App](#github-app)）。`githubapp` extra も必要です。check は App のインストールを
+  リポジトリから解決し、`BAJUTSU_GITHUB_APP_INSTALLATION_ID` は使いません。
+
+**送信先（sink）を定義します。** sink は、リクエストが選ぶ名前付きの送信先です。`format` には、その sink
+へ配信するアダプタの名前を書きます。sink は、どの組織の config にも属さないファイルに書きます。
+
+```yaml
+groupNotify:
+  - name: github
+    format: github-check
+    checkName: "bajutsu / {target}"   # 省略可。{target} はグループの target に展開される
+```
+
+**このファイルを渡して `serve` を起動します。** パスは `--group-notify-config` で渡します。
+`BAJUTSU_GROUP_NOTIFY_CONFIG` でも渡せます。次の場合、`serve` は終了コード 2 で起動を拒否します。
+
+- ファイルを読めないとき、または sink のファイルとして正しい形をしていないとき。
+- `github-check` 以外の format を指定した sink があるとき。メッセージは、その sink の名前を示します。
+- 同じ名前の sink が2つあるとき。
+- `github-check` の sink があるのに、`BAJUTSU_GITHUB_APP_ID` か秘密鍵が設定されていないとき。
+- `BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE` が読めるファイルを指していないとき。
+
+**リクエストで sink を選びます。** ワークフローは、`POST /api/run-set` に `notify` のリストを加えます。
+選択には sink の名前を書き、URL は書きません。そのため、オペレータが定義していない宛先へ、リクエストが
+`serve` に通信させることはできません。`github-check` の選択には、check を付けるコミットを `headSha` で
+指定します。
+
+```yaml
+      - name: Dispatch the scenarios and let serve report the result
+        run: |
+          curl -sSf -b cookies.txt -X POST "$BAJUTSU_URL/api/run-set" \
+            -H 'Content-Type: application/json' \
+            -d "{\"target\": \"demo\", \"groupKey\": \"gha/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT\",
+                 \"notify\": [{\"sink\": \"github\", \"headSha\": \"$HEAD_SHA\"}]}"
+        env:
+          BAJUTSU_URL: https://bajutsu.example.com
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+```
+
+`GITHUB_SHA` ではなく `github.event.pull_request.head.sha` を渡します。`pull_request` イベントの
+`GITHUB_SHA` は、GitHub がその実行のために作るマージコミットを指します。そのコミットに付けた check run は、
+プルリクエストに表示されません。
+
+**結果を確かめます。** プルリクエストの checks 一覧に、`bajutsu / demo` が queued として表示されます。
+ワーカーがグループの最初のジョブをリースすると、check は in progress に変わります。最後は、グループの
+`conclusion`（`success`、`failure`、`cancelled` のいずれか）で終わります。タイトルには、
+`3 of 40 scenarios did not pass` のように、通らなかったシナリオの数が入ります。要約には、通らなかった
+シナリオを1件ずつ載せます。
+
+| 結果 | 条件 | 表示する理由 |
+|---|---|---|
+| failed | ジョブが終了コード 1 で `done` になった | run のマニフェストにある最初の失敗の行 |
+| error | ジョブがそれ以外の終了コードで `done` になった | 終了コードとその意味（使い方の誤り（2）など） |
+| worker lost | 最後の試行でジョブのリースが期限切れになった | 試行回数 |
+| worker error | ワーカーがエラーを報告した | エラーの最初の行 |
+| cancelled | `failFast` 以外の理由でジョブが取り消されて終わった | なし |
+| skipped | グループの `failFast` による停止がジョブを取り消した | なし |
+
+理由はどれも、ワーカーやシナリオが報告した文字列です。そのため、アダプタはすべての理由をエスケープします。
+報告されたエラーが表の行を分けたり、Markdown として描画されたりすることはありません。要約は、GitHub の
+上限である 65,535 文字の手前で打ち切り、載せなかった行の数を示します。
+
+**再実行は、前の check を引き継ぎます。** ワークフローを再実行すると、新しいグループが登録されます。
+`GITHUB_RUN_ATTEMPT` がグループキーを変えるためです。新しいグループは、前の試行が終えた check run を
+引き継ぎます。2つ目の check が隣に増えることはありません。
+
+**配信は判定に影響しません。** 各イベントは、そのイベントを起こしたストアのトランザクションの中で記録されます。
+そのため、`serve` が再起動してもイベントは失われません。`serve` 上のループは、グループの判定が出たあとに、
+イベントを順番どおりに配信します。配信に失敗すると、15 秒から 15 分まで伸びる間隔を置いて再試行します。
+8 回試して約 30 分たつと、`serve` はそのイベントの配信を諦めます。ログの `group_event.abandoned` がその
+イベントを記録し、メトリクスの `bajutsu_group_events_abandoned_total` が数えます。グループ、ジョブ、run は
+変わりません。
+
+2つのレプリカが同じイベントを同時に確保することがあります。その場合は、どちらも確保を手放し、イベントは
+次以降の周回で配信されます。手放しても試行回数には数えないので、衝突を繰り返すレプリカの組が残す痕跡は、
+ログの `group_event.contended` だけです。
+
+**新しい sink は 46 分以内に展開します。** レプリカが受け持つのは、自分のファイルが定義する sink の
+イベントだけです。そのレプリカのファイルが定義していない sink のイベントは、発生から約 46 分たつと破棄されます。
+すべてのレプリカの sink ファイルを、その時間内に更新してください。
+
 ### スクリプト向けの API キー
 
 この節は任意です。開発者の手元で動くスクリプトは、ブラウザでサインインできず、CI プラットフォームのトークンも
@@ -1805,7 +1900,8 @@ Web UI のヘッダーは、読み取り専用の org バッジの代わりに�
 ```
 
 `event` フィールドは安定したイベント名（`run.dispatched`、`quota.rejected`、`worker.job.started`、
-`worker.job.finished`、`artifact.upload.failed`、`server.startup_warning`、`oauth.login`、
+`worker.job.finished`、`artifact.upload.failed`、`group_event.retry`、`group_event.abandoned`、
+`server.startup_warning`、`oauth.login`、
 `oauth.denied` など）を示すので、これを対象に grep やアラートを設定できます。
 
 `server.startup_warning` は、自由文の `msg` とは別に、どの起動時条件が発火したかを示す `check` フィールド
@@ -1849,6 +1945,7 @@ org が消費しているか、run がふだんより長引いていないか、
 | `bajutsu_oldest_in_flight_seconds` | gauge | 実行中でもっとも古い job がキューに投入されてからの経過秒（キューでの待機時間を含みます）。run が遅い、または詰まっている兆候です。 |
 | `bajutsu_unroutable_jobs` | gauge | 稼働中のどのワーカーも実行できないキュー中の job。必要な capability がどのワーカーの広告集合にも一致しません（[能力に基づくルーティング](#能力に基づくキューの振り分けbe-0166)）。増え続けるときは「不足している capability を持つワーカーを足す」合図です。 |
 | `bajutsu_max_concurrent` | gauge | 同時実行 job 数の上限（0 は無制限）。 |
+| `bajutsu_group_events_abandoned_total{format}` | counter | このプロセスが配信を諦めたグループイベントの数を、sink の format ごとに数えます（[GitHub の check run](#run-set-を-github-の-check-run-として公開する任意be-0500)）。`unknown` は、このプロセスのどのファイルも定義していない sink のイベントです。 |
 
 `/metrics` は公開の面ではありません。serve の他の面と同じ認証ゲート（BE-0051）の背後に置かれるので、
 トークンを設定していればスクレイパは `Authorization: Bearer <token>` を送る必要があります。出力に含まれるのは

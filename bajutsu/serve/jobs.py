@@ -665,7 +665,7 @@ def persist_run(
         # Read + parse the manifest once and feed both the summary and the provenance stamp: a hosted
         # `open_bytes` can be an object-storage round trip, so a second read per run would double the
         # cost `_run_summary` was written to avoid.
-        manifest = _read_manifest(state, run_id, org)
+        manifest = read_run_manifest(state, run_id, org)
         record_run_row(
             state.repository,
             run_id=run_id,
@@ -789,7 +789,7 @@ def index_run_trees(state: ServeState, org: str = DEFAULT_ORG) -> int:
                 continue
             if repo.get_run(run_id) is not None:
                 continue
-            manifest = _read_manifest(state, run_id, org)
+            manifest = read_run_manifest(state, run_id, org)
             if manifest is None:
                 logger.debug("not indexing %s: no readable manifest.json", run_id)
                 continue
@@ -826,7 +826,7 @@ def _run_str(manifest: dict[str, Any] | None, key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def _read_manifest(state: ServeState, run_id: str, org: str) -> dict[str, Any] | None:
+def read_run_manifest(state: ServeState, run_id: str, org: str) -> dict[str, Any] | None:
     """Parse a run's `manifest.json` once, or None if it's missing, unreadable, or not a JSON object
     (a corrupted/partial write left a bare list/string/`null`). `persist_run` reads it a single time
     and hands the parsed value to both the summary and the provenance stamp, since a hosted

@@ -2130,6 +2130,41 @@ def test_serve_refuses_non_loopback_without_token() -> None:
     assert "without a token" in r.output
 
 
+def test_serve_loads_the_group_notify_sinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.serve as srv
+
+    sinks = tmp_path / "sinks.yaml"
+    sinks.write_text("groupNotify:\n  - name: github\n    format: github-check\n", "utf-8")
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "1")
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", "pem")
+    monkeypatch.setattr("bajutsu.common.github.app.check_app_key", lambda *_a: None)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
+
+    r = invoke(runner, app, ["serve", "--group-notify-config", str(sinks)])
+
+    assert r.exit_code == 0, r.output
+    assert list(captured["group_sinks"]) == ["github"]  # type: ignore[call-overload]
+
+
+def test_serve_refuses_a_group_notify_file_it_cannot_honour(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.serve as srv
+
+    sinks = tmp_path / "sinks.yaml"
+    sinks.write_text("groupNotify:\n  - name: hook\n    format: webhook\n", "utf-8")
+    monkeypatch.setenv("BAJUTSU_GROUP_NOTIFY_CONFIG", str(sinks))
+    monkeypatch.setattr(srv, "serve", lambda **kw: pytest.fail("serve must not start"))
+
+    r = invoke(runner, app, ["serve"])
+
+    assert r.exit_code == 2
+    assert "hook" in r.output and "webhook" in r.output
+
+
 def test_serve_emit_launchagent_prints_plist_and_exits() -> None:
     # --emit-launchagent prints a plist and exits 0 without binding a server (BE-0016 Tier A).
     r = invoke(runner, app, ["serve", "--emit-launchagent", "--config", "bajutsu.config.yaml"])
