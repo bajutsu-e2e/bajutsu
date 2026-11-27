@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0513") |
+| Implementing PR | [#2590](https://github.com/bajutsu-e2e/bajutsu/pull/2590) |
 | Topic | Scenario authoring features |
 | Related | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md) |
 <!-- /BE-METADATA -->
@@ -249,7 +250,7 @@ the same `hooks`. The fields name no particular app, so per-app choices stay in 
 
 Log:
 
-- PR_LINK: all 13 units landed together. The run fixes each target's platform and route, and a
+- [#2590](https://github.com/bajutsu-e2e/bajutsu/pull/2590): all 13 units landed together. The run fixes each target's platform and route, and a
   snapshot of the environment, once before its first hook. Command hooks, setup blocks, cleanup
   rules, the preflight, and the report all decide a condition from those facts. `serve` routing
   and target lint decide with the environment unknown, so a block gated on `env` keeps its needs.

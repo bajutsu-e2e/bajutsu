@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0513") |
+| 実装 PR | [#2590](https://github.com/bajutsu-e2e/bajutsu/pull/2590) |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs-ja.md)、[BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md)、[BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups-ja.md)、[BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)、[BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md)、[BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy-ja.md)、[BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks-ja.md)、[BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md) |
 <!-- /BE-METADATA -->
@@ -245,7 +246,7 @@ route はワーカーによって変わりません。`serve` はジョブを振
 
 ログは次のとおりです。
 
-PR_LINK で 13 の単位をまとめて実装しました。run は、最初の hook の前に、各ターゲットのプラットフォームと route、環境のスナップショットを 1 回だけ確定します。コマンドの hook、setup ブロック、cleanup ルール、事前検査、レポートは、どれもこの事実で条件を判定します。`serve` のルーティングとターゲットの lint は環境を不明として判定するので、`env` で絞ったブロックは必要な能力を残します。
+[#2590](https://github.com/bajutsu-e2e/bajutsu/pull/2590) で 13 の単位をまとめて実装しました。run は、最初の hook の前に、各ターゲットのプラットフォームと route、環境のスナップショットを 1 回だけ確定します。コマンドの hook、setup ブロック、cleanup ルール、事前検査、レポートは、どれもこの事実で条件を判定します。`serve` のルーティングとターゲットの lint は環境を不明として判定するので、`env` で絞ったブロックは必要な能力を残します。
 
 ## 参考
 
