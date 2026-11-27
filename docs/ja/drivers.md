@@ -626,6 +626,7 @@ Compose は、新しいカウントを映す `Text` が再コンポーズされ�
 **デバイスは、settle が閉じたかどうかを伝えます**（[BE-0505](../../roadmaps/BE-0505-adb-read-lag-attempt-bound/BE-0505-adb-read-lag-attempt-bound-ja.md)）。
 ダンプ回数の上限や待ち時間の予算を使い切ると、settle は閉じないまま終わることがあります。
 閉じないと扱うのは、直近 2 回のダンプがノードの有無と位置でも一致しない場合です。
+比べる 2 回目のダンプがない場合や、ダンプを解析できない場合も、閉じないと扱います。
 
 常駐サーバーは、`X-Bajutsu-Settled` ヘッダを `true` か `false` で付けます。
 対象は、`GET /source` と確認の取れた `POST /act` の応答です。

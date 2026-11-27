@@ -787,6 +787,7 @@ is not.
 **The device says whether its settle closed** ([BE-0505](../roadmaps/BE-0505-adb-read-lag-attempt-bound/BE-0505-adb-read-lag-attempt-bound.md)).
 The settle can run out of its dump cap or wait budget.
 It ends unclosed if its last two dumps then disagree on which nodes exist and where.
+It also ends unclosed without a second dump to compare, or on a dump that does not parse.
 
 - The resident server stamps the `X-Bajutsu-Settled` header, `true` or `false`.
   Both `GET /source` and a confirmed `POST /act` carry it.
