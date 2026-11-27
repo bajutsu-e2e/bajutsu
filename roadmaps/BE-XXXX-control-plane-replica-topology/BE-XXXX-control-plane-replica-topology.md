@@ -1,14 +1,14 @@
-**English** · [日本語](BE-0519-control-plane-replica-topology-ja.md)
+**English** · [日本語](BE-XXXX-control-plane-replica-topology-ja.md)
 
-# BE-0519 — Control-plane replicas behind a load balancer
+# BE-XXXX — Control-plane replicas behind a load balancer
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-0519](BE-0519-control-plane-replica-topology.md) |
+| Proposal | [BE-XXXX](BE-XXXX-control-plane-replica-topology.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0519") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | Topic | Hosting the web UI |
 | Related | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) |
 | Origin | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) |

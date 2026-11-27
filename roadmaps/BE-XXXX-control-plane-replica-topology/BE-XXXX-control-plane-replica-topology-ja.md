@@ -1,14 +1,14 @@
-[English](BE-0519-control-plane-replica-topology.md) · **日本語**
+[English](BE-XXXX-control-plane-replica-topology.md) · **日本語**
 
-# BE-0519 — ロードバランサ配下で動く制御プレーンのレプリカ
+# BE-XXXX — ロードバランサ配下で動く制御プレーンのレプリカ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-0519](BE-0519-control-plane-replica-topology-ja.md) |
+| 提案 | [BE-XXXX](BE-XXXX-control-plane-replica-topology-ja.md) |
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0519") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md) |
 | 由来 | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md) |
