@@ -2107,7 +2107,9 @@ def _hooks_for(
     is appended to *skipped*.
 
     A scenario with `preconditions.inheritSetup: false` folds in no target's setup (BE-0452); the
-    targets' cleanup still runs, since cleanup runs on every path out of a scenario.
+    targets' cleanup still runs, since cleanup runs on every path out of a scenario. A rule a
+    `hooks` component added beside its own preparation is the exception: it tears down what that
+    skipped preparation would have made (BE-0512).
     """
     inherit = s.preconditions.inherit_setup
     owners = s.target_names or [eff.target]
@@ -2136,6 +2138,7 @@ def _hooks_for(
             context,
             where=f"{where}.cleanup",
             skipped=skipped,
+            inherit_setup=inherit,
         )
         cleanup += (
             [

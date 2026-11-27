@@ -388,6 +388,7 @@ def _decided_body(
     Not the scenario's own `hooks`: a token in a command is refused outright (BE-0501), so the
     reader is told to use the variable instead, whatever the condition.
     """
+    from bajutsu.common.runner.conditions import inherited_cleanup
 
     def runs(when: HookWhen | None, names: Sequence[str]) -> bool:
         return when is None or judge(when, names) is True
@@ -418,7 +419,12 @@ def _decided_body(
             ),
             *(
                 inner
-                for rule in cleanup(effs[name].run_defaults.cleanup, [name])
+                for rule in cleanup(
+                    inherited_cleanup(
+                        effs[name].run_defaults.cleanup, s.preconditions.inherit_setup
+                    ),
+                    [name],
+                )
                 for inner in rule.steps
             ),
         )

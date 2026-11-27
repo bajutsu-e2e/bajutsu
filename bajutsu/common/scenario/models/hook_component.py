@@ -102,6 +102,8 @@ class HookUse(_Model):
     # `<as>.<name>`. With `hook`, it is also what identifies an application when the `use` lists of
     # `defaults`, templates, and the target join.
     as_: str | None = Field(default=None, alias="as")
+    # Runs every command and step the component adds only where the condition holds; a command
+    # entry's own `when` must hold as well.
     when: HookWhen | None = None
 
     @model_validator(mode="after")
@@ -110,11 +112,10 @@ class HookUse(_Model):
             raise ValueError("a hooks.use entry's `hook` cannot be empty")
         if self.as_ is not None and (why := invalid_hook_name(self.as_)) is not None:
             raise ValueError(f"a hooks.use entry's `as` {why}")
-        if "when" in self.model_fields_set:
-            # TODO(BE-0512): unit 4 gives an application its own tag condition; until then a `when`
-            # here would be read by nothing, and the component would run for every scenario.
+        if "when" in self.model_fields_set and self.when is None:
+            # `when:` with its body commented out would otherwise widen the component to every
+            # scenario, as a command entry's `when` refuses.
             raise ValueError(
-                "a hooks.use entry cannot set `when` yet; put the condition on the component's "
-                "command entries instead"
+                "a hooks.use entry's `when` cannot be null; leave it out to always run"
             )
         return self
