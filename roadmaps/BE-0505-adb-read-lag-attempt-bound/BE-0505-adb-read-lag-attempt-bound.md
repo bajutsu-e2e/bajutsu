@@ -113,7 +113,9 @@ SystemUI's decor nodes from its comparison. The body it returns still carries ea
 dumped hierarchy. That hierarchy carries the status bar's clock and icons. A minute tick could thus
 exhaust the dump cap on a quiet app screen. The narrowing stays in the comparison for a reason. The
 driver reads the heads-up banner off that decor before it strips the decor out. A device dropping it
-from the wire would leave the notification-banner guard with nothing to read. The device narrows its
+from the wire would leave the notification-banner guard with nothing to read. The comparison keeps the
+place of the banner's two nodes for the same guard. An exit counts as closed when the last two dumps
+agree on node identity and bounds. Text that keeps changing is thus not unsettled. The device narrows its
 own comparison that way for `/act`. The `/act` reply carries the header too. The tree a confirmed
 gesture brings back goes through the same helper under a tighter budget. `HierarchyRead` holds the
 answer once for both paths. The header is additive. An older server sends none, and the driver reads a missing header
@@ -157,7 +159,7 @@ its first read plus four more, so 17.5 seconds. The recovery pays both three tim
 seconds for a step whose recovery runs to its end. The same path costs about 75 seconds today.
 `smoke (adb)` allows 40 minutes for a run that passes in 25 to 29, and `pool (adb)` allows 60
 minutes. A minute and a half on a rare step thus stays well inside both. A screen whose nodes never
-stop moving costs more: each bare read there takes up to four requests.
+stop moving costs more: each bare read there costs up to four requests.
 
 Unit 6 keeps `read_lag()` seconds-valued for its two orchestrator consumers. Those consumers are the
 `scroll` loop and the `extract` poll. Both loops still bound a read count by the driver's clock.

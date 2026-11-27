@@ -1308,7 +1308,7 @@ class ResidentServerTest {
                 // A byte-identical dump can only describe the same nodes, so a quiet screen is parsed once.
                 seen?.takeIf { it.xml.contentEquals(xml) } ?: Dump(xml, describe(xml)).also { seen = it }
             },
-            sameAs = { a, b -> a === b || (a.nodes != null && a.nodes.full == b.nodes?.full) },
+            sameAs = { a, b -> a.nodes != null && (a === b || a.nodes.full == b.nodes?.full) },
             steady = { a, b -> a.nodes != null && a.nodes.places == b.nodes?.places },
         )
         return Settle(settled.value.xml, settled.closed)

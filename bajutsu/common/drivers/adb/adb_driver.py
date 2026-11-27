@@ -667,7 +667,8 @@ class AdbDriver(CoordinateTreeDriver):
         proves only that two of its dumps agreed, which a fling can do between two publishes — so
         treating it as proof of rest would let `_settle` take its fast path and perform no confirming
         read at all, on a screen that may still be animating. (A tree the device says it could not
-        settle is not adopted at all.) That is the same trap `_advance_catchup` refuses when a barrier closes on a device mark, and
+        settle is not adopted at all.)
+        That is the same trap `_advance_catchup` refuses when a barrier closes on a device mark, and
         the one `_SETTLE_DEADLINE_S` is wall-clock rather than count-based to avoid. The round trip
         is still saved: `_settle`'s poll consumes the seed as its first read instead of skipping the
         poll.

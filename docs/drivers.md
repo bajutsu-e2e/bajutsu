@@ -785,11 +785,13 @@ is not.
   A static target still settles in two dumps.
 
 **The device says whether its settle closed** ([BE-0505](../roadmaps/BE-0505-adb-read-lag-attempt-bound/BE-0505-adb-read-lag-attempt-bound.md)).
-The settle ends unclosed when it reaches its dump cap or its wait budget.
+The settle can run out of its dump cap or wait budget.
+It ends unclosed if its last two dumps then disagree on which nodes exist and where.
 
 - The resident server stamps the `X-Bajutsu-Settled` header, `true` or `false`.
   Both `GET /source` and a confirmed `POST /act` carry it.
-- The settle behind that header leaves SystemUI out of its comparison, except the heads-up banner's place.
+- The settle behind that header leaves SystemUI out of its comparison.
+  The heads-up banner's place is the one exception.
   The status bar's clock thus cannot hold it open. The body still carries the SystemUI nodes.
 - Settled means that two dumps agree on which nodes exist and where.
   Text that never stops changing, such as a running timer, does not make a tree unsettled.
