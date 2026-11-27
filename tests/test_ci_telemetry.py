@@ -431,6 +431,40 @@ def test_fetch_joins_records_with_the_api(tmp_path: Path) -> None:
     assert (out / "manifests" / "11-r1-20260101-000000" / "manifest.json").is_file()
 
 
+@pytest.mark.parametrize(
+    ("stderr", "log", "calls"),
+    [
+        # A `gh` that refuses escape sequences is asked again with the flag it names.
+        ("pass --allow-escape-sequences to output it anyway", "colored log", 2),
+        # Any other failure (expired logs) stays unknown, without a flag an older `gh` rejects.
+        ("HTTP 410: Gone", None, 1),
+    ],
+)
+def test_job_log_retries_only_on_the_escape_refusal(
+    stderr: str, log: str | None, calls: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: list[list[str]] = []
+
+    def gh(args: Sequence[str]) -> str:
+        seen.append(list(args))
+        if "--allow-escape-sequences" not in args:
+            raise subprocess.CalledProcessError(1, "gh", stderr=stderr)
+        return "colored log"
+
+    assert ct._job_log(gh, "o/r", 7) == log
+    assert len(seen) == calls
+    assert ("job 7: log unreadable" in capsys.readouterr().err) == (log is None)
+
+
+def test_timed_out_reads_annotations_that_hold_escapes() -> None:
+    def gh(args: Sequence[str]) -> str:
+        if "--allow-escape-sequences" not in args:
+            raise subprocess.CalledProcessError(1, "gh", stderr="pass --allow-escape-sequences")
+        return "The job has exceeded the maximum execution time of 60 minutes.\n"
+
+    assert ct._timed_out(gh, "o/r", 7)
+
+
 def test_aggregate_and_render(tmp_path: Path) -> None:
     red = {
         "api": {
