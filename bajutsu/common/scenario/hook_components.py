@@ -172,7 +172,9 @@ def _aliased(step: Step, alias: str, declared: set[str]) -> Step:
             return [rewrite(v) for v in value]
         return value
 
-    dumped = step.model_dump(by_alias=True, exclude_none=True)
+    # Only what the author wrote, as `_steps` dumps: a dumped default reads as set, and a validator
+    # that looks at the set fields (a visual check's `compare: exact`) would refuse it.
+    dumped = _dump(step)
     out = rewrite(dumped)
     return step if out == dumped else Step.model_validate(out)
 
