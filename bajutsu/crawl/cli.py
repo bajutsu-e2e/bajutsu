@@ -337,6 +337,8 @@ def _execute(plan: _CrawlPlan, guide: crawl_engine.Guide, report: Report) -> cra
         runs_dir=runs_root(),
         run_dir=runs_root() / hook_run_id,
         teardown_at_exit=True,
+        actuator=plan.actuator,
+        udid_spec=plan.udids[0] if plan.udids else "booted",
     )
 
     workers = len(plan.udids)  # one lane per resolved udid (the pool is already capped)

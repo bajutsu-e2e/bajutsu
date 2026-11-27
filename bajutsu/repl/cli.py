@@ -182,6 +182,8 @@ def repl(
         runs_dir=runs_root(),
         run_dir=runs_root() / hook_run_id,
         teardown_at_exit=True,
+        actuator=actuator,
+        udid_spec=udid,
     )
 
     # Unlike `record` / `crawl`, which keep stdout for their one final result line and narrate

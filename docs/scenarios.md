@@ -967,6 +967,61 @@ removed the `setup` prelude file, at the target level and as `preconditions.setu
 scenario that must not run its targets' setup sets `preconditions.inheritSetup: false`. Their
 `hooks.cleanup` still runs, since cleanup runs on every path out of a scenario.
 
+### Conditional setup blocks and cleanup rules
+
+Some preparation belongs to one platform, one route, or one environment. One scenario file may run
+under `--target ios` and under `--target android`. Each run then needs its own first screen
+dismissed. A `setup` list accepts a conditional block beside ordinary steps for this case. A
+`cleanup` rule accepts `when` beside `on`
+([BE-0513](../roadmaps/BE-0513-declarative-hook-conditions/BE-0513-declarative-hook-conditions.md)):
+
+```yaml
+setup:
+  - when: { platforms: [ios] }
+    steps:
+      - tap: { id: onboarding.skip }
+  - tap: { id: tab.home }
+cleanup:
+  - on: always
+    when: { platforms: [android] }
+    steps:
+      - tap: { id: debug.reset }
+```
+
+The `when` block takes the six fields of an external command's `when`
+([configuration](configuration.md#running-an-entry-for-some-scenarios-when-be-0497)). Both forms
+work in a scenario and in `targets.<name>.hooks.setup` / `hooks.cleanup`. The judged target follows
+the place of the block:
+
+| Where the block or rule sits | Judged target |
+|---|---|
+| a block that names `target` | that target |
+| `targets.<name>.hooks` | `<name>`, the owner |
+| the scenario itself | any target the scenario drives |
+
+A block resembles a [target group](#target-groups-naming-one-target-once-for-a-run-of-steps-be-0437), which names one `target` for its steps.
+A block may name `target` too. Without it, each of its steps follows the usual target rules. A block
+needs at least one step. A block stands at the top level of a `setup` list alone. It fails to load
+anywhere else:
+
+- inside another block or a target group
+- inside `steps`, `cleanup`, or an `interrupts` entry
+- inside an `if` or `forEach` step
+
+Bajutsu decides every block and rule before the scenario's first step. The condition reads the same
+facts as a hook command, never the screen. To branch on the screen, keep using an `if` step. A block
+that holds contributes its steps in place. Bajutsu drops a block or rule that does not hold. The
+report lists it under "conditional blocks" as `skipped (when)` with its condition.
+
+The load-time checks still apply to every block, even one whose condition does not hold. They cover
+components, `target` names, and the other rules for steps. Bajutsu does not link a variable saved
+inside a block to a later step that reads it. A later step that reads a value a skipped block would
+have saved fails when it runs.
+
+The capability preflight reads the steps that remain after the decision. A missing capability inside
+a skipped block never stops a run. `serve` routes a job by the same decision, with one difference.
+`serve` cannot see a worker's environment, so a block gated on `env` keeps its needs.
+
 ### When to reach for which
 
 Three fields sit near this ground, and each answers a different question:
@@ -990,6 +1045,9 @@ UI Automator wrap the test body in `try` / `catch` / `finally`, since an asserti
 throws, so the `catch` sees the very failure the verdict would have been. XCUITest registers a single
 `addTeardownBlock` instead, because `XCTAssert` records a failure rather than throwing, and reads the
 outcome from `testRun?.hasSucceeded` ([codegen](codegen.md)).
+
+`codegen` refuses a conditional setup block and a `cleanup` rule with `when`, as it refuses an `if`
+step. A block gated on `env` or a route has no run to decide it.
 
 ## `hooks` (external commands around one scenario)
 
@@ -1052,7 +1110,7 @@ apart.
 
 ### Data rows and `when`
 
-An entry's `when` names the tags it runs for
+An entry's `when` can name the tags it runs for
 ([configuration](configuration.md#running-an-entry-for-some-scenarios-when-be-0497)). Every data row
 shares the `hooks` block. A `${row.*}` token in `tags` then picks the rows that run a command:
 

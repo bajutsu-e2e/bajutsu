@@ -158,6 +158,11 @@ Playwright 出力先での座標スワイプ）は、失敗させずに `// TODO
 スタブを出す代わりに、3 つの出力先すべてが生成時に `CodegenError` を送出し、その構文を使うシナリオには
 `bajutsu run` を本来の実行経路として示します（BE-0297）。
 
+条件付きの `setup` ブロックと、`when` を持つ `cleanup` ルールも、同じ `CodegenError` を送出します
+（[BE-0513](../../roadmaps/BE-0513-declarative-hook-conditions/BE-0513-declarative-hook-conditions-ja.md)）。
+環境変数や route で絞ったブロックには、判定できる run がありません。ほかのフィールドを判定するには、run の
+ターゲットとプラットフォームの規則を `codegen` の中に持ち込む必要があります。
+
 ## web 向け Playwright の出力
 
 `--emit playwright` は、シナリオを **TypeScript の Playwright テスト**（`@playwright/test`）として描き出します。

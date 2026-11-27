@@ -83,6 +83,13 @@ from bajutsu.common.report import (
     write_report,
 )
 from bajutsu.common.run_identity.stamp import RunIdentity
+from bajutsu.common.runner.conditions import (
+    ConditionContext,
+    SkippedBlock,
+    condition_context,
+    decide_cleanup,
+    decide_setup,
+)
 from bajutsu.common.runner.hook_commands import (
     HookContext,
     HookOutputs,
@@ -549,8 +556,11 @@ class _ScenarioRunner:
         index = int(sid.split("-", 1)[0]) if sid.split("-", 1)[0].isdigit() else None
         driven = driven_targets(s, self.eff.target)
         first = driven[0]
+        # A scenario's own entry judges every target the scenario drives; a target's, its owner.
+        every = self.hooks.conditions.judged(driven)
         return lambda key: self.hooks.context(  # type: ignore[union-attr]
             first if key == SCENARIO_LEVEL else key,
+            **({"judged_targets": every} if key == SCENARIO_LEVEL else {}),
             # A scenario's own command reads the component outputs of every target it drives, which
             # the load already checked hold no name twice (BE-0512).
             targets=tuple(driven),
@@ -2076,7 +2086,11 @@ def _effs_of(targets: Mapping[str, TargetPool] | None) -> dict[str, Effective]:
 
 
 def _hooks_for(
-    s: Scenario, eff: Effective, target_effs: Mapping[str, Effective] | None
+    s: Scenario,
+    eff: Effective,
+    target_effs: Mapping[str, Effective] | None,
+    context: ConditionContext | None = None,
+    skipped: list[SkippedBlock] | None = None,
 ) -> tuple[list[Step], list[CleanupRule]]:
     """This scenario's folded-in config hooks: `(setup, cleanup)`, already target-stamped.
 
@@ -2088,22 +2102,49 @@ def _hooks_for(
     inside the rule rather than the rule itself, which carries no target of its own — so a hook is
     exactly as unambiguous about which target it acts on as an author-written step already has to be.
 
+    A target's conditional blocks and conditional cleanup rules are decided here, against that
+    target as their owner (BE-0513), before folding loses which target wrote them; what they drop
+    is appended to *skipped*.
+
     A scenario with `preconditions.inheritSetup: false` folds in no target's setup (BE-0452); the
     targets' cleanup still runs, since cleanup runs on every path out of a scenario.
     """
     inherit = s.preconditions.inherit_setup
-    if not s.targets:
-        return list(eff.run_defaults.setup) if inherit else [], list(eff.run_defaults.cleanup)
+    owners = s.target_names or [eff.target]
+    context = context or condition_context({**(target_effs or {}), eff.target: eff})
+    skipped = skipped if skipped is not None else []
     setup: list[Step] = []
     cleanup: list[CleanupRule] = []
-    for name in s.target_names:
-        target_eff = (target_effs or {}).get(name, eff)
+    for name in owners:
+        target_eff = (target_effs or {}).get(name, eff) if s.targets else eff
+        where = f"targets.{name}.hooks"
         if inherit:
-            setup += [_stamped(h, name) for h in target_eff.run_defaults.setup]
-        cleanup += [
-            rule.model_copy(update={"steps": [_stamped(h, name) for h in rule.steps]})
-            for rule in target_eff.run_defaults.cleanup
-        ]
+            decided = decide_setup(
+                target_eff.run_defaults.setup,
+                [name],
+                s.tags,
+                context,
+                where=f"{where}.setup",
+                skipped=skipped,
+                stamp=_stamped,
+            )
+            setup += [_stamped(h, name) for h in decided] if s.targets else decided
+        rules = decide_cleanup(
+            target_eff.run_defaults.cleanup,
+            [name],
+            s.tags,
+            context,
+            where=f"{where}.cleanup",
+            skipped=skipped,
+        )
+        cleanup += (
+            [
+                rule.model_copy(update={"steps": [_stamped(h, name) for h in rule.steps]})
+                for rule in rules
+            ]
+            if s.targets
+            else rules
+        )
     return setup, cleanup
 
 
@@ -2135,12 +2176,40 @@ def _fill_target(step: Step, target: str) -> None:
         _fill_target(child, target)
 
 
+def run_conditions(
+    eff: Effective,
+    targets: Mapping[str, TargetPool] | None,
+    actuator: str | None,
+    udid_spec: str,
+    hooks: HookSession | None,
+) -> ConditionContext:
+    """The facts this run decides a `when` from (BE-0513): the hook session's, else the pools'.
+
+    The session's were fixed before the first hook, from the same actuator and device spec each
+    pool carries, so a setup block and a hook command never decide one condition two ways.
+    """
+    if hooks is not None:
+        return hooks.conditions
+    if targets:
+        return condition_context(
+            _effs_of(targets),
+            actuators={name: t.actuator for name, t in targets.items()},
+            udids={name: t.udid_spec for name, t in targets.items()},
+        )
+    return condition_context(
+        {eff.target: eff},
+        actuators={eff.target: actuator} if actuator is not None else None,
+        udids={eff.target: udid_spec},
+    )
+
+
 def with_lifecycle_phases(
     eff: Effective,
     scenarios: list[Scenario],
     target_effs: Mapping[str, Effective] | None = None,
     *,
     skip: Collection[int] = (),
+    conditions: ConditionContext | None = None,
 ) -> list[Scenario]:
     """Fold the target config's `hooks.setup` / `hooks.cleanup` into each scenario's own (BE-0392).
 
@@ -2163,16 +2232,37 @@ def with_lifecycle_phases(
         skip: Indices of scenarios that never run — the ones the worker capability check failed
             (BE-0450). Their targets were never resolved, so folding would read the primary's hooks
             under another target's name; they keep their own phases only.
+        conditions: The facts a conditional setup block or cleanup rule is decided from (BE-0513),
+            the run's own; None builds them from the targets' own config and this process's
+            environment, which is what a run with no `--backend` or `--udid` override decides.
+            Every block and rule is decided here, so no step after this one sees a block.
     """
+    context = conditions or condition_context({**(target_effs or {}), eff.target: eff})
+    skipped: list[list[SkippedBlock]] = [[] for _ in scenarios]
     hooks = [
-        ([], []) if i in skip else _hooks_for(s, eff, target_effs) for i, s in enumerate(scenarios)
+        ([], []) if i in skip else _hooks_for(s, eff, target_effs, context, skipped[i])
+        for i, s in enumerate(scenarios)
     ]
-    if not any(setup or cleanup for setup, cleanup in hooks):
+    conditional = any(step.when is not None for s in scenarios for step in s.setup) or any(
+        rule.when is not None for s in scenarios for rule in s.cleanup
+    )
+    folds = any(setup or cleanup for setup, cleanup in hooks)
+    if not conditional and not folds and not any(skipped):
         return scenarios  # nothing app-wide to fold in; keep the caller's own objects
-    folded = [
-        s.model_copy(update={"setup": [*setup, *s.setup], "cleanup": [*s.cleanup, *cleanup]})
-        for s, (setup, cleanup) in zip(scenarios, hooks, strict=True)
-    ]
+    folded = []
+    for i, (s, (setup, cleanup)) in enumerate(zip(scenarios, hooks, strict=True)):
+        driven = driven_targets(s, eff.target)
+        own_setup = decide_setup(
+            s.setup, driven, s.tags, context, where="setup", skipped=skipped[i]
+        )
+        own_cleanup = decide_cleanup(
+            s.cleanup, driven, s.tags, context, where="cleanup", skipped=skipped[i]
+        )
+        one = s.model_copy(
+            update={"setup": [*setup, *own_setup], "cleanup": [*own_cleanup, *cleanup]}
+        )
+        one.record_skipped_blocks([b.to_dict() for b in skipped[i]])
+        folded.append(one)
     # `model_copy(update=...)` never re-runs a `model_validator` — so a config-level `setup`/`cleanup`
     # hook would otherwise splice in steps the load-time pass never saw, each free to omit the
     # `target` its scenario requires (BE-0428), or a target group it never expanded (BE-0437; see
@@ -2212,6 +2302,7 @@ def run_all(
     trace_driver: bool = False,
     step_gate: StepGate | None = None,
     hooks: HookSession | None = None,
+    conditions: ConditionContext | None = None,
     evidence_prefix: str = "",
 ) -> list[RunResult]:
     """Run every scenario, each on a freshly leased device, and return one result per scenario.
@@ -2260,6 +2351,9 @@ def run_all(
         hooks: The run's hook session (BE-0491). Each scenario then runs its target's
             `beforeScenario` / `afterScenario` entries and reads `${hooks.<name>.<key>}`. None
             leaves the run without hook phases.
+        conditions: The facts each conditional setup block and cleanup rule is decided from
+            (BE-0513), the ones the caller fixed before the first hook. None reads the hook
+            session's, else builds them from each pool's actuator and device spec.
         evidence_prefix: The evidence subdirectory this pass writes under (`<engine>` in a
             cross-browser matrix), so one pass's hook logs never overwrite another's.
         golden_context: Goldens directory for `golden` assertions (BE-0006). None disables them.
@@ -2342,7 +2436,13 @@ def run_all(
     # `run_matrix_and_report` apply the same helper to what they hand the report, so the run and the
     # report read one effective scenario rather than two lists that could drift.
     target_effs = _effs_of(targets)
-    scenarios = with_lifecycle_phases(eff, scenarios, target_effs, skip=worker_failures or {})
+    scenarios = with_lifecycle_phases(
+        eff,
+        scenarios,
+        target_effs,
+        skip=worker_failures or {},
+        conditions=conditions or run_conditions(eff, targets, actuator, lease_udid_spec, hooks),
+    )
     # `redact` unions every declared target's own config (BE-0428): a value one target's config
     # marks secret is scrubbed everywhere, not only from that one target's own capture. Widening the
     # redaction set is the safer error, unlike a field with only one right answer (`caps`, `mailbox`).
@@ -2457,6 +2557,7 @@ def run_and_report(
     trace_driver: bool = False,
     step_gate: StepGate | None = None,
     hooks: HookSession | None = None,
+    conditions: ConditionContext | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios, then write the run's artifacts under `runs_dir/run_id`.
 
@@ -2504,6 +2605,7 @@ def run_and_report(
         trace_driver=trace_driver,
         step_gate=step_gate,
         hooks=hooks,
+        conditions=conditions,
     )
     # The run's teardown, before the report is assembled, so the report shows the `afterRun` block
     # it recorded rather than a teardown that happened after it was written (BE-0491). The command's
@@ -2522,7 +2624,13 @@ def run_and_report(
         # pairs each outcome with the step definition that actually produced it — a config-level
         # hook folded from one target's own `setup`/`cleanup` here and the primary's there would
         # otherwise mislabel or drop outcomes for every other declared target (BE-0428).
-        with_lifecycle_phases(eff, scenarios, _effs_of(targets), skip=worker_failures or {}),
+        with_lifecycle_phases(
+            eff,
+            scenarios,
+            _effs_of(targets),
+            skip=worker_failures or {},
+            conditions=conditions or run_conditions(eff, targets, actuator, lease_udid_spec, hooks),
+        ),
         results,
         run_dir,
         run_id,
@@ -2559,6 +2667,7 @@ def run_matrix_and_report(
     cancelled: CancelSource = not_cancelled,
     worker_failures: Mapping[int, str] | None = None,
     hooks: HookSession | None = None,
+    conditions: ConditionContext | None = None,
 ) -> tuple[list[RunResult], Path]:
     """Run the scenarios once per engine, then assemble ONE report at `runs_dir/run_id` (BE-0076).
 
@@ -2619,7 +2728,12 @@ def run_matrix_and_report(
             ),
         )
     manifest = _assemble_report(
-        with_lifecycle_phases(eff, scenarios, skip=worker_failures or {}),
+        with_lifecycle_phases(
+            eff,
+            scenarios,
+            skip=worker_failures or {},
+            conditions=conditions or (hooks.conditions if hooks is not None else None),
+        ),
         results,
         run_dir,
         run_id,
@@ -2657,6 +2771,7 @@ def report_run_matrix(
     label: str | None = None,
     worker_failures: Mapping[int, str] | None = None,
     hooks: HookSession | None = None,
+    conditions: ConditionContext | None = None,
     cancelled: CancelSource = not_cancelled,
 ) -> Path:
     """Write ONE report for the runs `runsOn` conditions formed across *scenarios* (BE-0452).
@@ -2684,7 +2799,13 @@ def report_run_matrix(
             ),
         )
     return _assemble_report(
-        with_lifecycle_phases(eff, scenarios, dict(target_effs or {}), skip=worker_failures or {}),
+        with_lifecycle_phases(
+            eff,
+            scenarios,
+            dict(target_effs or {}),
+            skip=worker_failures or {},
+            conditions=conditions or (hooks.conditions if hooks is not None else None),
+        ),
         results,
         run_dir,
         run_id,
@@ -2813,6 +2934,11 @@ def _assemble_report(
     # to the raw YAML (sources). The same helper feeds the offline re-render, so the two match
     # whenever `plan_sources` is unavailable there too (an older run, or one BE-cli didn't produce).
     definitions, sources = scenario_render_inputs(snapshot, plan_sources)
+    # What the run's condition decision dropped (BE-0513): the folded scenario no longer holds a
+    # skipped block, so the report would otherwise show nothing where the author wrote one.
+    for definition, s in zip(definitions, scenarios, strict=True):
+        if s.skipped_blocks:
+            definition["skippedBlocks"] = [dict(b) for b in s.skipped_blocks]
     source_files, step_lines = scenario_source_meta(snapshot, plan_sources)
     if plan_order is not None:
         definitions = [definitions[i] for i in plan_order]

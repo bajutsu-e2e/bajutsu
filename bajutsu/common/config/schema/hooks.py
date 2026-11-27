@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Self
 
@@ -22,6 +23,7 @@ from ._model import _Model
 from .hook_command import (
     HookCommand,
     HookSandbox,
+    HookWhen,
     reject_outcome_on_before,
     reject_run_level_exclude_only,
 )
@@ -125,6 +127,19 @@ class Hooks(_Model):
                 seen[name] = list_name
         return self
 
+    def conditions(self) -> Iterator[tuple[str, HookWhen]]:
+        """Every `when` this block declares, each with where it sits (BE-0497, BE-0513)."""
+        for list_name, entries in self.command_lists.items():
+            for i, entry in enumerate(entries):
+                if entry.when is not None:
+                    yield f"hooks.{list_name}[{i}].when", entry.when
+        for i, step in enumerate(self.setup):
+            if step.when is not None:
+                yield f"hooks.setup[{i}].when", step.when
+        for i, rule in enumerate(self.cleanup):
+            if rule.when is not None:
+                yield f"hooks.cleanup[{i}].when", rule.when
+
     @property
     def screens(self) -> list[Interrupt]:
         """The screen entries of `interrupts`, in order."""
@@ -180,6 +195,21 @@ class Hooks(_Model):
                 raise ValueError(
                     "a step under hooks.interrupts cannot set `target`: recovery steps run on the "
                     "target this block configures"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _blocks_at_setup_top(self) -> Self:
+        # A conditional block (BE-0513) is decided once, before the scenario's first step, so it
+        # may stand only where that decision is whole: the top level of `setup`. Run after the
+        # component pass, so a block a component produced is held to the same rule.
+        top = {id(step) for step in self.setup}
+        for step in self._all_steps():
+            if step.when is not None and id(step) not in top:
+                raise ValueError(
+                    "hooks: a conditional block (`when` with `steps`) belongs at the top level of "
+                    "hooks.setup; it cannot sit inside a block, a target group, `cleanup`, an "
+                    "`interrupts` entry, or an `if` / `forEach` step"
                 )
         return self
 

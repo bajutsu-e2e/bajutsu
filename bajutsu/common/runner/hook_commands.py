@@ -57,6 +57,9 @@ from bajutsu.common.runner.sandbox import (
 from bajutsu.common.scenario.models.hook_command import (
     SCOPE_SEP,
     HookOrigin,
+    HookWhen,
+    JudgedTarget,
+    WhenFacts,
     env_name,
     split_hook_token,
 )
@@ -172,7 +175,7 @@ class HookContext:
     level: str | None = None
     # The tags an entry's `when` reads, one collection per scenario (BE-0497): the run's scenarios
     # that drive this target for a run-level list, the scenario's own for a scenario-level one.
-    # Empty, the case of a command that runs no scenario file, matches no condition.
+    # Empty, the case of a command that runs no scenario file, matches no condition on tags.
     scenario_tags: Sequence[Sequence[str]] = ()
     # The targets whose `hooks` component outputs a scenario-level command reads: the ones the
     # scenario drives (BE-0512). A target's own command reads its own target's alone.
@@ -182,6 +185,17 @@ class HookContext:
     def output_targets(self) -> Sequence[str]:
         """The targets whose component outputs this phase's commands receive."""
         return (self.targets or (self.target,)) if self.level is not None else (self.target,)
+
+    # The targets `when.targets` / `platforms` / `routes` judge (BE-0513): the owner for a target's
+    # own entry, every driven target for a scenario's own. Empty, a condition on them never holds.
+    judged_targets: Sequence[JudgedTarget] = ()
+    # The run's environment snapshot, which `when.env` reads; taken once, before the first hook.
+    process_env: Mapping[str, str] = field(default_factory=dict)
+
+    @property
+    def facts(self) -> WhenFacts:
+        """What an entry's `when` is decided against in this context."""
+        return WhenFacts(self.scenario_tags, self.judged_targets, self.process_env)
 
     def env(self) -> dict[str, str]:
         """The context variables a command of this phase receives."""
@@ -504,9 +518,7 @@ class HookRunner:
         )
         after = list_name.startswith("after")
         for index, entry in enumerate(entries):
-            if entry.when is not None and not any(
-                entry.when.matches(tags) for tags in context.scenario_tags
-            ):
+            if entry.when is not None and not entry.when.holds(context.facts):
                 result.records.append(
                     HookRecord(
                         list_name,
@@ -1173,17 +1185,55 @@ def unknown_hook_tokens(
     return None
 
 
+# Decides one condition for one entry: True or False, or None when this stage leaves it to the
+# other (BE-0513). Called with the entry's `when` and the names of the targets it judges.
+ConditionJudge = Callable[[HookWhen, Sequence[str]], bool | None]
+
+
+def _readable_entries(
+    phases: Mapping[str, HookPhases], driven: Sequence[str], own: HookPhases | None
+) -> dict[str, tuple[str, HookCommand, tuple[str, ...]]]:
+    """The `before` entries a scenario's tokens may read, with their list and the targets judged.
+
+    Keyed by the name a token reads (`<as>.<name>`), and a target's component entry by its stored
+    `<target>:<name>` too, so a token already scoped to one target (BE-0512) checks that target's
+    entry even when another driven target's component brings the same name.
+    """
+    out: dict[str, tuple[str, HookCommand, tuple[str, ...]]] = {}
+    for owner in driven:
+        if owner not in phases:
+            continue
+        for list_name in ("beforeRun", "beforeScenario"):
+            for e in phases[owner].lists[list_name]:
+                if (n := e.qualified_name) is None:
+                    continue
+                out.setdefault(n, (list_name, e, (owner,)))
+                if e.origin is not None:
+                    out[f"{owner}{SCOPE_SEP}{n}"] = (list_name, e, (owner,))
+    if own is not None:
+        out |= {
+            n: ("beforeScenario", e, tuple(driven))
+            for e in own.before_scenario
+            if (n := e.qualified_name) is not None
+        }
+    return out
+
+
 def unmet_hook_condition(
     referenced: Iterable[str],
     phases: Mapping[str, HookPhases],
     driven: Sequence[str],
     tags: Sequence[str],
     own: HookPhases | None = None,
+    *,
+    judge: ConditionJudge | None = None,
 ) -> str | None:
-    """Why a `${hooks.*}` token reads an entry whose `when` this scenario fails, or None (BE-0497).
+    """Why a `${hooks.*}` token reads an entry whose `when` this scenario fails, or None.
 
-    Tags are static once a scenario is expanded, so a value that would be missing surfaces at load
-    rather than mid-run.
+    Checked in two stages (BE-0497, BE-0513). Tags, target names, and platforms are static once a
+    scenario is expanded, so a value that would be missing surfaces at load rather than mid-run;
+    `env` and `routes` wait until the run knows each route, and are judged for the selected
+    scenarios alone.
 
     Args:
         referenced: The tokens the scenario uses.
@@ -1192,21 +1242,11 @@ def unmet_hook_condition(
         driven: The targets the scenario drives.
         tags: The expanded scenario's own tags.
         own: The scenario's own lists (BE-0501), when it declares any.
+        judge: Decides one condition at this stage. None decides on the tags alone, the rule before
+            BE-0513 and the one a caller that knows no target needs.
     """
-    # Keyed by the stored name too, so a token already scoped to one target (BE-0512) checks that
-    # target's entry even when another driven target's component brings the same name.
-    mine: dict[str, tuple[str, HookCommand]] = {}
-    for key, phase in [
-        *((t, phases[t]) for t in driven if t in phases),
-        *([("", own)] if own else []),
-    ]:
-        for list_name in ("beforeRun", "beforeScenario"):
-            for e in phase.lists[list_name]:
-                if (n := e.qualified_name) is None:
-                    continue
-                mine.setdefault(n, (list_name, e))
-                if key and e.origin is not None:
-                    mine[f"{key}{SCOPE_SEP}{n}"] = (list_name, e)
+    decide = judge or (lambda when, _names: when.matches(tags))
+    mine = _readable_entries(phases, driven, own)
     elsewhere = {
         e.qualified_name: target
         for target, phase in phases.items()
@@ -1220,11 +1260,12 @@ def unmet_hook_condition(
             continue
         name = split_hook_token(token)[0]
         if name in mine:
-            list_name, entry = mine[name]
-            if entry.when is not None and not entry.when.matches(tags):
+            list_name, entry, judged = mine[name]
+            if entry.when is not None and decide(entry.when, judged) is False:
                 return (
                     f"${{{token}}} reads the {list_name} hook {name!r}, which runs only when "
-                    f"{{{entry.when}}} matches; this scenario's tags are: {carried}"
+                    f"{{{entry.when}}} matches; this scenario's tags are: {carried}, and it "
+                    f"drives: {', '.join(driven)}"
                 )
         elif name in elsewhere:
             return (

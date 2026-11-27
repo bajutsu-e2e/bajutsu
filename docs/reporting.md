@@ -738,9 +738,20 @@ The action uploads three kinds of artifact:
 - **A video per failing scenario**, for the same three scenarios, uploaded without a zip.
 
 A non-zipped upload names the artifact after the file. The action thus copies each file under
-`<artifact-name>-screenshot-N` or `<artifact-name>-video-N`. We have not confirmed whether a browser
-displays such a file or downloads it. Either way, the link delivers the file. A reader needs read access
-to the repository, because artifact links require sign-in.
+`<artifact-name>-screenshot-N` or `<artifact-name>-video-N`. A reader needs read access to the
+repository, because artifact links require sign-in.
+
+What a link does depends on the file type and the browser. We checked one run in November 2026:
+
+| File | `Content-Disposition` that GitHub sent | Signed-in reader in Safari on iPhone |
+|---|---|---|
+| Portable Network Graphics (PNG) screenshot | `inline` | Sees the image |
+| MP4 video | `attachment` | Watches the video in the browser |
+| WebM video | `attachment` | Chooses between viewing and downloading |
+
+The header values come from the artifact download endpoint of the GitHub API. We did not check
+desktop browsers. Re-running a job did not collide with the artifact names of the earlier attempt.
+The action thus has no `overwrite` input.
 
 ### Inputs
 

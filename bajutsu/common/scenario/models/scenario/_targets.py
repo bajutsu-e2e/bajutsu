@@ -35,7 +35,9 @@ def _step_label(step: Step) -> str:
     return repr(step.name) if step.name is not None else "<unnamed step>"
 
 
-def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bool) -> list[Step]:
+def _expand_steps(
+    steps: list[Step], *, group_target: str | None, inside_web: bool, blocks: bool = False
+) -> list[Step]:
     """Expand every target group (BE-0437) in *steps*, recursively; the flat result.
 
     *group_target* is the target a directly-enclosing group already fixed, to stamp onto a child
@@ -47,6 +49,19 @@ def _expand_steps(steps: list[Step], *, group_target: str | None, inside_web: bo
     """
     out: list[Step] = []
     for step in steps:
+        if step.when is not None:
+            # A conditional block (BE-0513) stays a block until the run decides it, before the
+            # first step; only its own steps expand, stamped with the block's `target` if it names
+            # one. *blocks* is true for the top level of a `setup` list alone.
+            if not blocks:
+                raise ValueError(
+                    f"{_step_label(step)}: a conditional block (`when` with `steps`) belongs at the "
+                    "top level of a `setup` list; it cannot sit inside a block, a target group, "
+                    "`steps`, `cleanup`, an `interrupts` entry, or an `if` / `forEach` step"
+                )
+            children = _expand_steps(step.steps or [], group_target=step.target, inside_web=False)
+            out.append(step.model_copy(update={"steps": children}))
+            continue
         if step.steps is not None:
             if inside_web:
                 raise ValueError(
@@ -114,7 +129,7 @@ def _expand_target_groups(scenario: Scenario) -> None:
         ValueError: A target group sits nested directly inside a `web:`/`app:` block's own steps.
     """
     scenario.steps = _expand_steps(scenario.steps, group_target=None, inside_web=False)
-    scenario.setup = _expand_steps(scenario.setup, group_target=None, inside_web=False)
+    scenario.setup = _expand_steps(scenario.setup, group_target=None, inside_web=False, blocks=True)
     for rule in scenario.cleanup:
         rule.steps = _expand_steps(rule.steps, group_target=None, inside_web=False)
     for entry in scenario.screens:
@@ -532,7 +547,17 @@ def _check_target_requirements(scenario: Scenario) -> None:  # noqa: C901
         if step.set_primary_target is not None:
             primary = step.set_primary_target.target
     # `setup` / `cleanup` resolve to the declared primary: teardown runs wherever the run stopped.
-    walk_steps(scenario.setup, mode="required")
+    for step in scenario.setup:
+        if step.when is None:
+            walk_steps([step], mode="required")
+            continue
+        # A conditional block (BE-0513) is not a step the runner meets: its `target`, when set, must
+        # name a declared target, and its own steps hold to the rule above (expansion already
+        # stamped that `target` onto them).
+        _check_target(
+            step.target, known=known, context="conditional block in setup", required=False
+        )
+        walk_steps(step.steps or [], mode="required")
     for rule in scenario.cleanup:
         walk_steps(rule.steps, mode="required")
     for entry in scenario.screens:

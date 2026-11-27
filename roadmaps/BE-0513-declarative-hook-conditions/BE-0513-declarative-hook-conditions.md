@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0513](BE-0513-declarative-hook-conditions.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0513") |
+| Implementing PR | [#2590](https://github.com/bajutsu-e2e/bajutsu/pull/2590) |
 | Topic | Scenario authoring features |
 | Related | [BE-0034](../BE-0034-tags-selective-runs/BE-0034-tags-selective-runs.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0437](../BE-0437-multi-target-step-groups/BE-0437-multi-target-step-groups.md), [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0492](../BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md) |
 <!-- /BE-METADATA -->
@@ -233,19 +234,26 @@ the same `hooks`. The fields name no particular app, so per-app choices stay in 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Schema: the four new fields of `when`, with their load errors.
-- [ ] Schema: the narrowed load check on run-level entries.
-- [ ] Schema: the load error for a target's own condition that can never hold.
-- [ ] Evaluation: one predicate over a scenario, its driven targets, their routes, and the environment.
-- [ ] Command `hooks`: apply the predicate to scenario-level and run-level lists.
-- [ ] Setup and cleanup: the conditional block and `when` on a cleanup rule.
-- [ ] Block evaluation before the first step.
-- [ ] Output tokens: the two-stage check.
-- [ ] Preflight, `serve` routing, and `codegen` behavior for conditional blocks.
-- [ ] Evidence: skipped blocks in the report.
-- [ ] User docs: `docs/configuration.md`, `docs/scenarios.md`, and `docs/codegen.md`.
-- [ ] Design docs: `DESIGN.md` and `docs/architecture.md`.
-- [ ] The translated mirror of each document.
+- [x] Schema: the four new fields of `when`, with their load errors.
+- [x] Schema: the narrowed load check on run-level entries.
+- [x] Schema: the load error for a target's own condition that can never hold.
+- [x] Evaluation: one predicate over a scenario, its driven targets, their routes, and the environment.
+- [x] Command `hooks`: apply the predicate to scenario-level and run-level lists.
+- [x] Setup and cleanup: the conditional block and `when` on a cleanup rule.
+- [x] Block evaluation before the first step.
+- [x] Output tokens: the two-stage check.
+- [x] Preflight, `serve` routing, and `codegen` behavior for conditional blocks.
+- [x] Evidence: skipped blocks in the report.
+- [x] User docs: `docs/configuration.md`, `docs/scenarios.md`, and `docs/codegen.md`.
+- [x] Design docs: `DESIGN.md` and `docs/architecture.md`.
+- [x] The translated mirror of each document.
+
+Log:
+
+- [#2590](https://github.com/bajutsu-e2e/bajutsu/pull/2590): all 13 units landed together. The run fixes each target's platform and route, and a
+  snapshot of the environment, once before its first hook. Command hooks, setup blocks, cleanup
+  rules, the preflight, and the report all decide a condition from those facts. `serve` routing
+  and target lint decide with the environment unknown, so a block gated on `env` keeps its needs.
 
 ## References
 

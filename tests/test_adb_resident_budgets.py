@@ -11,7 +11,11 @@ import re
 from pathlib import Path
 
 from bajutsu.common.backend_cli.adb_resident import budgets
-from bajutsu.common.backend_cli.adb_resident._functions import _PICKER_REFUSALS
+from bajutsu.common.backend_cli.adb_resident._functions import (
+    _PICKER_REFUSALS,
+    _SETTLED_HEADER,
+)
+from bajutsu.common.drivers.adb._functions import _HEADS_UP_STATUS_BAR, _NOTIFICATION_ROW
 
 _SERVER = (
     Path(__file__).resolve().parents[1]
@@ -147,6 +151,21 @@ def test_the_cache_drop_check_reads_the_headers_the_server_stamps() -> None:
         assert _constant(_CODE, f"const val {header}", r'"([^"]+)"') == _constant(
             _CACHE_DROP_CHECK, f"_{header}", r'"([^"]+)"'
         )
+
+
+def test_the_host_reads_the_settle_header_the_server_stamps() -> None:
+    # BE-0505: a header renamed on one end would read as an older server, silently dropping the check.
+    assert _constant(_CODE, "const val SETTLED_HEADER", r'"([^"]+)"') == _SETTLED_HEADER
+
+
+def test_the_settle_keeps_the_banner_nodes_the_host_reads() -> None:
+    # BE-0505: the settle drops SystemUI from its comparison except the heads-up banner's two nodes.
+    # An id renamed on one end would let a banner still sliding in pass as a settled tree.
+    block = _CODE[_CODE.index("val HEADS_UP_IDS") :]
+    assert set(re.findall(r'"([^"]+)"', block[: block.index(")")])) == {
+        _HEADS_UP_STATUS_BAR,
+        _NOTIFICATION_ROW,
+    }
 
 
 def _seconds_int(name: str) -> float:

@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0505](BE-0505-adb-read-lag-attempt-bound.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0505") |
+| Implementing PR | [#2597](https://github.com/bajutsu-e2e/bajutsu/pull/2597) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -55,9 +56,10 @@ Nothing in the response says the settle never closed. The server writes that sen
 log, which the driver never reads. A driver unable to separate a settled answer from a torn one
 cannot keep waiting on purpose.
 
-A later reader can check one observation. A run against a driver clock slowed by any factor reaches
-the verdict an unslowed run reaches. The deterministic suite asserts that equivalence, which does not
-hold today.
+A later reader can check one observation. Take a tree that catches up within four completed reads.
+A run against a driver clock slowed by any factor then reaches the verdict an unslowed run reaches.
+A tree needing more reads falls outside the claim. A faster machine fits more of them under the same
+ceiling. The deterministic suite asserts that equivalence.
 
 #### What this item does not explain
 
@@ -112,7 +114,9 @@ SystemUI's decor nodes from its comparison. The body it returns still carries ea
 dumped hierarchy. That hierarchy carries the status bar's clock and icons. A minute tick could thus
 exhaust the dump cap on a quiet app screen. The narrowing stays in the comparison for a reason. The
 driver reads the heads-up banner off that decor before it strips the decor out. A device dropping it
-from the wire would leave the notification-banner guard with nothing to read. The device narrows its
+from the wire would leave the notification-banner guard with nothing to read. The comparison keeps the
+place of the banner's two nodes for the same guard. An exit counts as closed when the last two dumps
+agree on node identity and bounds. A tree whose text keeps changing is thus not unsettled. The device narrows its
 own comparison that way for `/act`. The `/act` reply carries the header too. The tree a confirmed
 gesture brings back goes through the same helper under a tighter budget. `HierarchyRead` holds the
 answer once for both paths. The header is additive. An older server sends none, and the driver reads a missing header
@@ -139,7 +143,7 @@ one read and nothing besides. The surfaces are the `hierarchy_read.py` and `adb_
 
 A completed device wait is one request the device answered after its own wait released or ran out. A
 bound counting those waits measures the device's behavior rather than the driver's clock. A loaded
-machine pays more wall-clock for the same count. It still lands on the same verdict.
+machine pays more wall-clock for the same count. Within that count it reaches the same verdict.
 Determinism-first asks for that property, and the current bound lacks it.
 
 Both bounds keep their wall-clock ceiling and gain a floor of four completed waits. The later of the
@@ -155,7 +159,9 @@ expired barrier costs four waits of up to 3,500 milliseconds, so 14 seconds. The
 its first read plus four more, so 17.5 seconds. The recovery pays both three times, so about 95
 seconds for a step whose recovery runs to its end. The same path costs about 75 seconds today.
 `smoke (adb)` allows 40 minutes for a run that passes in 25 to 29, and `pool (adb)` allows 60
-minutes. A minute and a half on a rare step thus stays well inside both.
+minutes. A minute and a half on a rare step thus stays well inside both. A screen whose nodes never
+stop moving costs more: each bare read there costs up to four requests. No clock caps those
+re-reads. A `wait` there evaluates one tree per batch, so it can miss a short-lived element.
 
 Unit 6 keeps `read_lag()` seconds-valued for its two orchestrator consumers. Those consumers are the
 `scroll` loop and the `extract` poll. Both loops still bound a read count by the driver's clock.
@@ -255,15 +261,15 @@ addresses it. The relaunch behind the other occurrences also stays outside this 
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — the resident server reports whether its settle closed
-- [ ] Unit 2 — a tree the device could not settle stays away from the selector resolve
-- [ ] Unit 3 — the read-lag barrier gains a floor of four completed device waits
-- [ ] Unit 4 — the settle poll gains a floor of four polling reads
+- [x] Unit 1 — the resident server reports whether its settle closed
+- [x] Unit 2 — a tree the device could not settle stays away from the selector resolve
+- [x] Unit 3 — the read-lag barrier gains a floor of four completed device waits
+- [x] Unit 4 — the settle poll gains a floor of four polling reads
 - [x] Unit 5 — ~~a tree the device proved still moving raises a stall and skips the recovery~~
   - Withdrawn: the red lanes' device logs show no dump-cap exit.
-- [ ] Unit 6 — `read_lag()` keeps its seconds contract for the `scroll` loop and the `extract` poll
-- [ ] Unit 7 — the deterministic suite pins the slowed-clock equivalence
-- [ ] Unit 8 — the read-lag contract and its mirror page both record the new bound
+- [x] Unit 6 — `read_lag()` keeps its seconds contract for the `scroll` loop and the `extract` poll
+- [x] Unit 7 — the deterministic suite pins the slowed-clock equivalence
+- [x] Unit 8 — the read-lag contract and its mirror page both record the new bound
 
 Log:
 
@@ -271,6 +277,10 @@ Log:
   Both show an activity relaunch and no dump-cap exit.
   Withdrew unit 5 and removed the claim of repairing those lanes.
   Unit 1 now reports whether the settle closed, since nothing else reads which exit ran.
+- 2026-11-27 — [#2597](https://github.com/bajutsu-e2e/bajutsu/pull/2597): Implemented units 1–4 and 6–8.
+  A bare read of an unsettled tree reads again up to three more times, then takes the latest one.
+  Narrowed the equivalence claim to a tree that catches up within four reads.
+  The settle verdict compares node identity and bounds, and the comparison keeps the heads-up banner.
 
 ## References
 

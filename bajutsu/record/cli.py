@@ -262,6 +262,8 @@ def record(
         runs_dir=runs_root(),
         run_dir=runs_root() / hook_run_id,
         teardown_at_exit=True,
+        actuator=actuator,
+        udid_spec=udid,
     )
 
     # Narrate the otherwise-silent device work (reinstall + boot + launch) so the watcher
