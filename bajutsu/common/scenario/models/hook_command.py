@@ -114,6 +114,14 @@ class HookOrigin(_Model):
     component: str
     alias: str | None = None
 
+    @model_validator(mode="after")
+    def _alias_is_a_name(self) -> Self:
+        # The same rule `hooks.use`'s `as` meets: an alias holding `:` or `.` would split a stored
+        # name in the wrong place and drop its values.
+        if self.alias is not None and (why := invalid_hook_name(self.alias)) is not None:
+            raise ValueError(f"`_origin.alias` {why}")
+        return self
+
 
 class HookCommand(_Model):
     """One entry of a `hooks.beforeRun` / `afterRun` / `beforeScenario` / `afterScenario` list.

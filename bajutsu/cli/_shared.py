@@ -369,16 +369,30 @@ def _reject_unmet_hook_conditions(
     """
     from bajutsu.common.runner.hook_commands import unmet_hook_condition
     from bajutsu.common.runner.scenario_hooks import own_phases
+    from bajutsu.common.scenario.hook_scopes import scope_scenario_tokens
     from bajutsu.common.scenario.interp import find_tokens
     from bajutsu.common.scenario.models.hook_command import SCOPE_SEP, split_hook_token
 
     effs = {name: resolve(loaded.config, name) for name in loaded.config.targets}
     phases = {name: eff.hooks for name, eff in effs.items()}
 
-    def body(s: Scenario) -> dict[str, object]:
+    def body(s: Scenario, driven: list[str]) -> dict[str, object]:
+        # Read under each step's own target (BE-0512), so a name two driven targets' components
+        # share checks the `when` of the target that reads it; a token that cannot be scoped is the
+        # token check's to report.
+        scoped = s.model_copy(deep=True)
+        holders: dict[str, set[str]] = {}
+        for t in driven:
+            for name, entry in phases[t].named().items() if t in phases else ():
+                if entry.origin is not None:
+                    holders.setdefault(name, set()).add(t)
+        try:
+            scope_scenario_tokens(scoped, driven[0], holders)
+        except ValueError:
+            scoped = s
         # Not its own `hooks`: a token in a command is refused outright (BE-0501), so the reader is
         # told to use the variable instead, whatever the tags.
-        return s.model_dump(by_alias=True, exclude={"hooks"})
+        return scoped.model_dump(by_alias=True, exclude={"hooks"})
 
     def unmet(s: Scenario, driven: list[str]) -> str | None:
         # A target's setup and cleanup steps fold into the scenario, so it reads their tokens too.
@@ -391,7 +405,7 @@ def _reject_unmet_hook_conditions(
                 *effs[name].run_defaults.cleanup,
             )
         ]
-        referenced = find_tokens([body(s), *folded])
+        referenced = find_tokens([body(s, driven), *folded])
         return unmet_hook_condition(referenced, phases, driven, s.tags, own_phases(s))
 
     def runs_under(s: Scenario, target: str) -> bool:
@@ -400,7 +414,7 @@ def _reject_unmet_hook_conditions(
         readable = {*phases[target].named(), *(own.named() if own is not None else ())}
         names = {
             split_hook_token(t)[0].rpartition(SCOPE_SEP)[2]
-            for t in find_tokens(body(s))
+            for t in find_tokens(body(s, [target]))
             if t.startswith("hooks.")
         }
         return names <= readable and unmet(s, [target]) is None

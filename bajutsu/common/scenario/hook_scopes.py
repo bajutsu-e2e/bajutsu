@@ -108,8 +108,7 @@ def scope_scenario_tokens(s: Scenario, target: str, scoped: Scoped) -> None:
     Raises:
         ValueError: A token names a component name its reading target does not hold.
     """
-    if not scoped:
-        return
+    # Walked even with no component name in reach, so a hand-written scope still fails at load.
     _scope([s.setup, s.steps, s.cleanup], target, scoped)
     _scope(s.expect, s.final_primary or target, scoped)
     _scope(s.screens, target if len(s.target_names) <= 1 else None, scoped)

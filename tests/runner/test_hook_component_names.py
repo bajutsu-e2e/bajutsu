@@ -637,3 +637,85 @@ def test_the_checks_still_pass_on_a_scenario_already_scoped() -> None:
 def test_a_hand_written_scope_stops_the_load(token: str) -> None:
     effs = _effs(web=HookPhases(before_scenario=[_from("user")]))
     assert "names a target scope" in (sh.scenario_hook_error(_typing(token), effs, "web") or "")
+
+
+def test_an_origin_alias_meets_the_name_rule() -> None:
+    with pytest.raises(ValueError, match=r"_origin\.alias"):
+        HookOrigin(component="/c", alias="x:y")
+
+
+def test_a_hand_written_scope_stops_the_load_with_no_component_in_reach() -> None:
+    effs = _effs(web=HookPhases(before_scenario=[HookCommand(name="user", cmd="x")]))
+    why = sh.scenario_hook_error(_typing("${hooks.web:user.id}"), effs, "web")
+    assert "names a target scope" in (why or "")
+
+
+def test_a_hand_written_scope_in_a_targets_own_steps_stops_the_resolve(tmp_path: Path) -> None:
+    config = _write(
+        tmp_path / "bajutsu.config.yaml",
+        "targets:\n  web:\n    platform: web\n    subject: { url: 'http://127.0.0.1:1/' }\n"
+        "    hooks:\n      setup: [{ type: { text: '${hooks.web:user.id}', into: { id: x } } }]\n",
+    )
+    with pytest.raises(ValueError, match="names a target scope"):
+        resolve(load_config_file(config), "web")
+
+
+def test_a_condition_check_reads_the_when_of_the_target_that_reads_it(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from bajutsu.cli._shared import _reject_unmet_hook_conditions
+
+    _write(
+        tmp_path / "hooks" / "paid.hook.yaml",
+        "beforeScenario: [{ name: user, cmd: ./c.sh, when: { tags: [paid] } }]\n",
+    )
+    _write(tmp_path / "hooks" / "free.hook.yaml", "beforeScenario: [{ name: user, cmd: ./c.sh }]\n")
+    url = "subject: { url: 'http://127.0.0.1:1/' }"
+    config = _write(
+        tmp_path / "bajutsu.config.yaml",
+        f"targets:\n  web:\n    platform: web\n    {url}\n"
+        "    hooks: { use: [{ hook: ./hooks/paid.hook.yaml }] }\n"
+        f"  ios:\n    platform: web\n    {url}\n"
+        "    hooks: { use: [{ hook: ./hooks/free.hook.yaml }] }\n",
+    )
+    loaded = SimpleNamespace(config=load_config_file(config))
+    s = Scenario.model_validate(
+        {
+            "name": "s",
+            "targets": ["web", "ios"],
+            "steps": [
+                {"tap": {"id": "ok"}, "target": "web"},
+                {"type": {"text": "${hooks.user.id}", "into": {"id": "ok"}}, "target": "ios"},
+            ],
+        }
+    )
+    # The token is read on `ios`, whose entry has no condition; web's `paid` gate does not apply.
+    _reject_unmet_hook_conditions(loaded, [s], "web", selected=[s])  # type: ignore[arg-type]
+
+
+def test_a_condition_check_leaves_an_unscopable_token_to_the_token_check(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from bajutsu.cli._shared import _reject_unmet_hook_conditions
+
+    _write(tmp_path / "hooks" / "u.hook.yaml", "beforeScenario: [{ name: user, cmd: ./c.sh }]\n")
+    url = "subject: { url: 'http://127.0.0.1:1/' }"
+    config = _write(
+        tmp_path / "bajutsu.config.yaml",
+        f"targets:\n  web:\n    platform: web\n    {url}\n"
+        f"  ios:\n    platform: web\n    {url}\n"
+        "    hooks: { use: [{ hook: ./hooks/u.hook.yaml }] }\n",
+    )
+    loaded = SimpleNamespace(config=load_config_file(config))
+    # Read on `web`, which holds no such component name: scoping refuses it, and this check passes
+    # it through rather than raising, since `scenario_hook_error` reports it with its own message.
+    s = Scenario.model_validate(
+        {
+            "name": "s",
+            "targets": ["web", "ios"],
+            "steps": [
+                {"type": {"text": "${hooks.user.id}", "into": {"id": "ok"}}, "target": "web"}
+            ],
+        }
+    )
+    _reject_unmet_hook_conditions(loaded, [s], "web", selected=[s])  # type: ignore[arg-type]
