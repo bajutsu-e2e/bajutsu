@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4), [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) (unit 4 follow-up) |
+| Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4), [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) (unit 4 follow-up), [#2608](https://github.com/bajutsu-e2e/bajutsu/pull/2608) (unit 5) |
 | Topic | Driver & backend architecture |
 | Related | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) |
 <!-- /BE-METADATA -->
@@ -174,7 +174,7 @@ Log:
   `_mock_swap_problem` records why `targets[0]` is the primary. BE-0436 refuses a `primaryTarget` that
   names any other entry.
 
-- PR_PLACEHOLDER — unit 5: the channel's own documentation. `docs/network.md` gains a section that
+- [#2608](https://github.com/bajutsu-e2e/bajutsu/pull/2608) — unit 5: the channel's own documentation. `docs/network.md` gains a section that
   describes the channel in one place. The section covers how a command travels and how the app
   acknowledges it. It also covers the two commands the channel carries and the backends that can carry
   it. It names the two in-app gates, the three boundaries, and what polling costs. `BajutsuKit/README.md`

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
-| 実装 PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)（単位 1）、[#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788)（単位 2）、[#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916)（単位 3）、[#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922)（単位 3 の追補）、[#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088)（単位 4）、[#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092)（単位 4 の追補） |
+| 実装 PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699)（単位 1）、[#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788)（単位 2）、[#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916)（単位 3）、[#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922)（単位 3 の追補）、[#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088)（単位 4）、[#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092)（単位 4 の追補）、[#2608](https://github.com/bajutsu-e2e/bajutsu/pull/2608)（単位 5） |
 | トピック | ドライバとバックエンドのアーキテクチャ |
 | 関連 | [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel-ja.md) |
 <!-- /BE-METADATA -->
@@ -192,7 +192,7 @@ BajutsuKit の `replace(with:)` は、`rules` ゲッターと同じく `defer` �
 あわせて `_mock_swap_problem` に、`targets[0]` をプライマリとみなせる理由をコメントで残しました。
 BE-0436 は、先頭以外の要素を指す `primaryTarget` を拒否します。
 
-- PR_PLACEHOLDER：単位 5、チャネルのドキュメント
+- [#2608](https://github.com/bajutsu-e2e/bajutsu/pull/2608)：単位 5、チャネルのドキュメント
 
 チャネル自体の説明をドキュメントにまとめました。`docs/network.md` に新しい節を設けました。この節は、
 コマンドの届き方と確認応答、チャネルが運ぶ2つのコマンド、チャネルを使えるバックエンドを説明します。
