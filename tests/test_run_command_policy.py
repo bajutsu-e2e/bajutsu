@@ -294,3 +294,38 @@ def test_a_config_component_among_uploaded_scenarios_answers_to_their_source(
         "uploaded",
         "refused",
     )
+
+
+def test_a_component_at_the_common_root_of_two_uploaded_scenarios_is_theirs(
+    tmp_path: Path,
+) -> None:
+    # BE-0512: two `--scenario` files confine their refs to their common parent, so a component
+    # there came with them, even though neither file sits beside it.
+    _run_scenario(tmp_path, "{}", "operator", "{}")
+    flows = tmp_path / "flows"
+    (flows / "seed.hook.yaml").write_text(
+        "beforeScenario: [{name: seed, cmd: 'false'}]\n", encoding="utf-8"
+    )
+    for name in ("a", "b"):
+        (flows / name).mkdir()
+        (flows / name / f"{name}.yaml").write_text(
+            f"- name: {name}\n  steps:\n    - tap: {{id: x}}\n", encoding="utf-8"
+        )
+    # The operator's config applies it: only the client roots can tell it came with the scenarios.
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + "    hooks:\n      use: [{hook: ./flows/seed.hook.yaml}]\n",
+        encoding="utf-8",
+    )
+    worker = tmp_path / "worker.yaml"
+    worker.write_text(
+        worker.read_text().replace("commandExecution: {}", "commandExecution: {uploaded: deny}")
+    )
+    argv = ["run", "--target", "site", "--backend", "fake", "--worker-config", str(worker)]
+    argv += ["--scenario", str(flows / "a" / "a.yaml"), "--scenario", str(flows / "b" / "b.yaml")]
+    argv += ["--config", str(tmp_path / "bajutsu.config.yaml"), "--config-source", "operator"]
+    argv += ["--scenario-source", "uploaded", "--runs-dir", str(tmp_path / "runs2")]
+    result = invoke(runner, app, argv)
+    assert result.exit_code == 2, result.output
+    assert "uploaded: deny" in result.output

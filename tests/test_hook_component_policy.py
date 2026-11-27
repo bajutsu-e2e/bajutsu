@@ -17,6 +17,7 @@ from bajutsu.common.capability.command_policy import (
     COMMAND_MODES,
     CommandExecution,
     CommandPolicy,
+    command_notices,
     stricter_mode,
 )
 from bajutsu.common.capability.route_tokens import report_hook_phases
@@ -260,3 +261,15 @@ def test_only_a_scenario_running_a_component_command_names_its_target() -> None:
     assert sandbox_targets([direct, added], "web") == {"web"}
     assert component_targets([direct], "web") == set()
     assert component_targets([direct, added], "web") == {"web"}
+
+
+def test_the_notice_names_the_component_and_its_source(tmp_path: Path) -> None:
+    gate = _gate(tmp_path).for_entry(str(tmp_path / "scenarios" / "hooks" / "u.hook.yaml"))
+    with pytest.raises(CommandRefused):
+        gate.check("command", "hooks.beforeScenario[seed].cmd", "./seed.sh")
+    [notice] = command_notices(gate.records)
+    assert notice == (
+        "hooks.beforeScenario[seed].cmd './seed.sh' from the operator config via the hooks "
+        "component scenarios/hooks/u.hook.yaml (uploaded): refused under commandExecution deny "
+        "(BE-0492)"
+    )

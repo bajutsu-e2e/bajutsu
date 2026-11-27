@@ -351,8 +351,14 @@ def command_notices(records: object) -> list[str]:
         outcome = _DECISION_WORDS.get(decision, decision)
         if "exitCode" in record:
             outcome += f" (exit {record['exitCode']})"
+        where = f"from the {record.get('source')} config"
+        if record.get("component"):
+            # The mode is then the stricter of two sources (BE-0512), so name the second.
+            where += f" via the hooks component {record['component']}"
+            if record.get("componentSource"):
+                where += f" ({record['componentSource']})"
         notices.append(
-            f"{record.get('field')} {record.get('cmd')!r} from the {record.get('source')} config: "
+            f"{record.get('field')} {record.get('cmd')!r} {where}: "
             f"{outcome} under commandExecution {record.get('mode')} (BE-0492)"
         )
     return notices
