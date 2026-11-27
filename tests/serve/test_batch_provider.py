@@ -832,6 +832,20 @@ def test_devicefarm_allows_a_targets_ios_device_state(tmp_path: Path) -> None:
     _check_no_conditions(config, "demo")
 
 
+def test_devicefarm_allows_a_target_that_declares_an_ignored_install(tmp_path: Path) -> None:
+    # A real iOS device cannot install `subject.path`, so a Device Farm target declares it under
+    # `runsOn.ignoredSettings` (BE-0465, BE-0473); that declaration is not a condition to match.
+    from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_no_conditions
+
+    config = tmp_path / "bajutsu.config.yaml"
+    config.write_text(
+        "targets:\n  demo:\n    platform: ios\n    runsOn:\n      ios: { kind: device }\n"
+        "      ignoredSettings: { install: Device Farm installs the build }\n",
+        encoding="utf-8",
+    )
+    _check_no_conditions(config, "demo")
+
+
 def test_devicefarm_refuses_a_flat_runs_on_key_before_submitting(tmp_path: Path) -> None:
     # A pre-BE-0469 flat key holds no destination block, so the condition scan alone would miss it.
     from bajutsu.serve.batch_provider.device_farm_batch_provider import _check_no_conditions
