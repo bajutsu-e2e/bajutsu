@@ -115,15 +115,16 @@ class Hooks(_Model):
         seen: dict[str, str] = {}
         for list_name, entries in self.command_lists.items():
             for entry in entries:
-                if entry.name is None:
+                if (name := entry.qualified_name) is None:
                     continue
-                if (first := seen.get(entry.name)) is not None:
+                if (first := seen.get(name)) is not None:
+                    hint = "; give one hooks.use application an `as`" if entry.origin else ""
                     raise ValueError(
-                        f"hooks.{list_name}: two entries are named {entry.name!r} (also in "
-                        f"hooks.{first}); a hook name must be unique so ${{hooks.{entry.name}.*}} "
-                        "names one command"
+                        f"hooks.{list_name}: two entries are named {name!r} (also in "
+                        f"hooks.{first}); a hook name must be unique so ${{hooks.{name}.*}} names "
+                        f"one command{hint}"
                     )
-                seen[entry.name] = list_name
+                seen[name] = list_name
         return self
 
     def conditions(self) -> Iterator[tuple[str, HookWhen]]:

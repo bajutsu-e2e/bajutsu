@@ -56,12 +56,14 @@ class ScenarioHooks(_Model):
         seen: set[str] = set()
         for list_name, entries in self.lists.items():
             for entry in entries:
-                if entry.name is None:
+                # The name a token reads, so an application under an alias (BE-0512) re-validated
+                # with its data row keeps apart from an entry of the same local name.
+                if (name := entry.qualified_name) is None:
                     continue
-                if entry.name in seen:
+                if name in seen:
                     raise ValueError(
-                        f"hooks.{list_name}: two entries are named {entry.name!r}; a hook name must "
-                        f"be unique so ${{hooks.{entry.name}.*}} names one command"
+                        f"hooks.{list_name}: two entries are named {name!r}; a hook name must "
+                        f"be unique so ${{hooks.{name}.*}} names one command"
                     )
-                seen.add(entry.name)
+                seen.add(name)
         return self

@@ -11,9 +11,10 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Self, get_args
+from typing import Annotated, Any, Literal, Self, get_args
 
 from pydantic import Field, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from bajutsu.common.scenario.models._base import _Model
 from bajutsu.common.scenario.tags import tags_match
@@ -203,6 +204,50 @@ class HookWhen(_Model):
         return ", ".join(parts)
 
 
+# Separates a target from a component name in the key a target's component outputs are stored and
+# substituted under (BE-0512), `<target>:<name>`; neither half can hold it.
+SCOPE_SEP = ":"
+
+
+def split_hook_token(token: str) -> tuple[str, str]:
+    """The stored name and the output key a `hooks.<name>.<key>` token reads.
+
+    The name may carry an alias (`<as>.<name>`) and a target scope (`<target>:<name>`); a key holds
+    no dot, so the last dot always separates the two. A token with no key returns an empty one.
+    """
+    rest = token.removeprefix("hooks.")
+    name, dot, key = rest.rpartition(".")
+    return (name, key) if dot else (rest, "")
+
+
+def env_name(stored: str) -> str:
+    """The `<name>` half of a `BAJUTSU_HOOK__<name>__<key>` variable for a stored name.
+
+    A target scope is dropped, since a command reads the outputs of its own target alone; an alias
+    dot becomes the `__` separator, so `premium.user` reads as `premium__user`.
+    """
+    return stored.rpartition(SCOPE_SEP)[2].replace(".", "__")
+
+
+class HookOrigin(_Model):
+    """Where an entry came from when a `hooks` component added it (BE-0512).
+
+    Written by the expansion, never by an author. It rides in the dump under `_origin`, so a
+    data-driven scenario that is dumped and loaded again per row keeps it.
+    """
+
+    component: str
+    alias: str | None = None
+
+    @model_validator(mode="after")
+    def _alias_is_a_name(self) -> Self:
+        # The same rule `hooks.use`'s `as` meets: an alias holding `:` or `.` would split a stored
+        # name in the wrong place and drop its values.
+        if self.alias is not None and (why := invalid_hook_name(self.alias)) is not None:
+            raise ValueError(f"`_origin.alias` {why}")
+        return self
+
+
 class HookCommand(_Model):
     """One entry of a `hooks.beforeRun` / `afterRun` / `beforeScenario` / `afterScenario` list.
 
@@ -230,6 +275,9 @@ class HookCommand(_Model):
     mask: bool = False
     # Runs the entry only where the condition holds (BE-0497, BE-0513); absent, it always runs.
     when: HookWhen | None = None
+    # Set by `hooks` component expansion (BE-0512): a component's names are scoped to its target, and
+    # an alias qualifies them.
+    origin: Annotated[HookOrigin | None, SkipJsonSchema()] = Field(default=None, alias="_origin")
 
     @model_validator(mode="after")
     def _one_command(self) -> Self:
@@ -250,9 +298,17 @@ class HookCommand(_Model):
         return self
 
     @property
+    def qualified_name(self) -> str | None:
+        """The name a token or another command reads this entry by: `<as>.<name>` under an alias."""
+        if self.name is None:
+            return None
+        alias = self.origin.alias if self.origin is not None else None
+        return f"{alias}.{self.name}" if alias is not None else self.name
+
+    @property
     def label(self) -> str:
         """How reports and failure messages name this entry: its `name`, else its command."""
-        return self.name or (self.cmd if self.cmd is not None else f"use:{self.use}")
+        return self.qualified_name or (self.cmd if self.cmd is not None else f"use:{self.use}")
 
 
 def reject_outcome_on_before(entries: Iterable[HookCommand], where: str) -> None:

@@ -54,7 +54,11 @@ from bajutsu.common.runner import device_pool, run_all
 from bajutsu.common.runner.conditions import ConditionContext, condition_context
 from bajutsu.common.runner.hook_commands import HookPhaseResult
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
-from bajutsu.common.runner.scenario_hooks import sandbox_targets, scenario_hook_error
+from bajutsu.common.runner.scenario_hooks import (
+    sandbox_targets,
+    scenario_hook_error,
+    scope_hook_tokens,
+)
 from bajutsu.common.runner.types import LeaseFn
 from bajutsu.common.scenario import Scenario, _scenarios_declaring_targets, load_expanded_scenarios
 from bajutsu.run.device_matrix import (
@@ -165,11 +169,16 @@ def _history_audit(history: str, as_json: bool) -> None:
 
 
 def _refuse_bad_hooks(scenarios: list[Scenario], eff: Effective) -> None:
-    """Exit 2 on a scenario whose hook names or tokens do not resolve, as `run` does (BE-0501)."""
+    """Exit 2 on a scenario whose hook names or tokens do not resolve, as `run` does (BE-0501).
+
+    Then scope its tokens as `run` does (BE-0512): a repeat runs the same hook runner, which stores a
+    target component's outputs under that target.
+    """
     for s in scenarios:
         if (why := scenario_hook_error(s, {eff.target: eff}, eff.target)) is not None:
             typer.echo(f"scenario {s.name!r}: {why}")
             raise typer.Exit(2)
+        scope_hook_tokens(s, {eff.target: eff}, eff.target)
 
 
 def _repeat_audit(

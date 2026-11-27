@@ -9,7 +9,7 @@ overrides (preconditions) are applied later by the runner.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from bajutsu.common import _yaml
 from bajutsu.common.config.effective import (
@@ -31,11 +31,19 @@ from bajutsu.common.config.schema import (
     XcuitestConfig,
     _Model,
 )
+from bajutsu.common.config.schema.hooks import Hooks
 from bajutsu.common.config.schema.platform._shared import AppCommon, RunsOnGroup
 from bajutsu.common.config.schema.platform.android import AndroidApp, AndroidDriver, AndroidRunsOn
 from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosKind, IosRunsOn
 from bajutsu.common.config.schema.platform.web import WebApp, WebDriver, WebRunsOn
-from bajutsu.common.scenario import system_alert_entries, tip_kit_entry
+from bajutsu.common.scenario import (
+    CleanupRule,
+    Interrupt,
+    Step,
+    system_alert_entries,
+    tip_kit_entry,
+)
+from bajutsu.common.scenario.hook_scopes import scope_tokens
 
 
 def _merge_ai(base: AiSettings | None, over: AiSettings | None) -> AiConfig | None:
@@ -197,6 +205,34 @@ def unknown_target(config: Config, target: str, *, list_targets: bool = True) ->
     return f"{message}; targets: {', '.join(sorted(config.targets)) or 'none'}"
 
 
+class _Phases(NamedTuple):
+    setup: list[Step]
+    cleanup: list[CleanupRule]
+    interrupts: list[Interrupt]
+
+
+def _scoped_phases(hooks: Hooks, target: str) -> _Phases:
+    """*target*'s own `setup`, `cleanup`, and interrupt screens, reading its component names.
+
+    A step of the target's own hooks reads under the target (BE-0512). The steps are copied first,
+    so the loaded config keeps the tokens as written and resolving it again starts from them.
+    """
+    scoped = {
+        name: {target}
+        for entries in hooks.command_lists.values()
+        for e in entries
+        if e.origin is not None and (name := e.qualified_name) is not None
+    }
+    phases = _Phases(
+        setup=[s.model_copy(deep=True) for s in hooks.setup],
+        cleanup=[r.model_copy(deep=True) for r in hooks.cleanup],
+        interrupts=[e.model_copy(deep=True) for e in hooks.screens],
+    )
+    # Walked even with no component name in reach, so a hand-written scope still fails at load.
+    scope_tokens(list(phases), target, scoped)
+    return phases
+
+
 def resolve(config: Config, target: str) -> Effective:
     """Resolve the effective config for one target, whose `defaults` and templates the loader merged.
 
@@ -217,6 +253,7 @@ def resolve(config: Config, target: str) -> Effective:
         ios.seed_photos if ios is not None else android_dest.seed_photos if android_dest else []
     )
     tip_kit = tip_kit_entry(a.hooks.interrupts)
+    phases = _scoped_phases(a.hooks, target)
     return Effective(
         target=target,
         platform_config=_platform_config(a),
@@ -260,9 +297,9 @@ def resolve(config: Config, target: str) -> Effective:
             system_alerts=system_alert_entries(a.hooks.interrupts),
             network=a.evidence.collect_network,
             ios_tip_kit_handling=tip_kit is not None and tip_kit.tip_kit == "dismiss",
-            interrupts=a.hooks.screens,
-            setup=list(a.hooks.setup),
-            cleanup=list(a.hooks.cleanup),
+            setup=phases.setup,
+            cleanup=phases.cleanup,
+            interrupts=phases.interrupts,
             ignored_settings=(
                 dict(runs_on.ignored_settings) if isinstance(runs_on, RunsOnGroup) else {}
             ),

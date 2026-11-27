@@ -540,3 +540,20 @@ def test_a_template_files_use_entry_without_a_hook_is_left_for_the_model(tmp_pat
     block = {"hooks": {"use": [{"with": {}}, {"hook": "../hooks/x.yaml"}]}}
     out = _rebased(block, tmp_path / "templates", tmp_path)
     assert out["hooks"]["use"] == [{"with": {}}, {"hook": "hooks/x.yaml"}]
+
+
+def test_an_aliased_step_keeps_only_what_the_author_wrote(tmp_path: Path) -> None:
+    # A visual check's defaults must not read as set once the alias rewrite re-validates the step.
+    _write(
+        tmp_path / "hooks" / "v.hook.yaml",
+        """
+beforeScenario: [{ name: user, cmd: ./c.sh }]
+setup:
+  - assert:
+      - { visual: { baseline: b.png, compare: exact } }
+      - { enabled: { label: "${hooks.user.name}" } }
+""",
+    )
+    config = _config(tmp_path, "    hooks:\n      use: [{ hook: ./hooks/v.hook.yaml, as: prem }]\n")
+    [step] = resolve(load_config_file(config), "web").run_defaults.setup
+    assert "${hooks.web:prem.user.name}" in str(step.model_dump(by_alias=True))

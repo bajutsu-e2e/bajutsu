@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
-| Implementing PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588) (units 1–2) |
+| Implementing PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588) (units 1–2), [#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596) (unit 3) |
 | Topic | Scenario authoring features |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md) |
 <!-- /BE-METADATA -->
@@ -382,7 +382,7 @@ Content that a client uploads thus never gains the mode of the config.
 
 - [x] Component file and `use` list
 - [x] Expansion for targets and scenarios
-- [ ] Name scopes and aliases
+- [x] Name scopes and aliases
 - [ ] Application-level `when` and `inheritSetup: false`
 - [ ] Reports, command policy, and delivery to workers
 - [ ] Schemas and `codegen`
@@ -394,6 +394,10 @@ Log:
   - A component's `cmd` takes parameters argument by argument and is joined back with shell quoting, so a value holding a space stays one argument. The runner splits the line the same way.
   - Until units 3 and 4 land, `as` only tells two applications apart, and the load refuses a `when` on an application.
   - A scenario that applies a component routes to a worker that runs command lines, because the server reads the scenario text without the component file. Unit 5 replaces this with routing by the component's own entries.
+- 2026-11-27 — Unit 3 landed ([#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596)).
+  - A target's component outputs are stored under `<target>:<name>`. The load rewrites each token that reads one to the scope of the target that reads it, so the run loop keeps a single binding map.
+  - A command applied under an alias reads its own application's outputs by their local names. The application is matched by its component file and alias together, since two components may share one alias.
+  - The load also refuses a token that names a target scope by hand, and a component token in an interrupt entry that names no target in a multi-target scenario.
 
 ## References
 

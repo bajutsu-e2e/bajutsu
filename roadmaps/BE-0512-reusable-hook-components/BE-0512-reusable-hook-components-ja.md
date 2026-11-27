@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
-| 実装 PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588)（単位 1〜2） |
+| 実装 PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588)（単位 1〜2）、[#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596)（単位 3） |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates-ja.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks-ja.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md) |
 <!-- /BE-METADATA -->
@@ -371,7 +371,7 @@ Bajutsu は展開時にステップのトークンを書き換えます。
 
 - [x] コンポーネントのファイルと `use` リスト
 - [x] ターゲットとシナリオの展開
-- [ ] 名前の範囲と別名
+- [x] 名前の範囲と別名
 - [ ] 適用単位の `when` と `inheritSetup: false`
 - [ ] 報告、実行方針、worker への配布
 - [ ] スキーマと `codegen`
@@ -383,6 +383,10 @@ Bajutsu は展開時にステップのトークンを書き換えます。
   - コンポーネントの `cmd` には引数ごとにパラメータを代入し、シェルの引用規則で結合し直します。空白を含む値も 1 つの引数のまま残ります。runner は同じ規則で行を分割します。
   - 単位 3 と単位 4 が入るまで、`as` は 2 つの適用を区別するためだけに使います。適用に書いた `when` はロードエラーになります。
   - コンポーネントを適用するシナリオは、コマンドを実行できる worker に振り分けます。サーバーはシナリオの本文だけを読み、コンポーネントのファイルを読まないからです。単位 5 では、コンポーネントのエントリから振り分け先を決める方式へ置き換えます。
+- 2026-11-27 — 単位 3 を実装しました（[#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596)）。
+  - ターゲットのコンポーネントの出力は `<target>:<name>` の名前で保存します。この値を読むトークンは、ロード時に、読むターゲットの範囲の名前へ書き換えます。run ループの置換表は 1 つのままです。
+  - 別名を付けて適用したコマンドは、同じ適用の出力をローカル名でも読めます。2 つのコンポーネントが同じ別名を使うことがあるため、適用はコンポーネントのファイルと別名の組で見分けます。
+  - ターゲットの範囲を手で書いたトークンは、ロード時に拒否します。複数ターゲットのシナリオで `target` を書かない割り込みのエントリが、コンポーネントのトークンを読む場合も拒否します。
 
 ## 参考
 

@@ -59,5 +59,5 @@ class HookPhases:
                 yield list_name, index, entry
 
     def named(self) -> dict[str, HookCommand]:
-        """The entries that carry a `name`, keyed by it — the ones a token can read."""
-        return {e.name: e for _, _, e in self.entries() if e.name is not None}
+        """The entries that carry a `name`, keyed by the name a token reads (`<as>.<name>`)."""
+        return {n: e for _, _, e in self.entries() if (n := e.qualified_name) is not None}

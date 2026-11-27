@@ -561,6 +561,9 @@ class _ScenarioRunner:
         return lambda key: self.hooks.context(  # type: ignore[union-attr]
             first if key == SCENARIO_LEVEL else key,
             **({"judged_targets": every} if key == SCENARIO_LEVEL else {}),
+            # A scenario's own command reads the component outputs of every target it drives, which
+            # the load already checked hold no name twice (BE-0512).
+            targets=tuple(driven),
             level=key if key == SCENARIO_LEVEL else None,
             scenario=s.name,
             scenario_file=str(s.source_path) if s.source_path is not None else None,

@@ -8,6 +8,7 @@ sees ordinary command entries and steps.
 
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -68,22 +69,13 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
             one that wraps no single scenario (`group`, `setMocks`).
     """
     where = f"hooks.use {use.hook!r}"
-    try:
-        path = contained_ref(root, base, use.hook)
-        component = parse_yaml_named(path, load_hook_component)
-    except (OSError, UnicodeDecodeError) as e:
-        raise ValueError(f"{where}: cannot read the component: {e}") from e
-    except ValueError as e:
-        raise ValueError(f"{where}: {e}") from e
-    if missing := sorted(set(component.params) - set(use.with_)):
-        raise ValueError(f"{where}: missing required params: {missing}")
-    if unknown := sorted(set(use.with_) - set(component.params)):
-        raise ValueError(f"{where}: unknown params: {unknown}")
+    path, component = _read(use, root=root, base=base, where=where)
     bindings = {f"params.{k}": v for k, v in use.with_.items()}
     here = path.parent
+    origin = {"component": str(path), "alias": use.as_}
     try:
         commands = {
-            name: [_command(entry, bindings, here) for entry in entries]
+            name: [_command(entry, bindings, here, origin) for entry in entries]
             for name, entries in component.command_lists.items()
         }
         setup = _steps(component.setup, bindings)
@@ -98,14 +90,7 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
         *(_dump(s) for s in setup),
         *(_dump(r) for r in cleanup),
     ]
-    residual = sorted(t for t in interp.find_tokens(dumps) if t.startswith("params."))
-    if unsubstituted := [t for t in residual if t.removeprefix("params.") in component.params]:
-        raise ValueError(
-            f"{where}: ${{{unsubstituted[0]}}} sits in a field that takes no parameter; only a "
-            "command's `cmd` and `env` values and the steps do"
-        )
-    if residual:
-        raise ValueError(f"{where}: references undeclared params: {residual}")
+    _reject_residual(dumps, component.params, where)
     # A step component the file calls resolves against the file's own directory, as one called from
     # a component file of steps does (BE-0422).
     resolver = ComponentResolver({}, root=root, base=here, source=None)
@@ -121,7 +106,42 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
         [*nested_steps(setup), *(s for r in cleanup for s in nested_steps(r.steps))],
         f"{where}: a hooks component",
     )
+    if use.as_ is not None:
+        # After the nested step components expand, so their tokens are rewritten too. Only the names
+        # this component declares move under the alias; a token naming an outer entry stays.
+        declared = {e.name for entries in commands.values() for e in entries if e.name is not None}
+        setup = [_aliased(s, use.as_, declared) for s in setup]
+        for rule in cleanup:
+            rule.steps = [_aliased(s, use.as_, declared) for s in rule.steps]
     return HookApplication(use=use, path=path, commands=commands, setup=setup, cleanup=cleanup)
+
+
+def _read(use: HookUse, *, root: Path, base: Path, where: str) -> tuple[Path, HookComponent]:
+    """The component file *use* names, read inside *root*, with its parameters checked."""
+    try:
+        path = contained_ref(root, base, use.hook)
+        component = parse_yaml_named(path, load_hook_component)
+    except (OSError, UnicodeDecodeError) as e:
+        raise ValueError(f"{where}: cannot read the component: {e}") from e
+    except ValueError as e:
+        raise ValueError(f"{where}: {e}") from e
+    if missing := sorted(set(component.params) - set(use.with_)):
+        raise ValueError(f"{where}: missing required params: {missing}")
+    if unknown := sorted(set(use.with_) - set(component.params)):
+        raise ValueError(f"{where}: unknown params: {unknown}")
+    return path, component
+
+
+def _reject_residual(dumps: list[Any], params: list[str], where: str) -> None:
+    """Fail on a `${params.*}` token substitution left behind."""
+    residual = sorted(t for t in interp.find_tokens(dumps) if t.startswith("params."))
+    if unsubstituted := [t for t in residual if t.removeprefix("params.") in params]:
+        raise ValueError(
+            f"{where}: ${{{unsubstituted[0]}}} sits in a field that takes no parameter; only a "
+            "command's `cmd` and `env` values and the steps do"
+        )
+    if residual:
+        raise ValueError(f"{where}: references undeclared params: {residual}")
 
 
 def _dump(model: Any) -> Any:
@@ -133,9 +153,38 @@ def _steps(steps: list[Step], bindings: dict[str, str]) -> list[Step]:
     return [Step.model_validate(interp.interpolate(_dump(s), bindings)) for s in steps]
 
 
-def _command(entry: HookCommand, bindings: dict[str, str], here: Path) -> HookCommand:
-    """*entry* with its parameters substituted and its working directory fixed to *here*."""
+# A two-part `${hooks.<name>.<key>}` token, the form a component's own steps read its names by.
+_LOCAL_TOKEN = re.compile(r"\$\{\s*hooks\.([A-Za-z][A-Za-z0-9_]*)\.([A-Za-z][A-Za-z0-9_]*)\s*\}")
+
+
+def _aliased(step: Step, alias: str, declared: set[str]) -> Step:
+    """*step* with each token naming one of *declared* read under *alias* instead."""
+
+    def rewrite(value: Any) -> Any:
+        if isinstance(value, str):
+            return _LOCAL_TOKEN.sub(
+                lambda m: f"${{hooks.{alias}.{m[1]}.{m[2]}}}" if m[1] in declared else m.group(0),
+                value,
+            )
+        if isinstance(value, dict):
+            return {k: rewrite(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [rewrite(v) for v in value]
+        return value
+
+    # Only what the author wrote, as `_steps` dumps: a dumped default reads as set, and a validator
+    # that looks at the set fields (a visual check's `compare: exact`) would refuse it.
+    dumped = _dump(step)
+    out = rewrite(dumped)
+    return step if out == dumped else Step.model_validate(out)
+
+
+def _command(
+    entry: HookCommand, bindings: dict[str, str], here: Path, origin: dict[str, str | None]
+) -> HookCommand:
+    """*entry* with its parameters substituted, its working directory fixed to *here*, and *origin*."""
     data = _dump(entry)
+    data["_origin"] = origin
     if entry.cmd is not None:
         if interp.find_tokens(entry.cmd):
             # Split first, then substitute into each argument, so a value holding a space or a quote
@@ -230,14 +279,14 @@ def expand_scenario_hook_uses(scenarios: Iterable[Scenario], *, root: Path, base
         hooks.use = []
         seen: set[str] = set()
         for entry in (*hooks.before_scenario, *hooks.after_scenario):
-            if entry.name is None:
+            if (name := entry.qualified_name) is None:
                 continue
-            if entry.name in seen:
+            if name in seen:
                 raise ValueError(
-                    f"{where}: two hook entries are named {entry.name!r} once its hooks "
-                    "components expand; a hook name must be unique so ${hooks."
-                    f"{entry.name}.*}} names one command"
+                    f"{where}: two hook entries are named {name!r} once its hooks components "
+                    f"expand; a hook name must be unique so ${{hooks.{name}.*}} names one command; "
+                    "give one hooks.use application an `as`"
                 )
-            seen.add(entry.name)
+            seen.add(name)
         s.setup = wrap_setup(applications, s.setup)
         s.cleanup = wrap_cleanup(applications, s.cleanup)
