@@ -30,7 +30,6 @@ from bajutsu.common.scenario.step_walk import nested_steps, reject_scenario_only
 # The lists a component's preparation goes ahead of the direct entries in; every other list holds
 # teardown, which goes behind them in the reverse order of `use`.
 _PREPARATION = frozenset({"beforeRun", "beforeScenario"})
-COMMAND_LIST_NAMES: tuple[str, ...] = ("beforeRun", "beforeScenario", "afterScenario", "afterRun")
 
 
 def load_hook_component(text: str) -> HookComponent:

@@ -498,7 +498,7 @@ def test_two_equal_applications_in_one_layer_still_need_an_alias(tmp_path: Path)
     config = _config(
         tmp_path,
         "    hooks:\n      use: [{ hook: ./hooks/x.hook.yaml }, { hook: ./hooks/x.hook.yaml }]\n",
-        extra="defaults:\n  hooks:\n    use: []\n",
+        extra="defaults:\n  hooks:\n    use: [{ hook: ./hooks/x.hook.yaml }]\n",
     )
     with pytest.raises(ValidationError, match="applied twice"):
         load_config_file(config)

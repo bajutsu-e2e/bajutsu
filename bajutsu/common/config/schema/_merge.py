@@ -87,13 +87,19 @@ def _merge_uses(base: list[Any], over: list[Any]) -> list[Any]:
     earlier layer applies.
     """
     out = list(base)
+    # Each of *base*'s slots is replaced at most once per layer: a second equal entry in *over* then
+    # appends instead of overwriting the first, so the repeat still reaches the model.
+    replaced: set[int] = set()
     for entry in over:
         key = _use_identity(entry)
-        at = next((i for i in range(len(base)) if _use_identity(out[i]) == key), None)
+        at = next(
+            (i for i, e in enumerate(base) if i not in replaced and _use_identity(e) == key), None
+        )
         if at is None:
             out.append(entry)
         else:
             out[at] = entry
+            replaced.add(at)
     return out
 
 
