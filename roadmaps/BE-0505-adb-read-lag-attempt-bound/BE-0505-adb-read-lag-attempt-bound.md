@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0505") |
+| Implementing PR | [#2597](https://github.com/bajutsu-e2e/bajutsu/pull/2597) |
 | Topic | Driver & backend architecture |
 <!-- /BE-METADATA -->
 
@@ -275,7 +276,7 @@ Log:
   Both show an activity relaunch and no dump-cap exit.
   Withdrew unit 5 and removed the claim of repairing those lanes.
   Unit 1 now reports whether the settle closed, since nothing else reads which exit ran.
-- 2026-11-27 — Implemented units 1–4 and 6–8.
+- 2026-11-27 — [#2597](https://github.com/bajutsu-e2e/bajutsu/pull/2597): Implemented units 1–4 and 6–8.
   A bare read of an unsettled tree reads again up to three more times, then takes the latest one.
   Narrowed the equivalence claim to a tree that catches up within four reads.
   The settle verdict compares node identity and bounds, and the comparison keeps the heads-up banner.
