@@ -502,9 +502,20 @@ def _run_records(gh: Gh, repo: str, run_id: str, out: Path) -> dict[str, dict[st
     return by_runner
 
 
+_ESCAPES_FLAG = "--allow-escape-sequences"
+
+
 def _job_log(gh: Gh, repo: str, job_id: Any) -> str | None:
+    path = f"repos/{repo}/actions/jobs/{job_id}/logs"
     try:
-        return gh(["api", f"repos/{repo}/actions/jobs/{job_id}/logs"])
+        try:
+            return gh(["api", path])
+        except subprocess.CalledProcessError as exc:
+            # A newer `gh` refuses a response holding terminal escapes, which colored job logs do.
+            # Pass the flag only on that refusal: an older `gh` rejects it as unknown.
+            if _ESCAPES_FLAG not in (exc.stderr or ""):
+                raise
+            return gh(["api", _ESCAPES_FLAG, path])
     except subprocess.CalledProcessError:
         return None  # logs expired or withheld: unknown, which is not the same as zero
 

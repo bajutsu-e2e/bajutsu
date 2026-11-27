@@ -431,6 +431,30 @@ def test_fetch_joins_records_with_the_api(tmp_path: Path) -> None:
     assert (out / "manifests" / "11-r1-20260101-000000" / "manifest.json").is_file()
 
 
+@pytest.mark.parametrize(
+    ("stderr", "log", "calls"),
+    [
+        # A `gh` that refuses escape sequences is asked again with the flag it names.
+        ("pass --allow-escape-sequences to output it anyway", "colored log", 2),
+        # Any other failure (expired logs) stays unknown, without a flag an older `gh` rejects.
+        ("HTTP 410: Gone", None, 1),
+    ],
+)
+def test_job_log_retries_only_on_the_escape_refusal(
+    stderr: str, log: str | None, calls: int
+) -> None:
+    seen: list[list[str]] = []
+
+    def gh(args: Sequence[str]) -> str:
+        seen.append(list(args))
+        if "--allow-escape-sequences" not in args:
+            raise subprocess.CalledProcessError(1, "gh", stderr=stderr)
+        return "colored log"
+
+    assert ct._job_log(gh, "o/r", 7) == log
+    assert len(seen) == calls
+
+
 def test_aggregate_and_render(tmp_path: Path) -> None:
     red = {
         "api": {
