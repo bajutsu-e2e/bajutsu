@@ -1,7 +1,7 @@
 """add a job group's notify selection and the group_events table (BE-0500)
 
-Revision ID: 0029
-Revises: 0028
+Revision ID: 0030
+Revises: 0029
 Create Date: 2026-11-24
 """
 
@@ -14,8 +14,8 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "0029"
-down_revision: str | None = "0028"
+revision: str = "0030"
+down_revision: str | None = "0029"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -32,8 +32,10 @@ def upgrade() -> None:
         sa.Column("event", sa.String(), nullable=False),
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("state", sa.String(), nullable=False),
-        sa.Column("attempts", sa.Integer(), server_default="0", nullable=False),
-        sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("attempts", sa.Integer(),
+                  server_default="0", nullable=False),
+        sa.Column("next_attempt_at", sa.DateTime(
+            timezone=True), nullable=False),
         sa.Column("claimed_until", sa.DateTime(timezone=True), nullable=True),
         sa.Column("claim_token", sa.String(), nullable=True),
         sa.Column("reference", sa.String(), nullable=True),
@@ -46,12 +48,14 @@ def upgrade() -> None:
         ["group_id", "sink", "event"],
         unique=True,
     )
-    op.create_index("ix_group_events_state_next", "group_events", ["state", "next_attempt_at"])
+    op.create_index("ix_group_events_state_next",
+                    "group_events", ["state", "next_attempt_at"])
 
 
 def downgrade() -> None:
     op.drop_index("ix_group_events_state_next", table_name="group_events")
-    op.drop_index("ux_group_events_group_sink_event", table_name="group_events")
+    op.drop_index("ux_group_events_group_sink_event",
+                  table_name="group_events")
     op.drop_table("group_events")
     # `batch_alter_table` because SQLite has no in-place DROP, as in 0027's downgrade.
     with op.batch_alter_table("job_groups") as batch:
