@@ -24,13 +24,13 @@ added the stall signal. The respawn retry reads it to pick a remedy once the bac
 answering.
 
 The scenario's own result never shows the stall signal. A reader of a red result sees the wait
-timeout and nothing else. The video warning sits on a separate log line, and nothing links the two.
+timeout and nothing else. The video warning sits on a separate log line, and nothing on the result links the two.
 
 This proposal records the stall signal on the result of every scenario that did not pass. The
 record is evidence and never a verdict. Nothing runs again, and no pass or fail answer changes.
 
-This item splits off from [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md). That item also quarantined the device after
-such a result and asked for a replacement device. The project rejected the quarantine, and
+This item splits off from [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md). That item also proposed two steps after
+such a result. It would quarantine the device and ask for a replacement device. The project rejected the quarantine, and
 *Alternatives considered* gives the reasons.
 
 ## Motivation
@@ -52,8 +52,13 @@ recordVideo produced no new bytes in runs/.../scenario.mp4 within 20.0s
 ```
 
 The capture services produced no output, so the device was not painting either. Yet the result
-names `horse.title` and points at the app or the scenario. A reader has to find the video warning
-in the job log and match it to the scenario by hand.
+names `horse.title` and points at the app or the scenario. The same stall already feeds the stall
+diagnostics of [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md).
+The workflow `ios-e2e.yml` arms them for every job, through the `BAJUTSU_STALL_DIAGNOSTICS`
+variable. That capture
+names no scenario, and it stops after two captures per reason in one process. In the ten-scenario
+job, the later stalls leave no capture at all. A reader still has to find the video warning in the
+job log and match it to the scenario by hand.
 
 The stall signal does not prove a bad device. On these CI runners the video warning also appears
 under scenarios that pass. A note on the result states a fact for the reader to weigh. The note
@@ -100,6 +105,11 @@ chooses between two candidates and states why:
 
 Either way, the manifest and the report carry the note. The report shows the note beside the red
 step.
+
+BE-0361's stall diagnostics may already hold a capture of the same stall. The capture sits in the
+directory that the `BAJUTSU_STALL_DIAGNOSTICS` variable names. The implementing change decides
+whether the note points there when a job sets it. The capture can be missing even then, because of the cap
+per reason.
 
 ### Prime directives preserved
 
@@ -162,12 +172,18 @@ The units of work below are Mutually Exclusive and Collectively Exhaustive (MECE
 
 - [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md):
   the stall signal on the lease, and the respawn retry that reads it
+- [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics.md):
+  the in-process stall capture that the same trigger already feeds on iOS
+- [BE-0367](../BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics.md):
+  the matching stall capture on Android
 - [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md):
   device recovery during the respawn retry
 - [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md): the
   device-creation code a replacement would reuse
 - [`bajutsu/common/runner/pipeline.py`](../../bajutsu/common/runner/pipeline.py): `run_one`, where
   the check goes
+- [`bajutsu/common/stall_diagnostics.py`](../../bajutsu/common/stall_diagnostics.py): the stall
+  capture and its cap of two captures per reason
 - [`bajutsu/common/runner/pool.py`](../../bajutsu/common/runner/pool.py):
   `Lease.video_start_stalled()` and its lease-local flag
 - [`run_result.py`](../../bajutsu/common/orchestrator/types/run_result.py): `RunResult`, which

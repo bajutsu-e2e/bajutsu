@@ -19,11 +19,11 @@
 
 停止の合図を入れたのは [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md) です。バックエンドが応答しなくなったとき、respawn による再試行がこの合図を読んで対処を選びます。
 
-ところが、シナリオ自身の結果には停止の合図が出てきません。赤い結果を読む人に見えるのは、待機のタイムアウトだけです。動画の警告は別のログ行にあり、両者を結ぶものはありません。
+ところが、シナリオ自身の結果には停止の合図が出てきません。赤い結果を読む人に見えるのは、待機のタイムアウトだけです。動画の警告は別のログ行にあり、結果の上には両者を結ぶものがありません。
 
 本提案は、成功しなかったすべてのシナリオの結果に、停止の合図を記録します。この記録は証跡であり、判定ではありません。何も再実行せず、成否の答えも変えません。
 
-本項目は [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md) から切り出したものです。BE-0376 は、そうした結果のあとでデバイスを隔離し、交換用のデバイスを要求する内容でした。隔離の部分は却下となり、理由は「検討した代替案」に書きます。
+本項目は [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md) から切り出したものです。BE-0376 は、そうした結果のあとでデバイスを隔離し、交換用のデバイスを要求することも提案していました。隔離の部分は却下となり、理由は「検討した代替案」に書きます。
 
 ## 動機
 
@@ -39,7 +39,9 @@ step 1 (for_each): step 3 (wait): wait timeout: for {'id': ['horse.title', 'hors
 recordVideo produced no new bytes in runs/.../scenario.mp4 within 20.0s
 ```
 
-キャプチャのサービスが何も出力していなかったので、デバイスは描画もしていませんでした。それでも結果は `horse.title` を名指し、アプリかシナリオの不具合に見えます。読む人はジョブのログから動画の警告を探し、シナリオと手作業で突き合わせることになります。
+キャプチャのサービスが何も出力していなかったので、デバイスは描画もしていませんでした。それでも結果は `horse.title` を名指し、アプリかシナリオの不具合に見えます。
+
+同じ停止は、[BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md) の停止診断にもすでに届いています。`ios-e2e.yml` は、この診断をすべてのジョブで有効にしています（`BAJUTSU_STALL_DIAGNOSTICS`）。ただし、そのキャプチャはシナリオを名指しません。また、1つのプロセスでは理由ごとに2回で止まるので、10個のシナリオを走らせるジョブでは、後半の停止は何も残しません。そのため読む人は、今もジョブのログから動画の警告を探し、シナリオと手作業で突き合わせることになります。
 
 停止の合図は、デバイスの不調を証明するものではありません。この CI のランナーでは、成功するシナリオでも動画の警告が出ます。結果に添える注記は、読む人が判断するための事実を示すにとどまります。原因を断定せず、判定を左右することもありません。
 
@@ -74,6 +76,8 @@ recordVideo produced no new bytes in runs/.../scenario.mp4 within 20.0s
 | 新しいフィールドを足す | 意味ははっきりするが、マニフェストとレポートの読み込みの両方に手が入る |
 
 どちらを選んでも、マニフェストとレポートは注記を運びます。レポートは、注記を赤いステップの隣に表示します。
+
+BE-0361 の停止診断は、`BAJUTSU_STALL_DIAGNOSTICS` が指すディレクトリに、同じ停止のキャプチャを残していることがあります。診断が有効なときに注記がそのディレクトリを指すかどうかは、実装の変更で検討します。理由ごとの上限があるので、診断が有効でもキャプチャがないことはあります。
 
 ### 遵守する原則
 
@@ -137,9 +141,12 @@ CI で効かせる方法の問いは、開いたままです。レーンを固�
 | 参照先 | 内容 |
 |---|---|
 | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md) | リースの停止の合図と、それを読む respawn による再試行 |
+| [BE-0361](../BE-0361-ios-ci-simulator-diagnostics/BE-0361-ios-ci-simulator-diagnostics-ja.md) | 同じきっかけがすでに届いている、iOS のプロセス内の停止キャプチャ |
+| [BE-0367](../BE-0367-android-ci-emulator-diagnostics/BE-0367-android-ci-emulator-diagnostics-ja.md) | Android での同様の停止キャプチャ |
 | [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md) | respawn による再試行でのデバイス回復 |
 | [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) | 交換で再利用するはずだったデバイス作成のコード |
 | [`pipeline.py`](../../bajutsu/common/runner/pipeline.py) | 確認を置く `run_one` |
+| [`stall_diagnostics.py`](../../bajutsu/common/stall_diagnostics.py) | 停止キャプチャと、理由ごとに2回の上限 |
 | [`pool.py`](../../bajutsu/common/runner/pool.py) | `Lease.video_start_stalled()` とリースごとのフラグ |
 | [`run_result.py`](../../bajutsu/common/orchestrator/types/run_result.py) | 注記を運ぶ `RunResult` |
 | [#1556 の `actuation (xcuitest)` ジョブ](https://github.com/bajutsu-e2e/bajutsu/actions/runs/31559685322/job/93999696836) | 記録された発生事例 |
