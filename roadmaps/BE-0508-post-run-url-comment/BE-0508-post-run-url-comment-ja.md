@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0508") |
+| 実装 PR | [#2599](https://github.com/bajutsu-e2e/bajutsu/pull/2599) |
 | トピック | 外部サービスとの連携 |
 | 関連 | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post-ja.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md) |
 <!-- /BE-METADATA -->
@@ -151,7 +152,7 @@ run 由来の文字列は、1つにつき 500 文字で切り、省略記号を�
 
 ログは次のとおりです。
 
-PR_LINK で 6 つの単位をまとめて実装しました。実装が設計と異なる点は、次の表のとおりです。
+[#2599](https://github.com/bajutsu-e2e/bajutsu/pull/2599) で 6 つの単位をまとめて実装しました。実装が設計と異なる点は、次の表のとおりです。
 
 | 対象 | 実装した内容と理由 |
 |---|---|

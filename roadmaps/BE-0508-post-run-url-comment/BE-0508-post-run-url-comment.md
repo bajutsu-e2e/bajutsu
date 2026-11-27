@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0508") |
+| Implementing PR | [#2599](https://github.com/bajutsu-e2e/bajutsu/pull/2599) |
 | Topic | Integration with external services |
 | Related | [BE-0503](../BE-0503-local-evidence-post/BE-0503-local-evidence-post.md), [BE-0504](../BE-0504-pr-evidence-comment-action/BE-0504-pr-evidence-comment-action.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md) |
 <!-- /BE-METADATA -->
@@ -208,7 +209,7 @@ section.
 
 Log:
 
-- PR_LINK, all six units shipped in one change. The table lists where the implementation differs
+- [#2599](https://github.com/bajutsu-e2e/bajutsu/pull/2599), all six units shipped in one change. The table lists where the implementation differs
   from the design.
 
 | Point | What shipped, and why |
