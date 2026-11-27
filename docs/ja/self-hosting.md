@@ -1524,15 +1524,16 @@ Linux の web ワーカーに渡って失敗しかねません。その失敗は
   操作する時点で失敗します。
 - **run のジョブは、ルート上でステップと設定が必要とするものも要求します（[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。**
   各ターゲットは環境ルートに解決されます。ルートは `ios-simulator`、`ios-device`、`ios-live`（WebDriver の
-  エンドポイント）、`android`、`web` のいずれかです。3 つの iOS ルートは対応する設定が異なるので、
-  プラットフォームだけでは区別できません。ジョブは次の 2 種類のトークンを必要とします。
+  エンドポイント）、`android-emulator`、`android-device`、`web` のいずれかです。3 つの iOS ルートは対応する
+  設定が異なるので、プラットフォームだけでは区別できません。Android のターゲットのルートは
+  `runsOn.android.kind` で決まります（[BE-0518](../../roadmaps/BE-0518-android-routes-and-kind-any/BE-0518-android-routes-and-kind-any-ja.md)）。ジョブは次の 2 種類のトークンを必要とします。
   - `cap:<route>:<capability>`：そのターゲットに割り当てたステップが必要とする capability ごとに 1 つ
   - `setting:<route>:<key>`：ジョブが有効にする設定のうち、ターゲットが `runsOn.ignoredSettings` で無視を
     宣言していないものごとに 1 つ
 
   Appium のグリッドで動かす実行では、iOS のターゲットを `ios-live` に置きます。
 - **ワーカーは、ドライバが動かすルートごとにトークンの集合を広告します。** `xcuitest` は Simulator の
-  ルートを、`adb` は `android` を、`playwright` は `web` を動かします。対象のドライバは、`--platform` に
+  ルートを、`adb` は Android の 2 つのルートを、`playwright` は `web` のルートを動かします。対象のドライバは、`--platform` に
   かかわらず、[worker 能力ファイル](drivers.md#worker-の能力検査be-0450)が提供し、ホストが起動できるもの
   すべてです。シナリオのほかのターゲットも、同じマシンで動くからです。`xcuitest` のワーカーは、ファイルで
   `realDevices: false` を設定しない限り、`ios-device` のルートも加えます。`appium` のワーカーは `ios-live`

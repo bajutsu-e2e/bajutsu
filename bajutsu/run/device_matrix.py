@@ -14,12 +14,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Literal
+from typing import Literal, get_args
 
 from bajutsu.common.backends import ensure_web_runtime
-from bajutsu.common.config import Effective, IosConfig, WebConfig
+from bajutsu.common.config import AndroidConfig, Effective, IosConfig, WebConfig
 from bajutsu.common.config.accessors import web_engine, xcuitest_targets_real_device
 from bajutsu.common.config.preconditions import effective_conditions, remote_condition_problems
+from bajutsu.common.config.schema.platform._shared import ANY_KIND
+from bajutsu.common.config.schema.platform.android import AndroidKind
+from bajutsu.common.config.schema.platform.ios import IosKind
 from bajutsu.common.devices import facts
 from bajutsu.common.devices.errors import DeviceError
 from bajutsu.common.devices.facts import DeviceFacts
@@ -36,6 +39,12 @@ from bajutsu.common.scenario import Scenario
 
 # The actuator the fake driver runs under; its targets match no condition.
 FAKE_ACTUATOR = "fake"
+
+# The kinds `any` lets a target of each platform run on, virtual first (BE-0518).
+_PLATFORM_KINDS: dict[str, tuple[str, ...]] = {
+    "ios": get_args(IosKind),
+    "android": get_args(AndroidKind),
+}
 
 
 @dataclass(frozen=True)
@@ -281,10 +290,31 @@ def plan(
 
 
 def driven_kind(eff: Effective) -> str | None:
-    """The iOS kind *eff* runs on when it lists none, or None for a listed kind or another platform."""
-    if eff.platform != "ios" or "kind" in eff.conditions:
+    """The iOS or Android kind *eff* runs on when it lists none.
+
+    None for a listed kind, for `any`, and for a platform with no kind.
+    """
+    if "kind" in eff.conditions:
         return None
-    return "device" if xcuitest_targets_real_device(eff) else "simulator"
+    if eff.platform == "ios":
+        return "device" if xcuitest_targets_real_device(eff) else "simulator"
+    if isinstance(eff.platform_config, AndroidConfig):
+        return eff.platform_config.device_kind
+    return None
+
+
+def declared_kinds(eff: Effective) -> list[str]:
+    """Every kind *eff* may run on: its listed kinds, both kinds under `any`, else the one it drives.
+
+    Empty on a platform with no kind (the web, `fake`).
+    """
+    listed = eff.conditions.get("kind")
+    if isinstance(listed, list):
+        return list(listed)
+    if listed == ANY_KIND:
+        return list(_PLATFORM_KINDS.get(eff.platform, ()))
+    driven = driven_kind(eff)
+    return [driven] if driven is not None else []
 
 
 def _pool_readers(lanes: Mapping[str, TargetLanes]) -> dict[str, TargetLanes]:
@@ -378,37 +408,49 @@ def apply_engine(eff: Effective, engine: str) -> Effective:
 
 
 def apply_kind(eff: Effective, kind: str) -> Effective:
-    """*eff* run on the iOS *kind* one run of its listed kinds took, which then stops counting as a
-    `kind` condition (BE-0468).
+    """*eff* run on the iOS or Android *kind* one run took, no longer a `kind` condition.
 
-    The kind sets the XCUITest destination and every real-device narrowing, as a single `kind` does.
-    A target that lists no kind is returned unchanged.
+    BE-0468, BE-0518.
+
+    The kind sets the XCUITest destination and every real-device narrowing, as a single `kind` does;
+    on Android it sets the kind the run's device must be. A target that lists no kind is returned
+    unchanged.
     """
     cfg = eff.platform_config
-    if "kind" not in eff.conditions or not isinstance(cfg, IosConfig) or cfg.xcuitest is None:
+    if "kind" not in eff.conditions or (isinstance(cfg, IosConfig) and cfg.xcuitest is None):
         return eff
-    conditions = {k: v for k, v in eff.conditions.items() if k != "kind"}
-    xcuitest = cfg.xcuitest.model_copy(update={"device_type": kind})
-    return replace(eff, conditions=conditions, platform_config=replace(cfg, xcuitest=xcuitest))
+    return _with_kind(eff, {k: v for k, v in eff.conditions.items() if k != "kind"}, kind)
 
 
 def select_kinds(eff: Effective, kinds: Sequence[str]) -> Effective:
-    """*eff* with its listed iOS kinds narrowed to *kinds*, in the target's own order (BE-0468).
+    """*eff* with its listed iOS or Android kinds narrowed to *kinds*, in the target's own order.
+
+    BE-0468.
 
     The narrowed list still counts as a condition, so a run that `--kind` selects keys the same
     history as that kind's run of the full list. Its first kind becomes the whole target's
     destination, the one `record` and the run's own setup read before any run takes its kind.
-    A target that lists no kind is returned unchanged.
+    A target whose `kind` is `any` takes the one kind named, which then drives it as a single `kind`
+    does (BE-0518). A target that lists no kind is returned unchanged.
     """
     listed = eff.conditions.get("kind")
-    cfg = eff.platform_config
-    if not isinstance(listed, list) or not isinstance(cfg, IosConfig):
+    if listed == ANY_KIND:
+        # `--kind` takes one kind of an `any` target, never a list: a list would mean one run each.
+        return _with_kind(eff, {k: v for k, v in eff.conditions.items() if k != "kind"}, kinds[0])
+    if not isinstance(listed, list):
         return eff
     narrowed = [k for k in listed if k in kinds]
-    conditions = {**eff.conditions, "kind": narrowed}
-    if cfg.xcuitest is None:
+    return _with_kind(eff, {**eff.conditions, "kind": narrowed}, narrowed[0])
+
+
+def _with_kind(eff: Effective, conditions: dict[str, str | list[str]], kind: str) -> Effective:
+    """*eff* with *conditions*, driven on *kind* on whichever platform its configuration is."""
+    cfg = eff.platform_config
+    if isinstance(cfg, AndroidConfig):
+        return replace(eff, conditions=conditions, platform_config=replace(cfg, device_kind=kind))
+    if not isinstance(cfg, IosConfig) or cfg.xcuitest is None:
         return replace(eff, conditions=conditions)
-    xcuitest = cfg.xcuitest.model_copy(update={"device_type": narrowed[0]})
+    xcuitest = cfg.xcuitest.model_copy(update={"device_type": kind})
     return replace(eff, conditions=conditions, platform_config=replace(cfg, xcuitest=xcuitest))
 
 
@@ -500,8 +542,15 @@ def first_run_device(
             read_android=read_android,
             read_browser=read_browser,
         )
+        # iOS keeps its own narrowing through the listing each kind reads; Android reads one
+        # listing for both kinds, so the run keeps to the target's own kind here (BE-0518).
         run, device = first_run(
-            eff.target, eff.platform, conditions, devices, engine=web_engine(eff)
+            eff.target,
+            eff.platform,
+            conditions,
+            devices,
+            engine=web_engine(eff),
+            kind=driven_kind(eff) if eff.platform == "android" else None,
         )
     except (DeviceError, LookupError) as e:
         raise ValueError(f"target '{eff.target}': {e}") from None
@@ -520,9 +569,9 @@ class ListedRun:
     """One run as `doctor` lists it: its coordinates, its outcome, and the devices that fit it.
 
     `declared` marks a run listed from the conditions alone, because no pool could be read. `kind`
-    and `family` carry the iOS kind and the family the run took when its label leaves them out (a
-    single value adds no coordinate); None when the label carries it, no family condition applies,
-    or the platform is not iOS (BE-0468).
+    and `family` carry the iOS or Android kind and the iOS family the run took when its label leaves
+    them out (a single value adds no coordinate); None when the label carries it, no family condition
+    applies, or the platform has no such field (BE-0468, BE-0518).
     """
 
     label: str

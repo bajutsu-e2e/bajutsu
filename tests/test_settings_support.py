@@ -46,7 +46,7 @@ def test_each_actuator_resolves_to_its_route() -> None:
     assert route_for("xcuitest", _eff("ios")) == "ios-simulator"
     assert route_for("xcuitest", _device()) == "ios-device"
     assert route_for("xcuitest", _eff("ios"), _GRID) == "ios-live"
-    assert route_for("adb", _eff("android")) == "android"
+    assert route_for("adb", _eff("android")) == "android-emulator"
     assert route_for("playwright", _eff("web")) == "web"
     assert route_for("fake", _eff("ios")) is None
 

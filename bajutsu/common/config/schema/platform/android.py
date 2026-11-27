@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
-from pydantic import Field, field_validator
+from typing import Any, Literal, Self, cast, get_args
+
+from pydantic import Field, field_validator, model_validator
 
 from .._model import _Model
-from ._shared import AppCommon, RangeField, Reinstall, RunsOnGroup, check_list
+from ._shared import (
+    ANY_KIND,
+    AppCommon,
+    RangeField,
+    Reinstall,
+    RunsOnGroup,
+    check_kind,
+    check_list,
+)
 
 
 class AndroidLaunch(_Model):
@@ -30,13 +40,20 @@ class AndroidApp(AppCommon):
     grant_permissions: list[str] = Field(default_factory=list, alias="grantPermissions")
 
 
-class AndroidDestination(_Model):
-    """`runsOn.android`: the emulator's Android Virtual Device (AVD), API level, and device state.
+AndroidKind = Literal["emulator", "device"]
 
+
+class AndroidDestination(_Model):
+    """`runsOn.android`: the device kind, the emulator's AVD, the API level, and device state.
+
+    AVD is the Android Virtual Device an emulator boots.
     `avd` and `apiLevel` are conditions the run matches; `locale` and `seedPhotos` are device state
-    it applies.
+    it applies. `kind` says whether the target runs on an emulator, a physical device, each of them
+    in turn, or whichever of them can run the scenario (BE-0518).
     """
 
+    # A list runs once per listed kind; `any` runs once on one of them.
+    kind: AndroidKind | Literal["any"] | list[AndroidKind] = "emulator"
     avd: str | list[str] | None = None
     api_level: RangeField = Field(default=None, alias="apiLevel")
     # The app's own language, set per app with `cmd locale` before every launch (API level 33 and
@@ -48,10 +65,37 @@ class AndroidDestination(_Model):
     # this one. Unlike iOS, no wipe is needed: the seed resets a directory Bajutsu owns.
     seed_photos: list[str] = Field(default_factory=list, alias="seedPhotos")
 
+    @property
+    def kinds(self) -> list[AndroidKind]:
+        """Every kind the target may run on, in the order written; `any` reads as both."""
+        if self.kind == ANY_KIND:
+            return list(get_args(AndroidKind))
+        if isinstance(self.kind, list):
+            return list(self.kind)
+        # `any` returned above, so the single value is one of the platform's own kinds.
+        return [cast(AndroidKind, self.kind)]
+
+    @field_validator("kind", mode="before")
+    @classmethod
+    def _known_kind(cls, v: Any) -> Any:
+        return check_kind("runsOn.android.kind", v, get_args(AndroidKind))
+
     @field_validator("avd")
     @classmethod
     def _valid_avd(cls, v: str | list[str] | None) -> str | list[str] | None:
         return check_list("runsOn.android.avd", v)
+
+    @model_validator(mode="after")
+    def _no_avd_on_a_physical_device(self) -> Self:
+        # A real device has no AVD, so the condition could never match it (BE-0518). `apiLevel` is
+        # read from a real device too, so it stays allowed. This runs on the merged dictionary, so a
+        # team-wide `avd` default reaches here too, and the target clears it with `avd: null`.
+        if "device" in self.kinds and self.avd is not None:
+            raise ValueError(
+                "runsOn.android.avd is an emulator condition, which a target whose kind is any or "
+                "includes device cannot declare: a physical device has no Android Virtual Device"
+            )
+        return self
 
 
 class AndroidRunsOn(RunsOnGroup):

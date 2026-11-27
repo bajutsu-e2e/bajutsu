@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Collection, Iterator, Mapping
 from typing import Any
 
-from bajutsu.common.scenario.models.hook_command import PLATFORM_ROUTES, HookWhen
+from bajutsu.common.scenario.models.hook_command import PLATFORM_ROUTES, HookWhen, route_names
 
 from .hooks import COMMAND_LISTS, Hooks
 
@@ -27,6 +27,9 @@ def _raw_conditions(hooks: Mapping[str, Any]) -> Iterator[tuple[str, Mapping[str
     for i, rule in enumerate(_items(hooks.get("cleanup"))):
         if isinstance(rule, Mapping) and isinstance(rule.get("when"), Mapping):
             yield f"hooks.cleanup[{i}].when", rule["when"], None
+    for i, use in enumerate(_items(hooks.get("use"))):
+        if isinstance(use, Mapping) and isinstance(use.get("when"), Mapping):
+            yield f"hooks.use[{i}].when", use["when"], None
 
 
 def _items(value: Any) -> list[Any]:
@@ -51,7 +54,7 @@ def _never_holds(when: Mapping[str, Any], owner: str, platform: Any) -> str | No
         isinstance(routes, list)
         and routes
         and reachable is not None
-        and not set(routes) & set(reachable)
+        and not route_names(r for r in routes if isinstance(r, str)) & set(reachable)
     ):
         on = ", ".join(reachable) or "none"
         return f"`routes` names no route a {platform} target runs on (its routes: {on})"
@@ -86,7 +89,7 @@ def unknown_condition_targets(
     Shared with the scenario side, whose own conditions the config can only check once both load.
     """
     for where, when in conditions:
-        if unknown := [t for t in when.targets if t not in known]:
+        if unknown := [t for p in when.parts for t in p.targets if t not in known]:
             names = ", ".join(sorted(known)) or "none"
             return (
                 f"{where} names target(s) {', '.join(map(repr, unknown))}, which the config does "

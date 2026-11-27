@@ -119,8 +119,9 @@ def repl(
     kind: str = typer.Option(
         "",
         "--kind",
-        help="iOS: the one of the target's runsOn.ios.kind to inspect on — simulator / device; "
-        "a kind the target does not declare exits 2 (default: the first listed kind)",
+        help="iOS and Android: the one of the target's runsOn.<platform>.kind to inspect on — "
+        "simulator / device on iOS, emulator / device on Android; a kind the target does not "
+        "declare exits 2 (default: the first listed kind)",
     ),
     attach: bool = typer.Option(
         False,

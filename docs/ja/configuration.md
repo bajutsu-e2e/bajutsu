@@ -198,7 +198,7 @@ targets:
 | プラットフォーム | 宛先のブロック | フィールド |
 |---|---|---|
 | iOS | `runsOn.ios` | `model`、`os`、`kind`、`family`、`locale`、`seedPhotos` |
-| Android | `runsOn.android` | `avd`、`apiLevel`、`locale`、`seedPhotos` |
+| Android | `runsOn.android` | `kind`、`avd`、`apiLevel`、`locale`、`seedPhotos` |
 | Web | `runsOn.browser` | `kind`、`version`、`emulate` |
 | fake | なし | なし |
 
@@ -317,6 +317,10 @@ targets:
 ```
 
 `record`、`crawl`、`repl` は run を増やしません。最初に並べた値と、合うデバイスが持つ最初のファミリーを使います。メジャーバージョンは、範囲内でプールが持ついちばん新しいものを使います。合うデバイスがなければ終了コード 2 で終わります。`doctor` はターゲット自身の run を一覧にし、`--scenario` でファイルを指定したときは各シナリオの run を一覧にします。どちらも、それぞれに合うデバイスを添えます（[doctor の出力](#出力)）。画面のプローブは、最初の run のデバイスを採点します。`--backend fake` はどの条件も照合せず、そのことを 1 回だけ知らせます。`runsOn.ios.kind` に `device` を含むターゲットは、`model` と `os` を宣言できません。Bajutsu は実機のモデルとリリースを照合しないからです。実機もファミリーは返すので、`family` は宣言できます。`appium` のグリッドが受け持つターゲットや Device Farm のジョブには、読み取るプールがありません。そこに書いた条件は、デバイスを操作する前に失敗し、フィールドを示します。
+
+Android のターゲットは、`runsOn.android.kind` でデバイスの種類を指定します（[BE-0518](../../roadmaps/BE-0518-android-routes-and-kind-any/BE-0518-android-routes-and-kind-any-ja.md)）。値は `emulator`、`device`、またはその両方のリストで、デフォルトは `emulator` です。実機の Android デバイスで動かすターゲットは `kind: device` を宣言する必要があります。run はデバイスを操作する前に、そのデバイスがエミュレーターかどうかを読み取ります。種類が違うデバイスなら run は止まり、メッセージで `runsOn.android.kind` のフィールドを示します。リストを書くと、iOS と同じく種類ごとに各シナリオを 1 回ずつ実行します。`kind` に `device` を含むターゲットは `avd` を宣言できません。実機には Android Virtual Device（AVD）がないからです。`apiLevel` は宣言できます。
+
+`kind: any` を書くと、ターゲットはどちらの種類でも受け入れます。iOS と Android の両方で使えます。ただし、各 run は具体的な 1 つの種類で動きます。リストに `any` は入れられません。リストは種類ごとに 1 回ずつ実行するという意味だからです。`any` のターゲットは、`device` のターゲットが宣言できない条件を同じく宣言できません。iOS の `any` のターゲットは、`driver.runner.testRunner` で作成済みのランナーも指定できません。空いているデバイスが種類を決めるので、1 つの作成済みランナーが合うかどうかが偶然で決まってしまうからです。空いているデバイスから種類を選ぶ機能は、まだありません。`any` のターゲットの run は、デバイスを操作する前に止まり、実行する種類を 1 つ指定する `--kind` を求めます。
 
 `runsOn.ios` の 3 つのフィールドは、条件ではなくデバイスの状態です。単一の `kind`（`simulator` か `device`）は XCUITest の接続先を選びます。`locale` は run が適用する言語を固定します。`locale` が未指定なら、iOS はビルトインの `en_US` を使います。`seedPhotos` は写真ライブラリに投入する画像を並べます。シナリオは `preconditions.device.ios` の下で `locale` と `seedPhotos` を置き換えられます。Android の `runsOn.android.locale` と `runsOn.android.seedPhotos` も、同じくデバイスの状態です。シナリオは `preconditions.device.android` の下でどちらも置き換えられます。web のブロックの `emulate` も、デバイスを照合するのではなく、デバイスモードを選びます。
 
@@ -567,7 +571,7 @@ defaults:
 | `when.exclude` | シナリオが、このタグを 1 つも持たないとき。`exclude` は `tags` より優先します |
 | `when.targets` | 判定対象のターゲットが、このリストにあるとき。config が宣言していない名前は読み込みに失敗します |
 | `when.platforms` | 判定対象のターゲットのプラットフォームが、このリストにあるとき。値は `ios`、`android`、`web`、`fake` です |
-| `when.routes` | 判定対象のターゲットの route が、このリストにあるとき。値は `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` です |
+| `when.routes` | 判定対象のターゲットの route が、このリストにあるとき。値は `ios-simulator`、`ios-device`、`ios-live`、`android-emulator`、`android-device`、`web` です |
 | `when.env` | `bajutsu run` のプロセスで、書いた変数がすべて一致するとき |
 
 1 つのリストの中の値は「または」で、異なるフィールドどうしは「かつ」で組み合わせます。すべての
@@ -580,8 +584,10 @@ defaults:
 **route** は、ターゲットが動く宛先の種類です。設定の対応表と同じ名前を使います
 （[BE-0467](../../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md)）。
 route は `--backend` と `--udid` で決まります。iOS のターゲットは、Simulator なら `ios-simulator`、
-実機なら `ios-device`、WebDriver のエンドポイントなら `ios-live` で動きます。`fake` のバックエンドには
-route がないので、`routes` の条件は成り立ちません。
+実機なら `ios-device`、WebDriver のエンドポイントなら `ios-live` で動きます。Android のターゲットは、
+`runsOn.android.kind` に応じて `android-emulator` か `android-device` で動きます。`routes: [android]` も
+引き続き読み込め、Android の 2 つの route の両方を指します。Android の route は、BE-0518 で分けるまで
+`android` の 1 つでした。`fake` のバックエンドには route がないので、`routes` の条件は成り立ちません。
 
 ##### 条件が判定するターゲット
 

@@ -166,6 +166,8 @@ fan-out のジョブがどこで動くかは、リースしたワーカーが決
 
 > **デバイス上の実行。** Device Farm は、テスト仕様が始まる前に、アップロードされたアプリを予約デバイスへインストールします。そのため、パッケージはバイナリを含めず、代わりに `devicefarm-host.worker.yaml` を含めます。テスト仕様の各実行は、このファイルを `--worker-config` として受け取ります。このファイルの `devicefarm-host` 環境は、デバイスが起動済みで、アプリもインストール済みであることを実行に伝えます。実行はインストール済みのビルドを起動し、`subject.path` をインストールしません。これは Android と iOS で共通です（BE-0465）。シナリオは、そこでビルドを入れ替えられません。`reinstall: clean` はインストール済みのビルドを残し、データだけを消去します。`install` ステップは、パッケージにバイナリがないため失敗します。iOS のデバイスでは、ほかの実機と同じく、`erase` と権限の付与が失敗します。
 
+> **デバイスの種類。** Android のターゲットは `runsOn.android.kind: device` を設定します（[BE-0518](../../roadmaps/BE-0518-android-routes-and-kind-any/BE-0518-android-routes-and-kind-any-ja.md)）。Device Farm は実機の端末を予約しますが、Android のターゲットの既定値はエミュレーターです。このキーがない run は、デバイスを操作する前に止まり、メッセージで `runsOn.android.kind` のフィールドを示します。
+
 ### iOS のターゲット
 
 iOS のターゲットも Android と同じように fan-out できます。違いは次のとおりです。

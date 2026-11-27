@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0167](BE-0167-control-plane-scale-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Approved** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0167") |
 | Topic | Hosting the web UI |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
@@ -15,6 +15,14 @@
 <!-- /BE-METADATA -->
 
 ## Introduction
+
+> **Rejected — the premise of this item no longer holds, and a new item, *Control-plane replicas behind a load balancer*, replaces it.**
+> This item assumed that a worker posts its result once the job ends. Under that premise, no log
+> stream crosses replicas. [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md) changed that behavior. A worker now posts log lines while the job
+> runs. Replicas thus need a shared Redis bus for live logs, which this design leaves out. Other
+> items have also delivered most of the application-side work this item planned. The remaining work
+> is a different, smaller scope, and the new item states that scope from the current code. `Rejected`
+> fits better than `Deferred`, because no later date makes this design correct again.
 
 The self-hosted control plane
 ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) runs today as a **single**
@@ -91,6 +99,9 @@ session state) keeps unit coverage. The topology itself has no gate contract.
 - [ ] Load-balancer policy — least-connections over round-robin, TLS at the LB.
 - [ ] Worker lease/result path confirmed to work across replicas.
 - [ ] Compose wiring for N app replicas behind the load balancer, documented.
+
+2026-11-27: Rejected before any PR landed. The item assumed no log stream crosses replicas, and
+[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md) made workers stream live log lines. A new item carries the remaining work from the current code. Its title is *Control-plane replicas behind a load balancer*.
 
 ## References
 

@@ -24,7 +24,11 @@ from bajutsu.common.scenario.load_expanded import (
     parse_yaml_named,
 )
 from bajutsu.common.scenario.models import CleanupRule, Scenario, Step
-from bajutsu.common.scenario.models.hook_command import HookCommand
+from bajutsu.common.scenario.models.hook_command import (
+    HookCommand,
+    HookWhen,
+    reject_run_level_exclude_only,
+)
 from bajutsu.common.scenario.models.hook_component import HookComponent, HookUse
 from bajutsu.common.scenario.step_walk import nested_steps, reject_scenario_only
 
@@ -72,7 +76,11 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
     path, component = _read(use, root=root, base=base, where=where)
     bindings = {f"params.{k}": v for k, v in use.with_.items()}
     here = path.parent
-    origin = {"component": str(path), "alias": use.as_}
+    origin = {
+        "component": str(path),
+        "alias": use.as_,
+        "prepares": bool(component.setup or component.before_scenario),
+    }
     try:
         commands = {
             name: [_command(entry, bindings, here, origin) for entry in entries]
@@ -80,7 +88,9 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
         }
         setup = _steps(component.setup, bindings)
         cleanup = [
-            CleanupRule.model_validate(interp.interpolate(_dump(rule), bindings))
+            CleanupRule.model_validate(
+                {**interp.interpolate(_dump(rule), bindings), "_origin": origin}
+            )
             for rule in component.cleanup
         ]
     except ValueError as e:
@@ -113,7 +123,75 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
         setup = [_aliased(s, use.as_, declared) for s in setup]
         for rule in cleanup:
             rule.steps = [_aliased(s, use.as_, declared) for s in rule.steps]
+    # The report names the file beside each step it added, relative to the suite root.
+    shown = (
+        path.relative_to(root.resolve()).as_posix()
+        if path.is_relative_to(root.resolve())
+        else str(path)
+    )
+    setup = [_from_component(s, shown) for s in setup]
+    for rule in cleanup:
+        rule.steps = [_from_component(s, shown) for s in rule.steps]
+    if use.when is not None:
+        try:
+            commands, setup, cleanup = _conditioned(use.when, commands, setup, cleanup)
+            # Here as well as on the target's lists, so the error names the `when` that joined in.
+            reject_run_level_exclude_only(commands["beforeRun"], "the component's beforeRun")
+            reject_run_level_exclude_only(commands["afterRun"], "the component's afterRun")
+        except ValueError as e:
+            raise ValueError(f"{where}: {e}") from e
     return HookApplication(use=use, path=path, commands=commands, setup=setup, cleanup=cleanup)
+
+
+def _from_component(step: Step, shown: str) -> Step:
+    """*step* marked as added by the component *shown*; a block's own steps are what run."""
+    if step.when is not None and step.steps is not None:
+        children = [c.model_copy(update={"component": shown}) for c in step.steps]
+        return step.model_copy(update={"steps": children})
+    return step.model_copy(update={"component": shown})
+
+
+def _conditioned(
+    when: HookWhen,
+    commands: dict[str, list[HookCommand]],
+    setup: list[Step],
+    cleanup: list[CleanupRule],
+) -> tuple[dict[str, list[HookCommand]], list[Step], list[CleanupRule]]:
+    """What an application adds, each part run only where the application's *when* holds too.
+
+    A command and a cleanup rule already carry a condition, so *when* joins it. A setup step does
+    not, so each run of plain steps becomes one conditional block (BE-0513), and a block the
+    component wrote takes *when* beside its own: one layer of blocks, as `setup` allows.
+    """
+
+    def joined(own: HookWhen | None) -> HookWhen:
+        return when if own is None else own.with_application(when)
+
+    commands = {
+        name: [e.model_copy(update={"when": joined(e.when)}) for e in entries]
+        for name, entries in commands.items()
+    }
+    wrapped: list[Step] = []
+    run: list[Step] = []
+    for step in [*setup, None]:
+        if step is not None and step.when is None:
+            run.append(step)
+            continue
+        if run:
+            wrapped.append(Step.model_validate({"when": when, "steps": run}))
+            run = []
+        if step is not None:
+            if step.target is not None and when.reads_target:
+                # A block naming `target` judges that target, so the application's target fields
+                # would be read against it rather than the target that applies the component.
+                raise ValueError(
+                    f"`when` reads the target ({when}), and the component's setup block names "
+                    f"`target: {step.target}`, which its condition would judge instead; move the "
+                    "target fields into the block's own `when`"
+                )
+            wrapped.append(step.model_copy(update={"when": joined(step.when)}))
+    cleanup = [r.model_copy(update={"when": joined(r.when)}) for r in cleanup]
+    return commands, wrapped, cleanup
 
 
 def _read(use: HookUse, *, root: Path, base: Path, where: str) -> tuple[Path, HookComponent]:
@@ -180,7 +258,7 @@ def _aliased(step: Step, alias: str, declared: set[str]) -> Step:
 
 
 def _command(
-    entry: HookCommand, bindings: dict[str, str], here: Path, origin: dict[str, str | None]
+    entry: HookCommand, bindings: dict[str, str], here: Path, origin: dict[str, Any]
 ) -> HookCommand:
     """*entry* with its parameters substituted, its working directory fixed to *here*, and *origin*."""
     data = _dump(entry)

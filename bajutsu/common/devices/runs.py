@@ -84,6 +84,20 @@ class TargetRun:
         )
 
 
+# Spelled here because the config package imports this module; `schema.platform._shared.ANY_KIND`
+# is the same value.
+_ANY_KIND = "any"
+
+
+def _any_kind_unavailable(platform: str) -> str:
+    # TODO(BE-0518): unit 3 picks the kind from the scenario's needs and the free devices; until it
+    # lands, `any` stops the run before any device work rather than guessing a kind.
+    return (
+        f'runsOn.{platform}.kind  "any"  choosing a kind from the free devices is not available yet; '
+        "pass --kind to run, record, crawl, or repl to name the one kind to run on"
+    )
+
+
 def _available(devices: Sequence[DeviceFacts]) -> str:
     return ", ".join(d.describe for d in devices) or "no device"
 
@@ -152,6 +166,16 @@ def form_target_runs(
     """
     if platform == "web":
         return _web_runs(target, conditions, devices, engine)
+    if conditions.get("kind") == _ANY_KIND:
+        return [
+            TargetRun(
+                target=target,
+                platform=platform,
+                outcome="failed",
+                reason=_any_kind_unavailable(platform),
+                conditioned=True,
+            )
+        ]
     if platform not in _MODEL_FIELD or not conditions:
         return [TargetRun(target=target, platform=platform, kind=kind)]
     # A listed kind runs once per kind on that kind's devices; an unlisted one keeps the target on
@@ -161,8 +185,9 @@ def form_target_runs(
     for kind in kinds:
         kind_coords = (("kind", kind),) if kinds_listed and kind is not None else ()
         of_kind = [d for d in devices if _matches_kind(d, kind)]
-        if kinds_listed and not of_kind:
-            # A listed kind names a run that must happen, so a pool without it fails, never skips.
+        if not of_kind and (kinds_listed or devices):
+            # A listed kind names a run that must happen, so a pool without it fails, never skips;
+            # a driven kind fails the same way, so the message names the field to change (BE-0518).
             runs.append(
                 TargetRun(
                     target=target,
@@ -515,12 +540,17 @@ def first_run(
     devices: Sequence[DeviceFacts],
     *,
     engine: str | None = None,
+    kind: str | None = None,
 ) -> tuple[TargetRun, DeviceFacts | None]:
     """The run `record`, `crawl`, and `repl` take, and the device it runs on.
 
     These commands never multiply runs: they take the first listed value, the first listed family a
     fitting device has, and the newest major version the pool has within the range. A web run has
     no device to pick, so its device is None.
+
+    Args:
+        kind: The kind the target drives when it lists none. Android passes it, so a pool that
+            holds both kinds keeps the run on the target's own (BE-0518).
 
     Raises:
         LookupError: No available device fits, named with the condition and the devices seen.
@@ -530,11 +560,13 @@ def first_run(
         if run.outcome != "run":
             raise LookupError(run.reason)
         return run, None
+    if conditions.get("kind") == _ANY_KIND:
+        raise LookupError(_any_kind_unavailable(platform))
     if platform not in _MODEL_FIELD or not conditions:
         return TargetRun(target=target, platform=platform), (devices[0] if devices else None)
     model_field, version_field = _MODEL_FIELD[platform], _VERSION_FIELD[platform]
     kinds, kinds_listed = _listed(conditions.get("kind"))
-    kind = kinds[0] if kinds_listed else None
+    kind = kinds[0] if kinds_listed else kind
     models, _ = _listed(conditions.get(model_field))
     model = models[0]
     raw_spec = conditions.get(version_field)
@@ -632,7 +664,8 @@ def unpack_conditions(
     """A raw `runsOn` group's condition fields, keyed by their path under `runsOn` (`ios.model`).
 
     Reads each destination block (BE-0469). Device state (`locale`, `seedPhotos`) and how a target is
-    driven (a single iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`)
+    driven (a single iOS or Android `kind`, `emulate`) are not conditions; `kind: any` is one, since
+    the pool settles it. An integer range (`apiLevel: 34`)
     becomes its text, as the target's model reads it.
     """
     out: dict[str, str | list[str]] = {}
@@ -640,9 +673,15 @@ def unpack_conditions(
         if not isinstance(block, Mapping):
             continue
         for key, raw in block.items():
-            # A browser's kind counts, as `browser.engine` did; a single iOS kind is how the target
-            # is driven, and a listed one multiplies runs, so it counts (BE-0468).
-            driven = key == "kind" and destination != "browser" and not isinstance(raw, list)
+            # A browser's kind counts, as `browser.engine` did; a single iOS or Android kind is how
+            # the target is driven, while a listed one multiplies runs and `any` leaves the kind to
+            # the pool, so both count (BE-0468, BE-0518).
+            driven = (
+                key == "kind"
+                and destination != "browser"
+                and not isinstance(raw, list)
+                and raw != _ANY_KIND
+            )
             if key in ("locale", "seedPhotos", "emulate") or driven or raw is None:
                 continue
             out[f"{destination}.{key}"] = _text(raw)

@@ -333,6 +333,11 @@ filter. It needs no device-pool ARN.
 > its data. An `install` step fails, since the package holds no binary. On an iOS device, `erase` and
 > permission grants fail, as on any real device.
 
+> **The device kind.** An Android target sets `runsOn.android.kind: device`
+> ([BE-0518](../roadmaps/BE-0518-android-routes-and-kind-any/BE-0518-android-routes-and-kind-any.md)).
+> Device Farm reserves a real phone, and an Android target runs on an emulator by default. A run
+> without the key stops before any device work, and the message names `runsOn.android.kind`.
+
 ### An iOS target
 
 An iOS target fans out like an Android one, with these differences:

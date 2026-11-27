@@ -192,6 +192,9 @@ class Step(_Model):
     report_group_id: Annotated[int | None, SkipJsonSchema()] = Field(
         default=None, alias="_reportGroupId"
     )
+    # Report-internal, like the two above: the `hooks` component file that added this step to a
+    # `setup` or `cleanup` list (BE-0512), so the report can name it beside the step.
+    component: Annotated[str | None, SkipJsonSchema()] = Field(default=None, alias="_component")
     # The scenario's `primaryTarget` an omitted `target` resolved to at load time (BE-0436). Private
     # rather than written back onto `target`, so `model_dump()` — the serve editor's splice and the
     # run's `scenario.yaml` snapshot — keeps the step as terse as the author wrote it.

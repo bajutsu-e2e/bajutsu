@@ -517,8 +517,9 @@ def crawl(
     kind: str = typer.Option(
         "",
         "--kind",
-        help="iOS: the one of the target's runsOn.ios.kind to crawl on — simulator / device; "
-        "a kind the target does not declare exits 2 (default: the first listed kind)",
+        help="iOS and Android: the one of the target's runsOn.<platform>.kind to crawl on — "
+        "simulator / device on iOS, emulator / device on Android; a kind the target does not "
+        "declare exits 2 (default: the first listed kind)",
     ),
     language: str = typer.Option(
         "",
@@ -549,7 +550,7 @@ def crawl(
     eff, _source, checkout_root = _load_effective_with_source(config, target_name)
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --kind picks one of the target's `runsOn.ios.kind` (iOS only; BE-0468).
+    # --kind picks one of the target's `runsOn.<platform>.kind` (iOS and Android; BE-0468, BE-0518).
     eff = _resolve_kind(eff, kind, single=True)
     # --language overrides the target's `ai.language` (flag > config > auto), BE-0188.
     eff = _resolve_language(eff, language)

@@ -1,0 +1,32 @@
+name: Search the runner log for Thread Performance Checker reports
+description: >-
+  BE-0362 unit 1. Counts Thread Performance Checker priority-inversion reports in the captured
+  XCUITest runner logs into the job summary, so the measurement reads off the run page without an
+  artifact download. One definition keeps every lane searching for the same strings, so a negative
+  result from one job stays comparable to another's. It observes and never decides: callers run it
+  with `continue-on-error`, and a match is a finding to record, not a failure.
+
+inputs:
+  log-dir:
+    description: Directory holding the runner's captured `runner-*.log` files.
+    default: runs/runner-logs
+
+runs:
+  using: composite
+  steps:
+    - name: Search the runner log
+      shell: bash
+      env:
+        LOG_DIR: ${{ inputs.log-dir }}
+      run: |
+        pattern='Thread Performance Checker|priority inversion|Higher QoS thread blocked'
+        hits=$(grep -rIEc "$pattern" "$LOG_DIR" 2>/dev/null | awk -F: '$NF > 0' || true)
+        {
+          echo "### Thread Performance Checker (BE-0362)"
+          if [ -n "$hits" ]; then
+            echo "Matches per runner log:"; echo '```'; echo "$hits"; echo '```'
+            echo '```'; grep -rIEh -m 20 -A 8 "$pattern" "$LOG_DIR" | head -200; echo '```'
+          else
+            echo "No report in \`$LOG_DIR\` ($(find "$LOG_DIR" -type f -name '*.log' 2>/dev/null | wc -l | tr -d ' ') log file(s) searched)."
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"

@@ -111,7 +111,7 @@ def test_a_worker_drives_one_route_per_driver() -> None:
     assert worker_routes(["xcuitest"]) == ["ios-simulator", "ios-device"]
     assert worker_routes([], appium=True) == ["ios-live"]
     # The real-device route needs the driver that reaches it.
-    assert worker_routes(["adb"], real_devices=True) == ["android"]
+    assert worker_routes(["adb"], real_devices=True) == ["android-emulator", "android-device"]
 
 
 def test_a_mac_serving_two_routes_advertises_both_sets_unintersected() -> None:

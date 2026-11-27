@@ -14,4 +14,5 @@ _MODIFIERS = (
     "when",
     "report_group",
     "report_group_id",
+    "component",
 )

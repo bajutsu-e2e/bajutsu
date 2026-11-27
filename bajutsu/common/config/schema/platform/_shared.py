@@ -197,6 +197,28 @@ def check_choices(field: str, value: Any, allowed: tuple[str, ...]) -> Any:
     return value
 
 
+# The `kind` value that lets a target run on whichever of its platform's kinds can run the scenario,
+# once (BE-0518). A config value only: every run still lands on one concrete kind.
+ANY_KIND = "any"
+
+
+def check_kind(field: str, value: Any, kinds: tuple[str, ...]) -> Any:
+    """Reject a `kind` that names no known kind, or a list that repeats one or holds `any`.
+
+    `any` stands alone: a list already means one run per listed kind, which `any` is not (BE-0518).
+    """
+    if isinstance(value, list):
+        if ANY_KIND in value:
+            raise ValueError(
+                f"{field} lists {ANY_KIND!r}: a list runs once per kind it names, so write "
+                f"{ANY_KIND!r} alone to run once on whichever kind fits"
+            )
+        check_choices(field, value, kinds)
+        check_list(field, value)
+        return value
+    return check_choices(field, value, (*kinds, ANY_KIND))
+
+
 def check_list(field: str, value: str | list[str] | None) -> str | list[str] | None:
     """Reject an empty or repeating list on a field whose list multiplies runs.
 

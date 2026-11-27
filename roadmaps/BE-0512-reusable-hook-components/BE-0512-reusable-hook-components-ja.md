@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
-| 実装 PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588)（単位 1〜2）、[#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596)（単位 3） |
+| 実装 PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588)（単位 1〜2）、[#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596)（単位 3）、[#2601](https://github.com/bajutsu-e2e/bajutsu/pull/2601)（単位 4）、[#2609](https://github.com/bajutsu-e2e/bajutsu/pull/2609)（単位 5 の前半） |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates-ja.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks-ja.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md) |
 <!-- /BE-METADATA -->
@@ -372,7 +372,7 @@ Bajutsu は展開時にステップのトークンを書き換えます。
 - [x] コンポーネントのファイルと `use` リスト
 - [x] ターゲットとシナリオの展開
 - [x] 名前の範囲と別名
-- [ ] 適用単位の `when` と `inheritSetup: false`
+- [x] 適用単位の `when` と `inheritSetup: false`
 - [ ] 報告、実行方針、worker への配布
 - [ ] スキーマと `codegen`
 - [ ] ドキュメント
@@ -387,6 +387,15 @@ Bajutsu は展開時にステップのトークンを書き換えます。
   - ターゲットのコンポーネントの出力は `<target>:<name>` の名前で保存します。この値を読むトークンは、ロード時に、読むターゲットの範囲の名前へ書き換えます。run ループの置換表は 1 つのままです。
   - 別名を付けて適用したコマンドは、同じ適用の出力をローカル名でも読めます。2 つのコンポーネントが同じ別名を使うことがあるため、適用はコンポーネントのファイルと別名の組で見分けます。
   - ターゲットの範囲を手で書いたトークンは、ロード時に拒否します。複数ターゲットのシナリオで `target` を書かない割り込みのエントリが、コンポーネントのトークンを読む場合も拒否します。
+- 2026-11-27 — 単位 4 を実装しました（[#2601](https://github.com/bajutsu-e2e/bajutsu/pull/2601)）。
+  - 適用の `when` はロード時に絞り込まず、コマンドのエントリの `when` と同じ場所で、BE-0513 が加えた条件の仕組みによって判定します。`when` はタグに加えてターゲット、プラットフォーム、経路、環境変数を読むようになり、経路と環境変数は実行時にしか決まらないからです。
+  - コマンドのエントリと `cleanup` のルールは、自身の条件に適用の条件を加えて持ちます。`setup` の通常のステップは、連続する並びごとに 1 つの条件付きブロックにまとめます。コンポーネントが書いた条件付きブロックには、適用の条件を加えます。
+  - 組み合わせた条件のタグは、すべて同じ 1 つのシナリオで一致する必要があります。両方のタグを持つシナリオがない run では、run 単位のエントリは実行しません。
+  - 適用の `when` がターゲットを読むとき、`target` を書いたコンポーネントの `setup` のブロックはロード時に拒否します。そのブロックの条件は、コンポーネントを適用したターゲットではなく、ブロックが書いたターゲットを判定してしまうからです。
+- 2026-11-28 — 単位 5 の前半として、報告、実行方針、sandbox の検査を実装しました（[#2609](https://github.com/bajutsu-e2e/bajutsu/pull/2609)）。振り分けと worker への配布は後半で扱います。
+  - コンポーネントが加えたコマンドは、2 つの出どころのうち厳しいほうのモードで実行します。2 つの出どころとは、コンポーネントを適用したファイルと、コンポーネントのファイルです。クライアントが書いたシナリオのファイルと同じディレクトリの下にあるコンポーネントのファイルは、シナリオの出どころとして扱います。コマンドの記録には、コンポーネントのファイルと、適用したファイルと異なる場合はその出どころを残します。
+  - コンポーネントのコマンドは、コンポーネントのディレクトリから実行します。worker がそのコマンドを sandbox で実行し、そのディレクトリがコンテナに載せる設定のディレクトリの外にある場合、run はデバイス作業の前に止まります。
+  - レポートは、コンポーネントが加えた各コマンドと、連続するステップの並びの横に、コンポーネントのファイルを示します。
 
 ## 参考
 

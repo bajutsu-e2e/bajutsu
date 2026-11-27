@@ -54,14 +54,28 @@ HookPlatform = Literal["ios", "android", "web", "fake"]
 # The destinations a `when.routes` entry may name, the route names BE-0467 already gives each
 # environment. Spelled here because the scenario models may not import `capability`, whose
 # `settings_support.Route` lists the same names; a test keeps the two in step.
-HookRoute = Literal["ios-simulator", "ios-device", "ios-live", "android", "web"]
+HookRoute = Literal[
+    "ios-simulator", "ios-device", "ios-live", "android-emulator", "android-device", "web"
+]
 HOOK_ROUTES: tuple[str, ...] = get_args(HookRoute)
+
+# A name `when.routes` keeps accepting for the routes that replaced it: `android` was one route until
+# BE-0518 split it, so a condition written before the split still means every Android device.
+HOOK_ROUTE_ALIASES: dict[str, tuple[HookRoute, ...]] = {
+    "android": ("android-emulator", "android-device"),
+}
+
+
+def route_names(routes: Iterable[str]) -> set[str]:
+    """The route names *routes* stands for, with each alias spelled out as the routes it covers."""
+    return {r for name in routes for r in HOOK_ROUTE_ALIASES.get(name, (name,))}
+
 
 # The routes each platform can run on, which the load check on a target's own condition reads to
 # refuse a `routes` that names none of its owner's. `fake` has no route at all.
 PLATFORM_ROUTES: dict[HookPlatform, tuple[HookRoute, ...]] = {
     "ios": ("ios-simulator", "ios-device", "ios-live"),
-    "android": ("android",),
+    "android": ("android-emulator", "android-device"),
     "web": ("web",),
     "fake": (),
 }
@@ -117,8 +131,12 @@ class HookWhen(_Model):
     exclude: list[str] = Field(default_factory=list)
     targets: list[str] = Field(default_factory=list)
     platforms: list[HookPlatform] = Field(default_factory=list)
-    routes: list[HookRoute] = Field(default_factory=list)
+    routes: list[HookRoute | Literal["android"]] = Field(default_factory=list)
     env: dict[str, str | None] = Field(default_factory=dict)
+    # The `when` of the `hooks` component application that added this condition's entry (BE-0512),
+    # which must hold too. Written by the expansion, never by an author: two `tags` lists can only
+    # be read as "both", and one condition has no way to spell that.
+    also: Annotated[list[HookWhen], SkipJsonSchema()] = Field(default_factory=list, alias="_also")
 
     @field_validator("env", mode="before")
     @classmethod
@@ -143,44 +161,81 @@ class HookWhen(_Model):
         return self
 
     @property
+    def parts(self) -> tuple[HookWhen, ...]:
+        """This condition and every one it must hold with, each read on its own fields alone."""
+        return (self, *(p for a in self.also for p in a.parts))
+
+    @property
     def reads_tags(self) -> bool:
         """Whether the condition reads the scenario's tags."""
-        return bool(self.tags or self.exclude)
+        return any(p.tags or p.exclude for p in self.parts)
 
     @property
     def reads_target(self) -> bool:
         """Whether the condition reads the judged target."""
-        return bool(self.targets or self.platforms or self.routes)
+        return any(p.targets or p.platforms or p.routes for p in self.parts)
 
     @property
     def needs_run(self) -> bool:
         """Whether only the run can decide it: `env` and `routes` depend on the machine and flags."""
-        return bool(self.env or self.routes)
+        return any(p.env or p.routes for p in self.parts)
+
+    def without_env(self) -> HookWhen | None:
+        """This condition with every `env` field dropped, or None when nothing else is left.
+
+        For a stage that cannot see the environment the run will have, which keeps what the rest
+        of the condition decides.
+        """
+        # `model_copy` skips validation, so an emptied part cannot trip the empty-`when` check.
+        kept = [p.model_copy(update={"env": {}, "also": []}) for p in self.parts]
+        kept = [p for p in kept if p.reads_tags or p.reads_target]
+        if not kept:
+            return None
+        return kept[0].model_copy(update={"also": kept[1:]})
 
     def holds(self, facts: WhenFacts) -> bool:
-        """Whether this condition holds for *facts*."""
-        if self.reads_tags and not any(
-            tags_match(tags, self.tags, self.exclude) for tags in facts.tags
+        """Whether this condition, and each one it must hold with, holds for *facts*.
+
+        The tag halves of every part must hold for one and the same scenario, and the target
+        halves for one and the same judged target: a run-level entry reads many scenarios and a
+        scenario's own entry many targets, and "both" would otherwise be met by one per part.
+        """
+        parts = self.parts
+        tagged = [p for p in parts if p.tags or p.exclude]
+        if tagged and not any(
+            all(tags_match(tags, p.tags, p.exclude) for p in tagged) for tags in facts.tags
         ):
             return False
-        if self.reads_target and not any(self.target_holds(t) for t in facts.targets):
+        # Likewise the target halves, within one judged target: they describe the same one.
+        judging = [p for p in parts if p.targets or p.platforms or p.routes]
+        if judging and not any(all(p.target_holds(t) for p in judging) for t in facts.targets):
             return False
-        return all(
-            name not in facts.env if wanted is None else facts.env.get(name) == wanted
-            for name, wanted in self.env.items()
-        )
+        for p in parts:
+            if not all(
+                name not in facts.env if wanted is None else facts.env.get(name) == wanted
+                for name, wanted in p.env.items()
+            ):
+                return False
+        return True
 
     def target_holds(self, target: JudgedTarget) -> bool:
         """Whether *target* meets `targets`, `platforms`, and `routes` together."""
         return (
             (not self.targets or target.name in self.targets)
             and (not self.platforms or target.platform in self.platforms)
-            and (not self.routes or target.route in self.routes)
+            and (not self.routes or target.route in route_names(self.routes))
         )
 
     def matches(self, tags: Iterable[str]) -> bool:
         """Whether a scenario carrying *tags* meets the tag half of this condition."""
-        return not self.reads_tags or tags_match(tags, self.tags, self.exclude)
+        carried = tuple(tags)
+        return all(
+            not (p.tags or p.exclude) or tags_match(carried, p.tags, p.exclude) for p in self.parts
+        )
+
+    def with_application(self, application: HookWhen) -> HookWhen:
+        """This condition, required to hold together with *application*'s (BE-0512)."""
+        return self.model_copy(update={"also": [*self.also, application]})
 
     def __str__(self) -> str:
         """The condition as reports and errors word it, listing only the fields that constrain.
@@ -201,7 +256,7 @@ class HookWhen(_Model):
                 for name, wanted in self.env.items()
             )
             parts.append(f"env: {{{pairs}}}")
-        return ", ".join(parts)
+        return " and ".join([", ".join(parts), *(str(a) for a in self.also)])
 
 
 # Separates a target from a component name in the key a target's component outputs are stored and
@@ -238,6 +293,10 @@ class HookOrigin(_Model):
 
     component: str
     alias: str | None = None
+    # Whether the application also prepares, through `setup` or `beforeScenario`: its teardown then
+    # reads what that preparation made, so a scenario that skips the target's preparation
+    # (`preconditions.inheritSetup: false`) skips this teardown too.
+    prepares: bool = False
 
     @model_validator(mode="after")
     def _alias_is_a_name(self) -> Self:
@@ -333,7 +392,9 @@ def reject_run_level_exclude_only(entries: Iterable[HookCommand], where: str) ->
     condition made of them alone is fine at run level (BE-0513).
     """
     for i, entry in enumerate(entries):
-        if entry.when is not None and entry.when.exclude and not entry.when.tags:
+        parts = entry.when.parts if entry.when is not None else ()
+        # The tag parts match within one scenario, so a `tags` in any part gives `exclude` its scope.
+        if any(p.exclude for p in parts) and not any(p.tags for p in parts):
             raise ValueError(
                 f"{where}[{i}].when names `exclude` without `tags`: a run-level entry runs when any "
                 "scenario of the run matches, so `exclude` alone would almost never skip it"

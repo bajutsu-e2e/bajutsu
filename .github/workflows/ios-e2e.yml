@@ -1297,12 +1297,21 @@ jobs:
         id: suite
         env:
           BAJUTSU_FAULT_INJECTION_UDID: ${{ steps.toolchain.outputs.udid }}
+          # Makes Thread Performance Checker print its reports into the runner log (BE-0362 unit 1).
+          BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_PERFC_LOG_REPORTS_TO_STDERR: "1"
         run: |
           if [ -z "$BAJUTSU_FAULT_INJECTION_UDID" ]; then
             echo "::error::no Simulator UDID: the fault-injection module would skip and report green"
             exit 1
           fi
           uv run pytest tests/test_fault_injection_ondevice.py -m ondevice -n0 -v
+
+      # BE-0362 unit 1: the step above ran the runner with Thread Performance Checker's stderr reporting
+      # on; count any report into the job summary. Observes, never decides.
+      - name: Search the runner log for Thread Performance Checker reports
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/search-runner-log-perfc
 
       - name: Collect iOS diagnostics
         if: always()
@@ -1428,7 +1437,17 @@ jobs:
       # pixel-compares it against baselines_ios/stable.png with the status bar + tab bar masked.
       - name: Run the visual regression (VRT, pixel snapshot)
         id: vrt
+        env:
+          # Makes Thread Performance Checker print its reports into the runner log (BE-0362 unit 1).
+          BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_PERFC_LOG_REPORTS_TO_STDERR: "1"
         run: make -C demos/showcase e2e-visual SIM=${{ steps.toolchain.outputs.udid }}
+
+      # BE-0362 unit 1: the step above ran the runner with Thread Performance Checker's stderr reporting
+      # on; count any report into the job summary. Observes, never decides.
+      - name: Search the runner log for Thread Performance Checker reports
+        if: always()
+        continue-on-error: true
+        uses: ./.github/actions/search-runner-log-perfc
 
       - name: Collect iOS diagnostics
         if: always()

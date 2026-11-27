@@ -8,6 +8,7 @@ overrides (preconditions) are applied later by the runner.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -32,7 +33,7 @@ from bajutsu.common.config.schema import (
     _Model,
 )
 from bajutsu.common.config.schema.hooks import Hooks
-from bajutsu.common.config.schema.platform._shared import AppCommon, RunsOnGroup
+from bajutsu.common.config.schema.platform._shared import ANY_KIND, AppCommon, RunsOnGroup
 from bajutsu.common.config.schema.platform.android import AndroidApp, AndroidDriver, AndroidRunsOn
 from bajutsu.common.config.schema.platform.ios import IosApp, IosDriver, IosKind, IosRunsOn
 from bajutsu.common.config.schema.platform.web import WebApp, WebDriver, WebRunsOn
@@ -82,20 +83,25 @@ def _conditions(runs_on: _Model) -> dict[str, str | list[str]]:
     The keys are the fields within the destination block (`model`, `browser.version`), not their
     `runsOn` paths: they name a run's coordinates, which BE-0469 left as they were.
 
-    A single browser or iOS kind is how the target is driven rather than a condition; a listed one
-    multiplies runs, so it counts (BE-0468).
+    A single browser, iOS, or Android kind is how the target is driven rather than a condition; a
+    listed one multiplies runs, so it counts (BE-0468), and so does `any`, which the devices settle
+    (BE-0518).
     """
     if isinstance(runs_on, IosRunsOn):
         ios = runs_on.ios
         candidates: dict[str, str | list[str] | None] = {
-            "kind": list(ios.kind) if isinstance(ios.kind, list) else None,
+            "kind": _kind_condition(ios.kind),
             "model": ios.model,
             "os": ios.os,
             "family": list(ios.family) if isinstance(ios.family, list) else ios.family,
         }
     elif isinstance(runs_on, AndroidRunsOn):
         android = runs_on.android
-        candidates = {"avd": android.avd, "apiLevel": android.api_level}
+        candidates = {
+            "kind": _kind_condition(android.kind),
+            "avd": android.avd,
+            "apiLevel": android.api_level,
+        }
     elif isinstance(runs_on, WebRunsOn):
         kind = runs_on.browser.kind
         candidates = {
@@ -107,10 +113,18 @@ def _conditions(runs_on: _Model) -> dict[str, str | list[str]]:
     return {name: value for name, value in candidates.items() if value is not None}
 
 
+def _kind_condition(kind: str | Sequence[str]) -> str | list[str] | None:
+    """A `kind` as a run condition: a list or `any`, which form the runs; None for a single kind."""
+    if isinstance(kind, str):
+        return kind if kind == ANY_KIND else None
+    return list(kind)
+
+
 def _xcuitest(driver: _Model, runs_on: _Model) -> XcuitestConfig | None:
     """Today's resolved runner block, built from `driver.runner` and `runsOn.ios.kind`, or None if unset.
 
-    A listed kind resolves to its first; each run of the list replaces it with its own (BE-0468).
+    A listed kind, and `any`, resolve to their first; each run replaces it with its own (BE-0468,
+    BE-0518).
     """
     runner = driver.runner if isinstance(driver, IosDriver) else None
     kinds: list[IosKind] = runs_on.ios.kinds if isinstance(runs_on, IosRunsOn) else ["simulator"]
@@ -153,6 +167,7 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
     if isinstance(app, AndroidApp):
         driver = a.driver
         assert isinstance(driver, AndroidDriver)
+        android = a.runs_on.android if isinstance(a.runs_on, AndroidRunsOn) else None
         return AndroidConfig(
             package=app.id,
             app_path=app.path,
@@ -162,7 +177,9 @@ def _platform_config(a: TargetConfig) -> PlatformConfig:
             native_z=driver.native_z,
             resident_read_retries=driver.resident_recovery.read_retries,
             resident_restart=driver.resident_recovery.restart,
-            locale=a.runs_on.android.locale if isinstance(a.runs_on, AndroidRunsOn) else None,
+            locale=android.locale if android is not None else None,
+            # A listed kind, and `any`, resolve to their first; each run replaces it (BE-0518).
+            device_kind=android.kinds[0] if android is not None else "emulator",
         )
     if isinstance(app, IosApp):
         return IosConfig(
