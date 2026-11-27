@@ -37,6 +37,7 @@ from bajutsu.cli._shared import (
     _precondition_checks,
     _refuse_bad_preconditions,
     _reject_unmet_hook_conditions,
+    _reject_unmet_run_conditions,
     _resolve_browser,
     _select_actuator_or_exit,
     _start_hooks_or_exit,
@@ -50,6 +51,7 @@ from bajutsu.common.platform_lifecycle import environment_for
 from bajutsu.common.run_meta.files import runs_root
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.runner import device_pool, run_all
+from bajutsu.common.runner.conditions import ConditionContext, condition_context
 from bajutsu.common.runner.hook_commands import HookPhaseResult
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.runner.scenario_hooks import sandbox_targets, scenario_hook_error
@@ -223,7 +225,8 @@ def _repeat_audit(
     # otherwise reach the operator as a raw traceback (BE-0428). Calling it again here, discarding
     # the result, is cheap and means passing this check guarantees `run_all` will too.
     try:
-        with_lifecycle_phases(eff, scenarios)
+        # Every conditional block counts as kept, since the route is not known yet (BE-0513).
+        with_lifecycle_phases(eff, scenarios, conditions=ConditionContext.every_block())
     except ValueError as e:
         typer.echo(f"config-level before/after hook: {e}")
         raise typer.Exit(2) from None
@@ -247,6 +250,16 @@ def _repeat_audit(
     except device_errors.DeviceError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    # The run-time half of the `${hooks.*}` check, once the route is known (BE-0513): the same
+    # actuator and device spec the hook session below decides its `env` and `routes` from.
+    _reject_unmet_run_conditions(
+        scenarios,
+        {eff.target: eff},
+        target_name,
+        condition_context(
+            {eff.target: eff}, actuators={eff.target: actuator}, udids={eff.target: udid}
+        ),
+    )
 
     runs, failed = _audit_runs(
         scenarios, eff, actuator, udids, udid, fake=_backends(backend, eff.backend) == ["fake"]
@@ -269,6 +282,8 @@ def _repeat_audit(
         on_error=shutdown,
         scenario_targets=sandbox_targets(scenarios, eff.target),
         scenarios=[s for s, *_ in runs],
+        actuator=actuator,
+        udid_spec=udid,
     )
     teardown: HookPhaseResult | None = None
     try:

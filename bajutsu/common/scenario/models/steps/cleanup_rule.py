@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from bajutsu.common.scenario.models._base import _Model, reject_error_outcome
+from bajutsu.common.scenario.models.hook_command import HookWhen
 
 from .step import Step
 
@@ -26,6 +27,16 @@ class CleanupRule(_Model):
 
     on: Literal["always", "success", "failure"]
     steps: list[Step] = Field(default_factory=list)
+    # Runs the rule only where the condition holds (BE-0513), decided before the scenario's first
+    # step from the facts a hook command reads; `on` still answers the verdict afterwards.
+    when: HookWhen | None = None
+
+    @model_validator(mode="after")
+    def _when_not_null(self) -> Self:
+        if "when" in self.model_fields_set and self.when is None:
+            # `when:` with its body commented out would otherwise widen the rule to every target.
+            raise ValueError("a cleanup rule's `when` cannot be null; leave it out to always run")
+        return self
 
     @field_validator("on", mode="before")
     @classmethod

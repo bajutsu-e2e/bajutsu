@@ -134,6 +134,8 @@ def _result_panel(
         ),
         "steprows": _merged_rows(r, plan, exchanges, run_dir, step_lines),
         "cleanuprows": _cleanup_rows(r, (definition or {}).get("cleanup") or [], run_dir),
+        # The setup blocks and cleanup rules the run skipped for their `when` (BE-0513).
+        "skippedblocks": (definition or {}).get("skippedBlocks") or [],
         "expects": _expects_data(r, definition),
     }
 

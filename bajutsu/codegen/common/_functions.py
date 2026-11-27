@@ -267,6 +267,12 @@ def indent_lines(lines: list[str], levels: int = 1) -> list[str]:
 
 def _reject_runtime_only(step: Step) -> None:
     """Fail loudly on a runtime-only construct no target can translate to a static test (BE-0297)."""
+    if step.when is not None:
+        # A block gated on `env` or a route has no run that could decide it; deciding the static
+        # fields would need the run's target and platform rules here (BE-0513).
+        raise CodegenError(
+            f"codegen does not support a conditional setup block (`when`) — {_RUNTIME_ONLY_HINT}"
+        )
     if step.if_ is not None:
         raise CodegenError(
             f"codegen does not support the `if` control-flow step — {_RUNTIME_ONLY_HINT}"
@@ -284,6 +290,10 @@ def _scenario_lines(
 ) -> list[str]:
     env = {**app_launch_env, **scenario.preconditions.subject.launch.env}
     for rule in scenario.cleanup:
+        if rule.when is not None:
+            raise CodegenError(
+                f"codegen does not support a cleanup rule with `when` — {_RUNTIME_ONLY_HINT}"
+            )
         for hook_step in rule.steps:
             _reject_runtime_only(hook_step)
     cleanup = gen.cleanup_lines(scenario.cleanup)

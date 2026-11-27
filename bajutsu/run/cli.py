@@ -34,6 +34,7 @@ from bajutsu.cli._shared import (
     _precondition_checks,
     _refuse_bad_preconditions,
     _reject_unmet_hook_conditions,
+    _reject_unmet_run_conditions,
     _reject_url_udid,
     _resolve_browser,
     _resolve_kind,
@@ -104,6 +105,7 @@ from bajutsu.common.runner import (
     run_matrix_and_report,
 )
 from bajutsu.common.runner.build import BuildError, build_app
+from bajutsu.common.runner.conditions import ConditionContext, condition_context
 from bajutsu.common.runner.device_provider import (
     DeviceLease,
     LeaseEnvConflictError,
@@ -1086,8 +1088,10 @@ def _retired_primary_problems(s: Scenario, effs: Mapping[str, Effective]) -> Ite
     # this to run time; walked here in step order, it is refused before any device is leased.
     installed = {m for m in s.target_names if m not in set(s.later_targets)}
     retired: set[str] = set()
-    # `setup` runs ahead of `steps`, so an install there retires a member just the same.
-    for step in [*s.setup, *s.steps]:
+    # `setup` runs ahead of `steps`, so an install there retires a member just the same. A
+    # conditional block is still undecided here (BE-0513), so its steps count as if it ran.
+    setup = [inner for step in s.setup for inner in (step.steps if step.when else [step]) or []]
+    for step in [*setup, *s.steps]:
         if step.install_app is not None:
             member = step.install_app.from_
             identifier = effs[member].app_identifier
@@ -1121,6 +1125,9 @@ def _install_steps(s: Scenario) -> Iterator[Step]:
                 yield from walk(step.if_.else_ or [])
             if step.for_each is not None:
                 yield from walk(step.for_each.steps)
+            # A conditional setup block, still undecided before the run (BE-0513).
+            if step.steps is not None:
+                yield from walk(step.steps)
 
     yield from walk(s.steps)
     yield from walk(s.setup)
@@ -1144,7 +1151,14 @@ def _reject_bad_target_config_hooks(
     it means passing this check guarantees `run_all` will too.
     """
     try:
-        with_lifecycle_phases(target_effs[primary], scenarios, target_effs)
+        # Every conditional block counts as kept (BE-0513): the routes are not known yet, and a
+        # superset of the steps any run could fold in keeps the guarantee below.
+        with_lifecycle_phases(
+            target_effs[primary],
+            scenarios,
+            target_effs,
+            conditions=ConditionContext.every_block(),
+        )
     except ValueError as e:
         typer.echo(f"config-level before/after hook: {e}")
         raise typer.Exit(2) from None
@@ -1589,6 +1603,9 @@ def _walk_visual_steps(steps: list[Step]) -> Iterator[Step]:
             yield from _walk_visual_steps(step.for_each.steps)
         if step.app is not None:
             yield from _walk_visual_steps(step.app.steps)
+        # A conditional setup block, still undecided before the run (BE-0513).
+        if step.steps is not None:
+            yield from _walk_visual_steps(step.steps)
 
 
 def _visual_asserting_scenarios(scenarios: list[Scenario]) -> set[int]:
@@ -1869,6 +1886,9 @@ def _mock_swaps(
             yield from _mock_swaps(step.app.steps, block or "app", runs_on)
         if step.web is not None:
             yield from _mock_swaps(step.web.steps, block or "web", runs_on)
+        # A conditional setup block, still undecided before the run (BE-0513).
+        if step.steps is not None:
+            yield from _mock_swaps(step.steps, block, runs_on)
 
 
 def _scenario_mock_swaps(s: Scenario) -> list[_MockSwap]:
@@ -2306,6 +2326,9 @@ class _RunPlan:
     # last, and the outputs a scenario's `${hooks.<name>.<key>}` token reads. None when no target
     # declares a hook command, so a run without them does no hook work at all.
     hooks: HookSession | None
+    # The facts every `when` of this run reads (BE-0513), fixed before the first hook, so the run and
+    # its report fold each scenario's conditional setup blocks and cleanup rules alike.
+    conditions: ConditionContext
     # `--score`: emit the app's entry-screen convention score once (doctor's grade, inline) so CI needs
     # no separate `doctor` cold-spawn. Diagnostic only — never on the verdict path.
     score: bool
@@ -2361,6 +2384,28 @@ def _finish_hooks(plan: _RunPlan) -> None:
     )
 
 
+def _run_conditions_or_exit(
+    effs: Mapping[str, Effective],
+    setups: Mapping[str, _TargetSetup],
+    scenarios: Sequence[Scenario],
+    primary: str,
+) -> ConditionContext:
+    """The facts every `when` of this run reads, or exit 2 on a token one of them leaves unset.
+
+    The routes come from the actuator and device spec each pool runs on, the ones `run_all` reads
+    from the same setups, so a hook command and a setup block decide one `when` alike (BE-0513).
+    Fixed before the first hook, with the environment snapshot every condition reads, which is also
+    when the run-time half of the `${hooks.*}` check can first decide `env` and `routes`.
+    """
+    conditions = condition_context(
+        effs,
+        actuators={name: setup.actuator for name, setup in setups.items()},
+        udids={name: setup.device.udid_spec for name, setup in setups.items()},
+    )
+    _reject_unmet_run_conditions(scenarios, effs, primary, conditions)
+    return conditions
+
+
 def _hook_session_or_exit(
     target_effs: Mapping[str, Effective],
     *,
@@ -2372,8 +2417,12 @@ def _hook_session_or_exit(
     base_dir: Path | None,
     scenario_targets: set[str],
     tags: Mapping[str, Sequence[Sequence[str]]],
-) -> HookSession | None:
+    conditions: ConditionContext,
+) -> tuple[HookSession | None, ConditionContext]:
     """The run's hook session, or None when nothing in this run declares a hook command (BE-0491).
+
+    Returned with *conditions*, the facts the session decides every `when` from (BE-0513), which
+    the run and its report then fold the scenarios with too.
 
     The session's artifact writer is the run's own, so each command's log is copied into the run
     directory with `${secrets.*}` and every `mask: true` output value replaced. Two targets sharing
@@ -2385,12 +2434,12 @@ def _hook_session_or_exit(
     from bajutsu.common.runner.pipeline import _union_redact
 
     if not phases_of(target_effs, scenario_targets):
-        return None
+        return None, conditions
     writer = RunArtifactWriter(
         runs_dir / run_id, Redactor(_union_redact(target_effs.values()), values=secret_values)
     )
     try:
-        return start_session(
+        session = start_session(
             target_effs,
             run_id=run_id,
             runs_dir=runs_dir,
@@ -2401,10 +2450,12 @@ def _hook_session_or_exit(
             base_dir=base_dir,
             scenario_targets=scenario_targets,
             tags=tags,
+            conditions=conditions,
         )
     except ValueError as e:
         typer.echo(str(e))
         raise typer.Exit(2) from None
+    return session, conditions
 
 
 def _print_score(score: Score) -> None:
@@ -2671,6 +2722,7 @@ def _dispatch_single(
             cancelled=plan.cancelled,
             step_gate=plan.step_gate,
             hooks=plan.hooks,
+            conditions=plan.conditions,
         )
     finally:
         _close_pools(pools)
@@ -2729,6 +2781,7 @@ def _dispatch_matrix(
                 # engine names the pass's own evidence subdirectory, so one pass's hook logs never
                 # overwrite another's — the same split its other evidence already gets.
                 hooks=plan.hooks,
+                conditions=plan.conditions,
                 evidence_prefix=engine,
             )
         finally:
@@ -2752,6 +2805,7 @@ def _dispatch_matrix(
         cancelled=plan.cancelled,
         worker_failures=plan.worker_failures,
         hooks=plan.hooks,
+        conditions=plan.conditions,
     )
 
 
@@ -2838,6 +2892,7 @@ def _dispatch_runs(
         label=plan.label or None,
         worker_failures=plan.worker_failures,
         hooks=plan.hooks,
+        conditions=plan.conditions,
         cancelled=plan.cancelled,
     )
     return results, manifest, not_applicable
@@ -2941,6 +2996,7 @@ def _run_cell(
             cancelled=plan.cancelled,
             step_gate=plan.step_gate,
             hooks=plan.hooks,
+            conditions=plan.conditions,
         )
     finally:
         # The engine stays in the label: two web pools can differ only by it, and a shared label
@@ -3704,7 +3760,7 @@ def run_body(
         # The run id is settled before the hook session, which stamps it into every command's
         # `BAJUTSU_RUN_ID` and names the raw area the commands write their output and logs to.
         run_id = new_run_id()
-        hook_session = _hook_session_or_exit(
+        hook_session, conditions = _hook_session_or_exit(
             {**target_effs, target_name: eff},
             run_id=run_id,
             runs_dir=Path(runs_dir),
@@ -3716,6 +3772,9 @@ def run_body(
             # The whole selection, a scenario the worker's capability check failed included: what a
             # run-level `when` sees depends on the files and the flags, never on the worker.
             tags=run_tags(all_scenarios, target_name),
+            conditions=_run_conditions_or_exit(
+                {**target_effs, target_name: eff}, setups, all_scenarios, target_name
+            ),
         )
         # Answer a `SIGTERM` by asking the run to stop at its next safe boundary instead of dying
         # where it stands, leaving no manifest, no report, and no history row (BE-0370). The window
@@ -3757,6 +3816,7 @@ def run_body(
                 evidence_store=evidence_store,
                 command_gate=gate,
                 hooks=hook_session,
+                conditions=conditions,
                 score=score,
                 trace_driver=trace_driver,
                 step_gate=step_gate,

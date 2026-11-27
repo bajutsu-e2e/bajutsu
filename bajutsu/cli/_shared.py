@@ -67,15 +67,18 @@ from bajutsu.common.run_meta.files import is_soft_deleted
 from bajutsu.common.scenario import tip_kit_entry
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Sequence
+    from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 
     from bajutsu.common.agents.alerts import ClaudeAlertLocator
     from bajutsu.common.capability.command_gate import CommandGate
     from bajutsu.common.devices.facts import DeviceFacts
     from bajutsu.common.drivers import base
     from bajutsu.common.orchestrator import AlertEvent
+    from bajutsu.common.runner.conditions import ConditionContext
+    from bajutsu.common.runner.hook_commands import ConditionJudge
     from bajutsu.common.runner.hook_session import HookSession
-    from bajutsu.common.scenario import Scenario
+    from bajutsu.common.scenario import CleanupRule, Scenario, Step
+    from bajutsu.common.scenario.models.hook_command import HookWhen
 
 
 @overload
@@ -353,6 +356,75 @@ def _effective_for(loaded: LoadedConfig, target_name: str) -> Effective:
         raise typer.Exit(2) from None
 
 
+def _scenario_conditions(s: Scenario) -> Iterator[tuple[str, HookWhen]]:
+    """Every `when` a scenario declares itself, each with where it sits (BE-0513)."""
+    if s.hooks is not None:
+        for list_name, entries in (
+            ("beforeScenario", s.hooks.before_scenario),
+            ("afterScenario", s.hooks.after_scenario),
+        ):
+            for i, entry in enumerate(entries):
+                if entry.when is not None:
+                    yield f"hooks.{list_name}[{i}].when", entry.when
+    for i, step in enumerate(s.setup):
+        if step.when is not None:
+            yield f"setup[{i}].when", step.when
+    for i, rule in enumerate(s.cleanup):
+        if rule.when is not None:
+            yield f"cleanup[{i}].when", rule.when
+
+
+def _decided_body(
+    s: Scenario,
+    driven: Sequence[str],
+    effs: Mapping[str, Effective],
+    judge: ConditionJudge,
+) -> list[object]:
+    """The parts of *s* a token check reads, without a block or rule *judge* does not run.
+
+    A token inside a setup block or cleanup rule that does not run needs no value, so it is not
+    checked; one whose condition this stage cannot decide waits for the stage that can (BE-0513).
+    Not the scenario's own `hooks`: a token in a command is refused outright (BE-0501), so the
+    reader is told to use the variable instead, whatever the condition.
+    """
+
+    def runs(when: HookWhen | None, names: Sequence[str]) -> bool:
+        return when is None or judge(when, names) is True
+
+    def setup(steps: Sequence[Step], names: Sequence[str]) -> list[Step]:
+        return [
+            step
+            for step in steps
+            if runs(step.when, (step.target,) if step.target is not None else names)
+        ]
+
+    def cleanup(rules: Sequence[CleanupRule], names: Sequence[str]) -> list[CleanupRule]:
+        return [rule for rule in rules if runs(rule.when, names)]
+
+    own = s.model_copy(
+        update={"setup": setup(s.setup, driven), "cleanup": cleanup(s.cleanup, driven)}
+    )
+    # A target's setup and cleanup steps fold into the scenario, so it reads their tokens too.
+    folded = [
+        step.model_dump(by_alias=True)
+        for name in driven
+        if name in effs
+        for step in (
+            *(
+                setup(effs[name].run_defaults.setup, [name])
+                if s.preconditions.inherit_setup
+                else ()
+            ),
+            *(
+                inner
+                for rule in cleanup(effs[name].run_defaults.cleanup, [name])
+                for inner in rule.steps
+            ),
+        )
+    ]
+    return [own.model_dump(by_alias=True, exclude={"hooks"}), *folded]
+
+
 def _reject_unmet_hook_conditions(
     loaded: LoadedConfig,
     scenarios: list[Scenario],
@@ -360,38 +432,38 @@ def _reject_unmet_hook_conditions(
     *,
     selected: Collection[Scenario],
 ) -> None:
-    """Exit 2 on a scenario that reads the output of a hook its own tags skip (BE-0497).
+    """Exit 2 on a scenario that reads the output of a hook its own condition skips (BE-0497).
+
+    The load-time stage (BE-0513): it decides the conditions that name neither `env` nor `routes`,
+    which the files alone settle, and leaves those two to `_reject_unmet_run_conditions`. It also
+    refuses a scenario's own condition that names a target the config does not declare.
 
     Given every expanded scenario, not the selected ones alone: the mismatch is a defect in the
     files, so a run that selects a different subset reports it too. A scenario that names no target
     drives whatever `--target` says, so while deselected it is a defect only if no target of the
     config lets it run.
     """
+    from bajutsu.common.config.schema._conditions import unknown_condition_targets
+    from bajutsu.common.runner.conditions import ConditionContext
     from bajutsu.common.runner.hook_commands import unmet_hook_condition
     from bajutsu.common.runner.scenario_hooks import own_phases
     from bajutsu.common.scenario.interp import find_tokens
+    from bajutsu.common.scenario.models.hook_command import JudgedTarget
 
     effs = {name: resolve(loaded.config, name) for name in loaded.config.targets}
     phases = {name: eff.hooks for name, eff in effs.items()}
+    static = ConditionContext(
+        {name: JudgedTarget(name, eff.schema_platform) for name, eff in effs.items()}, {}
+    )
 
-    def body(s: Scenario) -> dict[str, object]:
-        # Not its own `hooks`: a token in a command is refused outright (BE-0501), so the reader is
-        # told to use the variable instead, whatever the tags.
-        return s.model_dump(by_alias=True, exclude={"hooks"})
+    def judge_for(s: Scenario) -> ConditionJudge:
+        tags = (tuple(s.tags),)
+        return lambda when, names: None if when.needs_run else static.holds(when, names, tags)
 
     def unmet(s: Scenario, driven: list[str]) -> str | None:
-        # A target's setup and cleanup steps fold into the scenario, so it reads their tokens too.
-        folded = [
-            step.model_dump(by_alias=True)
-            for name in driven
-            if name in effs
-            for step in (
-                *(effs[name].run_defaults.setup if s.preconditions.inherit_setup else ()),
-                *effs[name].run_defaults.cleanup,
-            )
-        ]
-        referenced = find_tokens([body(s), *folded])
-        return unmet_hook_condition(referenced, phases, driven, s.tags, own_phases(s))
+        judge = judge_for(s)
+        referenced = find_tokens(_decided_body(s, driven, effs, judge))
+        return unmet_hook_condition(referenced, phases, driven, s.tags, own_phases(s), judge=judge)
 
     def runs_under(s: Scenario, target: str) -> bool:
         """Whether *target* declares every hook *s* reads and *s* meets each one's condition."""
@@ -399,13 +471,16 @@ def _reject_unmet_hook_conditions(
         readable = {*phases[target].named(), *(own.named() if own is not None else ())}
         names = {
             t.removeprefix("hooks.").partition(".")[0]
-            for t in find_tokens(body(s))
+            for t in find_tokens(_decided_body(s, [target], effs, judge_for(s)))
             if t.startswith("hooks.")
         }
         return names <= readable and unmet(s, [target]) is None
 
     chosen = {id(s) for s in selected}
     for s in scenarios:
+        if (why := unknown_condition_targets(_scenario_conditions(s), effs)) is not None:
+            typer.echo(f"scenario {s.name!r}: {why}")
+            raise typer.Exit(2)
         why = unmet(s, list(s.target_names) or [primary])
         if why is None:
             continue
@@ -414,6 +489,39 @@ def _reject_unmet_hook_conditions(
             continue
         typer.echo(f"scenario {s.name!r}: {why}")
         raise typer.Exit(2)
+
+
+def _reject_unmet_run_conditions(
+    scenarios: Sequence[Scenario],
+    target_effs: Mapping[str, Effective],
+    primary: str,
+    conditions: ConditionContext,
+) -> None:
+    """Exit 2 on a selected scenario that reads a hook its `env` or `routes` condition skips.
+
+    The run-time stage of the token check (BE-0513): once the run knows each route and has taken
+    its environment snapshot, and before the first hook. Deselected scenarios are not judged, since
+    their result depends on a machine and flags this run does not have.
+    """
+    from bajutsu.common.runner.hook_commands import unmet_hook_condition
+    from bajutsu.common.runner.scenario_hooks import own_phases
+    from bajutsu.common.scenario.interp import find_tokens
+
+    phases = {name: eff.hooks for name, eff in target_effs.items()}
+    for s in scenarios:
+        tags = (tuple(s.tags),)
+
+        def judge(
+            when: HookWhen, names: Sequence[str], tags: tuple[tuple[str, ...]] = tags
+        ) -> bool:
+            return conditions.holds(when, names, tags)
+
+        driven = list(s.target_names) or [primary]
+        referenced = find_tokens(_decided_body(s, driven, target_effs, judge))
+        why = unmet_hook_condition(referenced, phases, driven, s.tags, own_phases(s), judge=judge)
+        if why is not None:
+            typer.echo(f"scenario {s.name!r}: {why}")
+            raise typer.Exit(2)
 
 
 def _refuse_out_in_checkout(out_path: Path, checkout_root: Path | None) -> None:
@@ -994,6 +1102,8 @@ def _start_hooks_or_exit(
     teardown_at_exit: bool = False,
     scenario_targets: Collection[str] = (),
     scenarios: Sequence[Scenario] = (),
+    actuator: str | None = None,
+    udid_spec: str = "booted",
 ) -> HookSession | None:
     """Run the target's `beforeRun` hooks if it declares any, or exit 2 (BE-0491).
 
@@ -1015,12 +1125,16 @@ def _start_hooks_or_exit(
         scenario_targets: The targets a scenario's own commands may need a container of (BE-0501);
             non-empty exactly when some scenario declares a command.
         scenarios: The set a run-level `when` reads (BE-0497): what `audit` replays, and empty for
-            the commands that run no scenario file, where no condition matches.
+            the commands that run no scenario file, where no condition on tags matches.
+        actuator: The actuator the command drives, which with *udid_spec* fixes the route a
+            `when.routes` reads (BE-0513); None uses the target's own `backend`.
+        udid_spec: The device spec the command drives.
 
     Returns:
         The session, or None when neither the target nor a scenario declares a hook command.
     """
     from bajutsu.common.evidence.sink import RunArtifactWriter
+    from bajutsu.common.runner.conditions import condition_context
     from bajutsu.common.runner.hook_session import phases_of, run_tags, start_session
 
     # Nothing at all for a target that declares no hook command — not even a writer. Constructing
@@ -1047,6 +1161,11 @@ def _start_hooks_or_exit(
             base_dir=eff.base_dir,
             scenario_targets=scenario_targets,
             tags=run_tags(scenarios, eff.target),
+            conditions=condition_context(
+                {eff.target: eff},
+                actuators={eff.target: actuator} if actuator is not None else None,
+                udids={eff.target: udid_spec},
+            ),
         )
     except ValueError as e:  # two targets sharing a hook name
         typer.echo(str(e))

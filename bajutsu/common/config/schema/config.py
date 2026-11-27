@@ -9,6 +9,7 @@ from pydantic import Field, ValidationInfo, model_validator
 
 from bajutsu.common.scenario.models.hook_command import SCENARIO_LEVEL
 
+from ._conditions import check_condition_targets, check_own_conditions
 from ._merge import merge_defaults
 from ._model import _Model
 from ._templates import check_templates, expand_extends
@@ -67,6 +68,9 @@ class Config(_Model):
             # reach validation as they always have.
             if not isinstance(raw, dict) or (defaults is None and "extends" not in raw):
                 merged[name] = raw
+                check_own_conditions(
+                    name, raw, raw.get("platform") if isinstance(raw, dict) else None
+                )
                 continue
             layers = expand_extends(
                 name,
@@ -76,4 +80,11 @@ class Config(_Model):
                 root=root if isinstance(root, Path) else None,
             )
             merged[name] = merge_defaults(defaults, *layers)
+            # The platform may come from a template, but the conditions read are the target's own.
+            check_own_conditions(name, raw, merged[name].get("platform"))
         return {**data, "targets": merged}
+
+    @model_validator(mode="after")
+    def _condition_targets(self) -> Config:
+        check_condition_targets({name: t.hooks for name, t in self.targets.items()})
+        return self

@@ -118,6 +118,9 @@ class Scenario(_Model):
     # The primary in force after the last top-level step, which a `setPrimaryTarget` may have moved
     # (BE-0447); recorded by the target walk, never authored.
     _final_primary: str | None = PrivateAttr(default=None)
+    # The setup blocks and cleanup rules whose `when` did not hold for this run (BE-0513), as the
+    # report lists them; recorded when the run decides them, never authored.
+    _skipped_blocks: list[dict[str, str]] = PrivateAttr(default_factory=list)
 
     @property
     def device_groups(self) -> list[list[str]]:
@@ -154,6 +157,15 @@ class Scenario(_Model):
     def record_final_primary(self, name: str | None) -> None:
         """Record the primary the target walk ended on (BE-0447)."""
         self._final_primary = name
+
+    @property
+    def skipped_blocks(self) -> list[dict[str, str]]:
+        """The setup blocks and cleanup rules the run skipped for their `when` (BE-0513)."""
+        return self._skipped_blocks
+
+    def record_skipped_blocks(self, skipped: list[dict[str, str]]) -> None:
+        """Record what the run's condition decision dropped from this scenario."""
+        self._skipped_blocks = skipped
 
     @property
     def screens(self) -> list[Interrupt]:

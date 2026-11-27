@@ -17,6 +17,7 @@ from bajutsu.common.capability.command_gate import CommandGate
 from bajutsu.common.capability.command_policy import NamedCommand
 from bajutsu.common.config import Effective, HookPhases
 from bajutsu.common.evidence.sink import RunArtifactWriter
+from bajutsu.common.runner.conditions import ConditionContext, condition_context
 from bajutsu.common.runner.hook_commands import (
     LOGS_SUBDIR,
     OUT_SUBDIR,
@@ -92,14 +93,26 @@ class HookSession:
     # One per target, started before its `beforeRun` and removed after its `afterRun`, so a server a
     # `beforeRun` script starts keeps serving for the whole run.
     sandboxes: dict[str, SandboxRuntime] = field(default_factory=dict)
+    # Each target's platform and route and the environment snapshot a `when` reads (BE-0513),
+    # fixed when the session starts, so `afterRun` decides from what `beforeRun` saw.
+    conditions: ConditionContext = field(default_factory=lambda: ConditionContext({}, {}))
 
     def context(self, target: str, **extra: object) -> HookContext:
-        """The context a command of *target* receives, with any scenario-level facts added."""
+        """The context a command of *target* receives, with any scenario-level facts added.
+
+        *target* is the entry's owner, the one target its `when` judges unless *extra* names others
+        (a scenario's own entries judge every target the scenario drives).
+        """
+        facts: dict[str, object] = {
+            "scenario_tags": self.tags.get(target, ()),
+            "judged_targets": self.conditions.judged([target]),
+            "process_env": self.conditions.env or {},
+        }
         return HookContext(
             run_id=self.run_id,
             target=target,
             run_dir=self.run_dir,
-            **{"scenario_tags": self.tags.get(target, ()), **extra},  # type: ignore[arg-type]
+            **{**facts, **extra},  # type: ignore[arg-type]
         )
 
     def before_run(self) -> HookPhaseResult:
@@ -176,11 +189,14 @@ def start_session(
     base_dir: Path | None = None,
     scenario_targets: Collection[str] = (),
     tags: Mapping[str, Sequence[Sequence[str]]] | None = None,
+    conditions: ConditionContext | None = None,
 ) -> HookSession | None:
     """The hook session for this run, or None when neither a target nor a scenario declares one.
 
     *scenario_targets* names the targets whose container a scenario's own commands may run in
-    (BE-0501), which is non-empty exactly when some scenario declares a command.
+    (BE-0501), which is non-empty exactly when some scenario declares a command. *conditions* are
+    the facts a `when` reads (BE-0513); None builds them from the targets' own config and this
+    process's environment, for a command with no `--backend` or `--udid` override.
 
     Returns None rather than an empty session, so every call site can tell at a glance that a run
     without hooks does no hook work at all.
@@ -211,6 +227,7 @@ def start_session(
         run_dir=run_dir.resolve() if run_dir is not None else None,
         outputs=HookOutputs(),
         tags=tags or {},
+        conditions=conditions if conditions is not None else condition_context(effs),
         sandboxes=_sandboxes(
             phases, gate=gate, raw_dir=raw, base_dir=base_dir, scenario_targets=scenario_targets
         ),

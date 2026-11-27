@@ -505,7 +505,7 @@ platforms — rather than `effective.bundle_id` directly, which does not exist.
 | `device_provider` | `--worker-config` | where this target's devices come from. The config no longer names it: an `appium` environment in the `worker.yaml` the command runs under hands the grid's endpoint to the targets of the grid's platform ([what a machine can run](#what-a-machine-can-run-outside-the-config-be-0450)). A `leased` environment lends the targets of its `platforms` a device from a [lease broker](self-hosting.md#borrowing-devices-from-a-lease-broker-be-0511). Every other target takes the built-in `local` provider (the `--udid` path). Bajutsu drives that endpoint end to end over a live W3C WebDriver transport ([iOS device cloud](ios-device-cloud.md#live--an-appium-endpoint-provider), [BE-0236](../roadmaps/BE-0236-device-cloud-provider-abstraction/BE-0236-device-cloud-provider-abstraction.md), [BE-0238](../roadmaps/BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md)) |
 | `hooks.before_run` / `.after_run` / `.before_scenario` / `.after_scenario` / `.sandbox` | `hooks.beforeRun` / `.afterRun` / `.beforeScenario` / `.afterScenario` / `.sandbox` | the external commands that run around the run and around each scenario, each entry `{cmd | use, name, cwd, env, timeout, on, mask}` ([below](#external-commands-around-a-run-and-each-scenario-hooks-be-0491)). A command hands values back through `$BAJUTSU_OUTPUT`, which a scenario reads as `${hooks.<name>.<key>}`. Whether a command runs, and where, is the decision of the worker that executes the run: the `commandExecution` block of its `worker.yaml` sets a mode per config source, and an uploaded bundle's commands run in one Docker container per run by default ([self-hosting](self-hosting.md#which-config-commands-a-worker-runs-be-0492), [BE-0492](../roadmaps/BE-0492-worker-command-execution-policy/BE-0492-worker-command-execution-policy.md)). These lists replaced `services.server`, whose readiness probe now lives in the script that starts the server ([BE-0491](../roadmaps/BE-0491-target-command-hooks/BE-0491-target-command-hooks.md)) |
 | `run_defaults.system_alerts` / `.ios_tip_kit_handling` | the `systemAlert` and `tipKit` entries of `hooks.interrupts` | per-app defaults for the system-alert guard and the TipKit guard, which a scenario's own `interrupts` layers over ([BE-0177](../roadmaps/BE-0177-run-behavior-target-config/BE-0177-run-behavior-target-config.md), [BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)). A `systemAlert` entry answers its prompt even inside a scenario that declares entries for other prompts; the run prints a notice when it does, and the scenario overrides it with its own entry for that prompt. The layering rules are [below](#system-alerts-and-tipkit-in-hooksinterrupts) and in [scenarios](scenarios.md#layering-a-key-reaches-a-run-from-three-places). `tipKit: dismiss` defaults the TipKit guard (iOS only, built-in **off**); `--ios-tipkit-handling`/`--no-ios-tipkit-handling` override it for every scenario |
-| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.inheritSetup: false`; the cleanup still runs. The `systemAlert` and `tipKit` entries of `hooks.interrupts` resolve into the two fields of the row above, so `.interrupts` holds the screen entries alone |
+| `run_defaults.setup` / `.cleanup` / `.interrupts` | `hooks.setup` / `hooks.cleanup` / `hooks.interrupts` | steps that wrap every scenario of the target: `setup` runs ahead of a scenario's own `setup`, `cleanup` behind its own `cleanup` (a rule takes `on: always`, `success`, or `failure`, the words a scenario's `cleanup` rule uses), and `interrupts` are checked before the scenario's. A hook step may call a component with `use: { component: <file>, with: … }`: the loader resolves it when the config loads, against the config file's directory, and refuses a reference that leaves the suite root ([BE-0174](../roadmaps/BE-0174-scenario-ref-path-containment/BE-0174-scenario-ref-path-containment.md)). `group:` and `setMocks` stay rejected there. A scenario skips every declared target's `hooks.setup` with `preconditions.inheritSetup: false`; the cleanup still runs. A `hooks.setup` entry may be a conditional block of `when` and `steps`, and a `hooks.cleanup` rule may carry `when`; both judge this target ([scenarios](scenarios.md#conditional-setup-blocks-and-cleanup-rules)). The `systemAlert` and `tipKit` entries of `hooks.interrupts` resolve into the two fields of the row above, so `.interrupts` holds the screen entries alone |
 | `locale` | `runsOn.ios.locale` | iOS: applied at launch (`simctl` launch args), built-in `en_US`. On the XCUITest backend it also pins the **Simulator's own system language** on every cold spawn — written to the device's global preference domain, then rebooted so SpringBoard renders it — so an out-of-process permission prompt's button text is the one this `locale` predicts rather than whatever language the Simulator happened to carry; a scenario whose `preconditions.device.ios.locale` differs from the pinned one forces a cold respawn rather than reusing a warm runner ([BE-0320](../roadmaps/BE-0320-ios-system-alert-locale-determinism/BE-0320-ios-system-alert-locale-determinism.md)). A `handleSystemAlert` step under a language outside the label table (English and Japanese) answers by the button's position instead; a `systemAlert` entry in `interrupts` under such a language still fails the scenario before any device work ([BE-0445](../roadmaps/BE-0445-system-alert-locale-agnostic-answer/BE-0445-system-alert-locale-agnostic-answer.md)) |
 | `launch_env` / `launch_args` | `subject.launch.env` / `subject.launch.args` | a scenario's `preconditions.subject.launch.env` merges over the environment key by key, and its `.args` append after the arguments; `launch.args` is iOS only |
 | `reinstall` | `subject.reinstall` | iOS and Android: how much state is reset before each scenario, as one ladder from weakest to strongest. `overwrite` installs over the app and keeps its data; `clean` uninstalls, then installs; `erase` wipes the whole device, then installs (on Android, which has no device-wide wipe, the same as `clean`). The install itself needs `subject.path`. A scenario's `preconditions.subject.reinstall` wins; unset on both, the built-in `clean` applies ([BE-0452](../roadmaps/BE-0452-target-config-restructure/BE-0452-target-config-restructure.md)). `bajutsu run --erase` raises every scenario to `erase`, and `--no-erase` lowers an `erase` to `clean`. `erase` replaces the removed `run.erase: true`, which now fails at load naming this key; in `defaults`, which has no `subject` group, write it as `defaults.platforms.<platform>.subject.reinstall: erase` ([BE-0473](../roadmaps/BE-0473-config-run-group-and-interrupts/BE-0473-config-run-group-and-interrupts.md)) |
@@ -667,7 +667,7 @@ A scenario then reads the seeded value with no preparation step of its own:
 | `timeout` | all | Seconds the command may take. Default 300 |
 | `on` | `afterRun`, `afterScenario` | `always`, `success`, or `failure`. Default `always`. The same words a scenario's `cleanup` rule uses |
 | `mask` | all | When true, this entry's output values are masked in evidence, as a `${secrets.*}` value is. Default false |
-| `when` | all | The scenario tags the entry runs for, `{ tags, exclude }` ([below](#running-an-entry-for-some-scenarios-when-be-0497)). Absent, the entry runs for every scenario |
+| `when` | all | Where and for which scenarios the entry runs: scenario tags, targets, platforms, routes, and environment variables ([below](#running-an-entry-for-some-scenarios-when-be-0497)). Absent, the entry always runs |
 
 #### Lifecycle and order
 
@@ -706,44 +706,89 @@ command here when every scenario of the target needs it.
 
 #### Running an entry for some scenarios (`when`, BE-0497)
 
-Preparation in a real suite often concerns a subset of the scenarios. A `when` block on an entry
-names the scenario tags the entry runs for. Bajutsu skips the entry when the tags do not match.
+Preparation in a real suite often concerns some of the scenarios. It may also concern some of the
+places a scenario runs on. A `when` block on an entry states both. Bajutsu skips the entry when the
+condition does not hold.
 
 ```yaml
-hooks:
-  beforeRun:
-    - name: mock
-      cmd: "./scripts/start-mock.sh"
-      when: { tags: [offline] }            # starts when the run selected an offline scenario
-  afterRun:
-    - cmd: "./scripts/stop-mock.sh"
-      when: { tags: [offline] }
-  beforeScenario:
-    - name: account
-      cmd: "./scripts/create-payment-account.sh"
-      when: { tags: [payments], exclude: [readonly] }
-  afterScenario:
-    - cmd: "./scripts/delete-payment-account.sh"
-      when: { tags: [payments], exclude: [readonly] }
+defaults:
+  hooks:
+    beforeRun:
+      - name: mock
+        cmd: "./scripts/start-mock.sh"
+        when: { tags: [offline], env: { CI: null } }   # an offline scenario, outside CI
+    beforeScenario:
+      - cmd: "./scripts/trust-certificate.sh"
+        when: { platforms: [ios], routes: [ios-device] }
+      - name: account
+        cmd: "./scripts/create-payment-account.sh"
+        when: { tags: [payments], exclude: [readonly] }
 ```
 
-| Field | Meaning |
+| Field | The condition holds when |
 |---|---|
-| `when.tags` | The entry matches a scenario that carries at least one of these tags. Absent or empty, it places no constraint |
-| `when.exclude` | The entry does not match a scenario that carries any of these tags. `exclude` wins over `tags` |
+| `when.tags` | the scenario carries at least one of these tags |
+| `when.exclude` | the scenario carries none of these tags. `exclude` wins over `tags` |
+| `when.targets` | a judged target is listed. A name the config does not declare fails to load |
+| `when.platforms` | a judged target has a listed platform: `ios`, `android`, `web`, or `fake` |
+| `when.routes` | a judged target runs on a listed route: `ios-simulator`, `ios-device`, `ios-live`, `android`, or `web` |
+| `when.env` | every listed variable of the `bajutsu run` process matches |
 
-The rule is the one `bajutsu run --tag` and `--exclude` apply to select scenarios. A tag matches as
-a whole string, case included. A `when` block with both lists empty fails to load.
+Values inside one list combine with "or". Different fields combine with "and". A `when` block with
+every field empty fails to load.
 
-The condition reads a scenario's tags after component and data expansion. A `${row.*}` token in
-`tags` then gives each data row its own tags.
+`tags` and `exclude` follow the rule `bajutsu run --tag` and `--exclude` apply to select scenarios. A
+tag matches as a whole string, case included. The condition reads a scenario's tags after component
+and data expansion. A `${row.*}` token in `tags` then gives each data row its own tags.
 
-Which scenarios an entry reads depends on its list:
+A *route* is the kind of destination a target runs on. The names are those of the settings support
+table ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)).
+The `--backend` and `--udid` flags decide the route. An iOS target runs on one of three routes:
+
+- `ios-simulator` on a Simulator
+- `ios-device` on a real device
+- `ios-live` on a WebDriver endpoint
+
+The `fake` backend has no route. A `routes` condition never holds there.
+
+##### Which target a condition judges
+
+`targets`, `platforms`, and `routes` describe one and the same judged target. The place of the
+condition decides which target that is:
+
+| Where the condition sits | Judged target |
+|---|---|
+| an entry, setup block, or cleanup rule under `targets.<name>.hooks` | `<name>`, the owner |
+| a setup block that names `target` | that target |
+| an entry, setup block, or cleanup rule of a scenario | any target the scenario drives |
+
+An entry merged from `defaults` or a template belongs to the target that received it. Suppose
+`defaults.hooks` holds an entry with `when: { targets: [ios] }`. The copy the `android` target
+received never runs, even in a scenario that drives both targets.
+
+A condition written under `targets.<name>.hooks` fails to load when it can never hold. Its
+`targets` or `platforms` may leave out its owner. Its `routes` may name no route of the owner's
+platform. The check reads the target's own block, before `defaults` or a template merges in. A
+merged copy that never runs then stays valid.
+
+##### Environment variables
+
+`env` maps a variable name to a string or to null. A string asks for an exact match, case
+included. A null asks for an unset variable. A variable set to the empty string counts as set. Quote
+every value. The YAML parser reads an unquoted `true` or `1` as a boolean or a number, which fails
+to load.
+
+`env` reads the environment of the `bajutsu run` process. Under `serve`, that process runs on the
+worker, so the worker's environment decides. The entry's own `env` field plays no part. Reports
+print the condition as written, never the value a variable holds.
+
+##### Which scenarios an entry reads
 
 - **`beforeScenario` and `afterScenario`** read the scenario they wrap. An `afterScenario` entry
   needs both `when` and `on` to hold.
-- **`beforeRun` and `afterRun`** read the run's scenario set and run when any scenario in the set
-  matches. Their `when` needs a non-empty `tags`, or the config fails to load.
+- **`beforeRun` and `afterRun`** read the run's scenario set. Their `tags` hold when any scenario in
+  the set matches. An `exclude` without `tags` fails to load there. Such a condition would skip the
+  entry merely when every scenario carried an excluded tag.
 
 The scenario set holds the scenarios that drive the entry's target:
 
@@ -754,19 +799,39 @@ The scenario set holds the scenarios that drive the entry's target:
 | `audit` | the scenarios `audit` replays |
 | `record`, `crawl`, `repl` | empty, since these commands run no scenario file |
 
-An empty set matches no condition. Leave `when` off a server that `record`, `crawl`, or `repl` also
-needs. Bajutsu fixes the set before the first `beforeRun` entry. Each `afterRun` entry then decides
-on the same set, after a cancellation too.
+A condition with `tags` or `exclude` never holds for an empty set. The other fields need no
+scenario. A condition made of them alone can hold under `record`, `crawl`, and `repl` too. Each
+command learns the owner's route before its first command runs. Before the first `beforeRun` entry,
+Bajutsu fixes three facts:
+
+- the scenario set
+- the route of each target
+- a snapshot of the environment
+
+Each `afterRun` entry decides from the same facts, after a cancellation too.
 
 Bajutsu does not link a `beforeScenario` entry to the `afterScenario` entry that cleans up after it.
 Copy the same `when` to both. A cleanup entry with a broader condition still runs. It finds the
 `BAJUTSU_HOOK__<name>__<key>` variables of the skipped entry unset.
 
-A scenario that reads `${hooks.<name>.<key>}` must match the `when` of the entry it reads. The `run`
-and `audit` commands check every expanded scenario, whatever `--tag` and `--exclude` select. A
-mismatch exits 2. The message names the entry, its condition, and the scenario's tags.
-A deselected scenario that names no `targets` fails only when no target of the config lets it run.
-The check covers the tokens in a target's own `setup` and `cleanup` steps too.
+##### Reading the output of a conditional entry
+
+A scenario that reads `${hooks.<name>.<key>}` must meet the `when` of the entry it reads. A mismatch
+exits 2. The message names the entry and its condition. It also names the tags of the scenario and
+the targets the scenario drives. The check runs in two stages:
+
+| Fields in the condition | Which scenarios Bajutsu checks | When |
+|---|---|---|
+| `tags`, `exclude`, `targets`, `platforms` | every expanded scenario, whatever `--tag` and `--exclude` select | at load |
+| `env`, `routes` | the selected scenarios | once each route is known, before the first hook |
+
+A condition that names `env` or `routes` waits for the second stage as a whole. The files alone
+cannot decide it. The `env` field depends on the machine. A route depends on the backend and
+device flags.
+
+A deselected scenario that names no `targets` fails the first stage in one case alone. No target of
+the config lets the scenario run. The check also reads the tokens in a target's own
+`setup` and `cleanup` steps. It skips a token inside a setup block or cleanup rule that does not run.
 
 A skipped entry writes no log and no output file. The report shows it as `skipped (when)` with its
 condition. The [`commandExecutions`](self-hosting.md#the-command-record) list records the decision

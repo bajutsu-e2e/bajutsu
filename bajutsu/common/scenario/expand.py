@@ -147,7 +147,8 @@ def _expand_bodies(
 def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
     """The recursive `use` / `group` expander `expand_components` and `expand_steps` share."""
 
-    def expand(
+    # One branch per container a step may hold; a conditional block (BE-0513) adds the last one.
+    def expand(  # noqa: C901
         steps: list[Step],
         stack: list[str],
         resolve: Callable[[str], Component],
@@ -185,6 +186,26 @@ def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
                         path=(*path, label) if target is not None else path,
                     )
                 )
+                continue
+            if st.when is not None and st.steps is not None:
+                # A conditional block (BE-0513) stays whole until the run decides it; only the
+                # `use:` steps inside it expand. Where a block may stand is the load-time pass's
+                # check, so one a component produced in the wrong place still fails there.
+                label = "conditional block"
+                target = _merge_target(level_target, st.target, path, label)
+                children = expand(
+                    st.steps,
+                    stack,
+                    resolve,
+                    group_ctx=group_ctx,
+                    group_id=group_id,
+                    level_target=target,
+                    body_target=body_target,
+                    path=(*path, label),
+                    body=body,
+                )
+                # The merged target rides on the block too, which is what its condition judges.
+                out.append(st.model_copy(update={"steps": children, "target": target}))
                 continue
             if st.steps is not None:
                 # A target group (BE-0437) a component's own steps carry is never flattened at

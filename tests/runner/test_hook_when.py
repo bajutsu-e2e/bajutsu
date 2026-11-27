@@ -69,13 +69,13 @@ def _scn(name: str, tags: list[str], targets: list[str] | None = None) -> Scenar
 
 @pytest.mark.parametrize("when", [{}, {"tags": []}, {"tags": [], "exclude": []}])
 def test_a_when_that_constrains_nothing_fails_to_load(when: dict[str, Any]) -> None:
-    with pytest.raises(ValidationError, match="non-empty `tags` or `exclude`"):
+    with pytest.raises(ValidationError, match="at least one non-empty field"):
         HookWhen.model_validate(when)
 
 
 @pytest.mark.parametrize("key", ["beforeRun", "afterRun"])
-def test_a_run_level_when_needs_tags(key: str) -> None:
-    with pytest.raises(ValidationError, match=rf"hooks\.{key}\[0\]\.when needs a non-empty `tags`"):
+def test_a_run_level_when_may_not_only_exclude(key: str) -> None:
+    with pytest.raises(ValidationError, match=rf"hooks\.{key}\[0\]\.when names `exclude` without"):
         Hooks.model_validate({key: [{"cmd": "x", "when": {"exclude": ["wip"]}}]})
 
 
@@ -379,7 +379,7 @@ def test_a_scenario_s_own_hook_picks_the_rows_it_runs_for() -> None:
 
 
 def test_a_scenario_s_own_hook_may_not_have_an_empty_when() -> None:
-    with pytest.raises(ValidationError, match="non-empty `tags` or `exclude`"):
+    with pytest.raises(ValidationError, match="at least one non-empty field"):
         Scenario.model_validate(
             {"name": "x", "steps": [], "hooks": {"beforeScenario": [{"cmd": "c", "when": {}}]}}
         )
@@ -401,7 +401,7 @@ def test_the_report_labels_a_when_skip_with_its_condition() -> None:
 
 
 def test_a_bare_when_fails_to_load_rather_than_running_everywhere() -> None:
-    with pytest.raises(ValidationError, match="non-empty `tags` or `exclude`"):
+    with pytest.raises(ValidationError, match="at least one non-empty field"):
         _entry("x", when=None)
 
 
