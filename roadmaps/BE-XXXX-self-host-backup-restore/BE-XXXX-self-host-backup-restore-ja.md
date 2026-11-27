@@ -10,8 +10,8 @@
 | 状態 | **承認済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
 | トピック | Web UI のホスティング |
-| 関連 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md), [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md), [BE-0168](../BE-XXXX-self-host-backup-restore/BE-XXXX-self-host-backup-restore-ja.md) |
-| 由来 | [BE-0168](../BE-XXXX-self-host-backup-restore/BE-XXXX-self-host-backup-restore-ja.md) |
+| 関連 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md), [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md), [BE-0168](../BE-0168-self-host-high-availability/BE-0168-self-host-high-availability-ja.md) |
+| 由来 | [BE-0168](../BE-0168-self-host-high-availability/BE-0168-self-host-high-availability-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
