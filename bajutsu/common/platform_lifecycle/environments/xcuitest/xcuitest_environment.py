@@ -58,6 +58,7 @@ from ._functions import (
     _respawn_timeout,
     _run_ended_probe,
     _runner_host_bundle_ids,
+    _runner_process_env,
     _runner_startup_timeout,
     _spawn_cold_with_retry,
     _terminate_process_group,
@@ -928,7 +929,12 @@ class XcuitestEnvironment(_DeviceEnvironment):
         self, runner_path: Path, forwarded_base: Mapping[str, str], device_type: str
     ) -> _Spawned:
         """`_spawn_runner`'s body once `_runner_port` is set: patch, spawn, and build the driver."""
-        forwarded = {"BAJUTSU_RUNNER_PORT": str(self._runner_port), **forwarded_base}
+        # The passthrough excludes the BAJUTSU_ namespace itself; listing it first is the second guard.
+        forwarded = {
+            **_runner_process_env(os.environ),
+            "BAJUTSU_RUNNER_PORT": str(self._runner_port),
+            **forwarded_base,
+        }
         # `xcodebuild` does not pass its own environment through to the test-runner process
         # inside the Simulator, so the runner reads these from the .xctestrun's per-target
         # TestingEnvironmentVariables instead. Patch a private copy and run that.

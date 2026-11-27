@@ -44,6 +44,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     _RUNNER_STARTUP_TIMEOUT,
     _RUNNER_STARTUP_TIMEOUT_ENV,
     _WARM_HEALTH_TIMEOUT,
+    RUNNER_PROCESS_ENV_PREFIX,
     XcuitestEnvironment,
     _AttemptFailure,
     _await_cold_runner,
@@ -55,6 +56,7 @@ from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     _respawn_timeout,
     _run_ended_probe,
     _runner_host_bundle_ids,
+    _runner_process_env,
     _runner_startup_timeout,
     _spawn_cold_with_retry,
     _Spawned,
@@ -330,6 +332,54 @@ def test_a_real_device_runner_is_reached_through_a_usbmux_bridge(
     assert ports == [bridge.port]
     env._discard_runner(warn_on_crash=False, keep_log=True)
     assert bridge.closed
+
+
+def test_runner_process_env_strips_the_prefix_and_ignores_everything_else() -> None:
+    # Only prefixed names cross, under their stripped name; a bare prefix names nothing, and the
+    # BAJUTSU_ namespace is refused outright (BE-0362).
+    environ = {
+        f"{RUNNER_PROCESS_ENV_PREFIX}PERFC_LOG_REPORTS_TO_STDERR": "1",
+        f"{RUNNER_PROCESS_ENV_PREFIX}BAJUTSU_ATTACH": "1",
+        RUNNER_PROCESS_ENV_PREFIX: "orphan",
+        "PERFC_LOG_REPORTS_TO_STDERR": "unprefixed",
+        "HOME": "/Users/x",
+    }
+    assert _runner_process_env(environ) == {"PERFC_LOG_REPORTS_TO_STDERR": "1"}
+
+
+def test_a_prefixed_host_var_reaches_the_runner_process_but_never_overrides_bajutsu(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # The passthrough is how a diagnostic switch such as Thread Performance Checker's stderr reporting
+    # gets into the runner process at all (BE-0362 unit 1); one naming a variable Bajutsu sends itself
+    # must never land, or a typo could re-point the channel's port or skip the app launch.
+    patched_env: dict[str, str] = {}
+
+    def _popen(argv: list[str], **_kw: Any) -> _FakeProc:
+        patched_env.update(_env_of(Path(argv[argv.index("-xctestrun") + 1])))
+        return _FakeProc()
+
+    class _FakeDriver:
+        def await_ready(self, timeout: float) -> None:
+            return None
+
+        def health_ready(self) -> bool:
+            return True
+
+    monkeypatch.setenv(f"{RUNNER_PROCESS_ENV_PREFIX}PERFC_LOG_REPORTS_TO_STDERR", "1")
+    monkeypatch.setenv(f"{RUNNER_PROCESS_ENV_PREFIX}BAJUTSU_RUNNER_PORT", "1")
+    # Sent only on the attach path, so the spawn's own values cannot shadow it on this cold spawn.
+    monkeypatch.setenv(f"{RUNNER_PROCESS_ENV_PREFIX}BAJUTSU_ATTACH", "1")
+    monkeypatch.setattr(subprocess, "Popen", _popen)
+    monkeypatch.setattr(backends, "make_driver", lambda *_a, **_k: _FakeDriver())
+    _patch_group_signals(monkeypatch)
+    env = XcuitestEnvironment("xcuitest", _DEVICE_UDID, env_run=lambda *_a, **_k: "")
+    env.start(_device_eff(test_runner=str(_write_runner(tmp_path))), ResolvedPreconditions())
+
+    assert patched_env["PERFC_LOG_REPORTS_TO_STDERR"] == "1"
+    assert patched_env["BAJUTSU_RUNNER_PORT"] != "1"
+    assert "BAJUTSU_ATTACH" not in patched_env
+    env._discard_runner(warn_on_crash=False, keep_log=True)
 
 
 def test_a_simulator_runner_opens_no_bridge(

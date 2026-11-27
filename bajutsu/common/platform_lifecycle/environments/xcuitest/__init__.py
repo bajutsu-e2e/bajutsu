@@ -19,6 +19,7 @@ from ._functions import _RUN_ENDED_MARKERS as _RUN_ENDED_MARKERS
 from ._functions import _RUN_ENDED_OVERLAP as _RUN_ENDED_OVERLAP
 from ._functions import _RUNNER_STARTUP_TIMEOUT as _RUNNER_STARTUP_TIMEOUT
 from ._functions import _RUNNER_STARTUP_TIMEOUT_ENV as _RUNNER_STARTUP_TIMEOUT_ENV
+from ._functions import RUNNER_PROCESS_ENV_PREFIX as RUNNER_PROCESS_ENV_PREFIX
 from ._functions import _allocate_port as _allocate_port
 from ._functions import _await_cold_runner as _await_cold_runner
 from ._functions import _classify_runner as _classify_runner
@@ -37,6 +38,7 @@ from ._functions import _resolve_runner as _resolve_runner
 from ._functions import _respawn_timeout as _respawn_timeout
 from ._functions import _run_ended_probe as _run_ended_probe
 from ._functions import _runner_host_bundle_ids as _runner_host_bundle_ids
+from ._functions import _runner_process_env as _runner_process_env
 from ._functions import _runner_startup_timeout as _runner_startup_timeout
 from ._functions import _RunnerTier as _RunnerTier
 from ._functions import _spawn_cold_with_retry as _spawn_cold_with_retry

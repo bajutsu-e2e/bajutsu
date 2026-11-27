@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0362") |
-| 実装 PR | [#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594), [#1688](https://github.com/bajutsu-e2e/bajutsu/pull/1688) |
+| 実装 PR | [#1594](https://github.com/bajutsu-e2e/bajutsu/pull/1594), [#1688](https://github.com/bajutsu-e2e/bajutsu/pull/1688), [#2607](https://github.com/bajutsu-e2e/bajutsu/pull/2607)（単位 1） |
 | トピック | Platform support |
 | 関連 | [BE-0287](../BE-0287-xcuitest-runner-multitouch-resilience/BE-0287-xcuitest-runner-multitouch-resilience-ja.md), [BE-0323](../BE-0323-xcuitest-readiness-crash-respawn/BE-0323-xcuitest-readiness-crash-respawn-ja.md), [BE-0292](../BE-0292-xcuitest-bundled-runner/BE-0292-xcuitest-bundled-runner-ja.md) |
 <!-- /BE-METADATA -->
@@ -149,6 +149,13 @@ Bajutsu の iOS のジョブは、GitHub が提供する macOS のランナー�
   `TestingEnvironmentVariables` へ併合しているからです
   （[`_patch_xctestrun_env`](../../bajutsu/platform_lifecycle/environments/xcuitest.py)）。その実行が
   得られるまで、runner が逆転の報告を引き起こすかどうかは未計測のままであり、この単位は未了のままです。
+- 2026-11-28：単位 1（[#2607](https://github.com/bajutsu-e2e/bajutsu/pull/2607)）で、前のエントリが
+  求めていた計測の経路を用意しました。ホスト側の `BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_<NAME>` という
+  変数が、`<NAME>` として runner のプロセスへ届くようになりました。`BAJUTSU_` で始まる名前は
+  受け付けないので、この仕組みで Bajutsu 自身の変数を設定できません。`fault-injection` ジョブと `visual` ジョブは、この仕組みで
+  `PERFC_LOG_REPORTS_TO_STDERR=1` を設定します。続くステップが、捕捉した runner のログにある
+  Thread Performance Checker の報告を数えてジョブのサマリーに書きます。このステップがジョブを失敗させる
+  ことはありません。この変数を設定した最初の実行で得られた結果は、次のエントリに記録します。
 
 ## 参考
 
