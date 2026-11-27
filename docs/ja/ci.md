@@ -828,11 +828,11 @@ gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=re
 gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=stock
 ```
 
-次に、20 回の実行がすべて終わってから結果を取得します。同じワークフローの pull request の実行も一覧に
-混ざるので、`--limit` には 20 より大きな値を渡します。
+次に、20 回の実行がすべて終わってから結果を取得します。`--event` を付けると、同じワークフローの
+pull request の実行が一覧から外れます。
 
 ```bash
-python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --limit 60 --out tmp/be-0517
+python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --event workflow_dispatch --limit 30 --out tmp/be-0517
 ```
 
 最後に、基準を当てはめます。
@@ -850,11 +850,12 @@ python3 scripts/ci_telemetry.py adoption tmp/be-0517 --since 2026-12-01T00:00:00
 |---|---|
 | `adopt` | すべての基準を満たした |
 | `reject` | 満たさない基準が 1 つ以上ある |
-| `trace` | 件数の基準は満たしたが、変更を入れた側で通らなかったシナリオがある |
+| `trace` | 件数の基準は満たしたが、変更を入れた側で通らなかったジョブがある |
 | `incomplete` | どちらかの群のジョブが 20 件に満たない |
 
 `trace` の判定は人の確認を要します。一覧に出たシナリオを、疑わしいサービスを動かしたまま再実行します。
-そこで通れば、その結果は変更に不利な証拠として数えます。
+そこで通れば、その結果は変更に不利な証拠として数えます。報告には、ログを読めなかった `run` と
+`actuation` のジョブも並びます。そうしたジョブはどちらの群にも入らないので、群が 20 件に届かないことがあります。
 
 ## あなたのアプリの CI で回す
 

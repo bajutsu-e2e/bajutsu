@@ -534,6 +534,7 @@ def fetch(
     *,
     gh: Gh = _gh,
     with_logs: bool = True,
+    event: str = "",
 ) -> int:
     """Download the last `limit` completed runs' telemetry and write `records.jsonl` under `out`.
 
@@ -544,7 +545,8 @@ def fetch(
     out.mkdir(parents=True, exist_ok=True)
     runs = json.loads(
         gh(["run", "list", "--repo", repo, "--workflow", workflow, "--status", "completed",
-            "--limit", str(limit), "--json", "databaseId,attempt,createdAt,headBranch,event"])
+            "--limit", str(limit), "--json", "databaseId,attempt,createdAt,headBranch,event",
+            *(["--event", event] if event else [])])
     )  # fmt: skip
     records: list[dict[str, Any]] = []
     for run in runs:
@@ -832,46 +834,61 @@ def _lost_change(record: Mapping[str, Any]) -> bool:
     return isinstance(start, int) and isinstance(end, int) and end < start
 
 
+# The jobs that apply the arm (`.github/workflows/ios-e2e.yml`'s `run` and `actuation`).
+_MEASURED_JOBS = re.compile(r"^(run|actuation) \(")
+
+
+def _run_label(record: Mapping[str, Any]) -> str:
+    return f"{_job_label(record)} (run {(record.get('ci') or {}).get('run_id')})"
+
+
 def _arm_tally(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    known = [r for r in records if r.get("log_signals") is not None]
-
     def total(signal: str) -> int:
-        return sum(int(r["log_signals"].get(signal) or 0) for r in known)
+        return sum(int((r.get("log_signals") or {}).get(signal) or 0) for r in records)
 
+    failed_scenarios: list[str] = []
+    red_without_scenario: list[str] = []
+    for r in records:
+        names = [s.get("scenario") for s in r.get("scenarios") or [] if s.get("ok") is False]
+        failed_scenarios += [f"{_run_label(r)}: {name}" for name in names]
+        # A job that died in setup, or before its runner came up, leaves no failed scenario to
+        # trace, yet a turned-off service could explain it as well as a failed scenario.
+        if is_failed(r) and not names:
+            red_without_scenario.append(_run_label(r))
     return {
-        "jobs": len(known),
-        "jobs_without_logs": len(records) - len(known),
-        "red_jobs": sum(1 for r in known if is_failed(r)),
+        "jobs": len(records),
+        "red_jobs": sum(1 for r in records if is_failed(r)),
         "video_start_unconfirmed_jobs": sum(
-            1 for r in known if r["log_signals"].get("video_start_unconfirmed")
+            1 for r in records if (r.get("log_signals") or {}).get("video_start_unconfirmed")
         ),
         "channel_retries": total("channel_retries"),
         "recovery_reboots": total("recovery_reboots"),
         "device_replacements": total("device_replacements"),
-        "lost_change_jobs": sum(1 for r in known if _lost_change(r)),
-        "failed_scenarios": sorted(
-            f"{_job_label(r)} (run {(r.get('ci') or {}).get('run_id')}): {s.get('scenario')}"
-            for r in known
-            for s in r.get("scenarios") or []
-            if s.get("ok") is False
-        ),
+        "lost_change_jobs": sum(1 for r in records if _lost_change(r)),
+        "failed_scenarios": sorted(failed_scenarios),
+        "red_without_scenario": sorted(red_without_scenario),
     }
 
 
-def adoption(records: Sequence[Mapping[str, Any]], *, since: str = "") -> dict[str, Any]:
+def adoption(records: Sequence[Mapping[str, Any]], *, since: str) -> dict[str, Any]:
     """Apply BE-0517 unit 4's fixed criteria to the dispatched jobs of each arm.
 
     A job belongs to an arm by the mode its own log printed, and only a `workflow_dispatch` run
     started at or after `since` (an ISO-8601 UTC timestamp) counts, which leaves the pilot runs and
-    every pull-request run out. A job whose log could not be read is reported, never counted as
-    zero signals.
+    every pull-request run out. A measured job whose log could not be read has no arm; it is listed
+    as unattributed rather than dropped in silence.
     """
     arms: dict[str, list[Mapping[str, Any]]] = {arm: [] for arm in _ARMS}
+    unattributed: list[str] = []
     for r in records:
-        mode = (r.get("simulator_services") or {}).get("mode")
         started = str((r.get("api") or {}).get("started_at") or "")
-        if mode in arms and r.get("run_event") == "workflow_dispatch" and started >= since:
+        if r.get("run_event") != "workflow_dispatch" or started < since:
+            continue
+        mode = (r.get("simulator_services") or {}).get("mode")
+        if mode in arms:
             arms[mode].append(r)
+        elif r.get("log_signals") is None and _MEASURED_JOBS.match(_job_label(r)):
+            unattributed.append(_run_label(r))
     reduced, stock = (_arm_tally(arms[arm]) for arm in _ARMS)
     p = (
         fisher_one_sided(
@@ -883,13 +900,19 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str = "") -> dict[s
         if reduced["jobs"] and stock["jobs"]
         else None
     )
-    # `None` is a criterion the numbers cannot settle: a scenario that failed with the change on
+
+    def recoveries(arm: Mapping[str, Any]) -> int:
+        # A replacement is the rung above a reboot, and the item counts both as recoveries.
+        return int(arm["recovery_reboots"]) + int(arm["device_replacements"])
+
+    # `None` is a criterion the numbers cannot settle: a job that did not pass with the change on
     # needs a re-run with the suspect service left on, which is a person's call, not this script's.
+    untraced = reduced["failed_scenarios"] or reduced["red_without_scenario"]
     criteria: dict[str, bool | None] = {
         "video_start_unconfirmed": None if p is None else p < ADOPTION_ALPHA,
         "channel_retries": reduced["channel_retries"] <= stock["channel_retries"],
-        "recovery_reboots": reduced["recovery_reboots"] <= stock["recovery_reboots"],
-        "scenarios": True if not reduced["failed_scenarios"] else None,
+        "recoveries": recoveries(reduced) <= recoveries(stock),
+        "scenarios": None if untraced else True,
     }
     if min(reduced["jobs"], stock["jobs"]) < ADOPTION_JOBS_PER_ARM:
         verdict = "incomplete"
@@ -900,10 +923,11 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str = "") -> dict[s
     else:
         verdict = "adopt"
     return {
-        "since": since or None,
+        "since": since,
         "alpha": ADOPTION_ALPHA,
         "jobs_per_arm": ADOPTION_JOBS_PER_ARM,
         "arms": {"reduced": reduced, "stock": stock},
+        "unattributed_jobs": sorted(unattributed),
         "video_start_p": None if p is None else round(p, 4),
         "criteria": criteria,
         "verdict": verdict,
@@ -912,7 +936,6 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str = "") -> dict[s
 
 _ADOPTION_FIGURES = (
     "jobs",
-    "jobs_without_logs",
     "red_jobs",
     "video_start_unconfirmed_jobs",
     "channel_retries",
@@ -924,8 +947,8 @@ _ADOPTION_FIGURES = (
 _VERDICTS = {
     "adopt": "every criterion passes: adopt the reduced list",
     "reject": "a criterion fails: keep the stock Simulator",
-    "trace": "the numbers pass; trace each scenario that failed with the change on",
-    "incomplete": "an arm has fewer jobs than planned: dispatch more before deciding",
+    "trace": "the numbers pass; trace each job that did not pass with the change on",
+    "incomplete": "an arm has fewer jobs than planned: dispatch more, or raise fetch's --limit",
 }
 
 
@@ -950,12 +973,16 @@ def render_adoption(result: Mapping[str, Any]) -> str:
         f"| fewer unconfirmed recording starts (one-sided Fisher, p={result['video_start_p']}, "
         f"alpha={result['alpha']}) | {mark[criteria['video_start_unconfirmed']]} |",
         f"| runner-channel retries not above stock | {mark[criteria['channel_retries']]} |",
-        f"| recovery reboots not above stock | {mark[criteria['recovery_reboots']]} |",
+        f"| recovery reboots and replacements not above stock | {mark[criteria['recoveries']]} |",
         f"| no scenario traced to a turned-off service | {mark[criteria['scenarios']]} |",
     ]
-    if reduced["failed_scenarios"]:
-        lines += ["", "## Scenarios that failed with the change on (trace each)", ""]
+    if reduced["failed_scenarios"] or reduced["red_without_scenario"]:
+        lines += ["", "## Did not pass with the change on (trace each)", ""]
         lines += [f"- {name}" for name in reduced["failed_scenarios"]]
+        lines += [f"- {name}: no scenario result" for name in reduced["red_without_scenario"]]
+    if result["unattributed_jobs"]:
+        lines += ["", "## Measured jobs whose log could not be read (no arm)", ""]
+        lines += [f"- {name}" for name in result["unattributed_jobs"]]
     return "\n".join(lines) + "\n"
 
 
@@ -974,7 +1001,12 @@ def _summarize_main(args: argparse.Namespace) -> int:
 def _fetch_main(args: argparse.Namespace) -> int:
     repo = args.repo or _gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
     count = fetch(
-        repo.strip(), args.workflow, args.limit, Path(args.out), with_logs=not args.no_logs
+        repo.strip(),
+        args.workflow,
+        args.limit,
+        Path(args.out),
+        with_logs=not args.no_logs,
+        event=args.event,
     )
     print(f"{count} job record(s) → {Path(args.out) / 'records.jsonl'}")
     return 0
@@ -1017,6 +1049,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     f.add_argument("--limit", type=int, default=30, help="completed runs to read")
     f.add_argument("--out", default=str(Path(tempfile.gettempdir()) / "bajutsu-ci-telemetry"))
     f.add_argument("--no-logs", action="store_true", help="skip the per-job log download")
+    f.add_argument(
+        "--event", default="", help="read only runs of this trigger, e.g. workflow_dispatch"
+    )
     f.set_defaults(func=_fetch_main)
     r = sub.add_parser("report", help="aggregate fetched records")
     r.add_argument("path", help="a fetch output directory, a records.jsonl, or loose records")
@@ -1024,7 +1059,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     r.set_defaults(func=_report_main)
     a = sub.add_parser("adoption", help="apply BE-0517's fixed adoption criteria to fetched runs")
     a.add_argument("path", help="a fetch output directory or a records.jsonl")
-    a.add_argument("--since", default="", help="count only jobs started at or after this UTC time")
+    a.add_argument(
+        "--since", required=True, help="count only jobs started at or after this UTC time"
+    )
     a.add_argument("--json", action="store_true")
     a.set_defaults(func=_adoption_main)
     args = parser.parse_args(argv)

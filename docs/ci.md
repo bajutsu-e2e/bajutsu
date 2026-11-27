@@ -762,11 +762,11 @@ The roadmap item fixes four criteria for keeping the change, before any measured
    gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=stock
    ```
 
-2. Fetch the runs once all twenty have completed. Raise `--limit` above twenty, since pull-request
-   runs of the same workflow share the list.
+2. Fetch the runs once all twenty have completed. The `--event` flag keeps pull-request runs of the
+   same workflow out of the list.
 
    ```bash
-   python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --limit 60 --out tmp/be-0517
+   python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --event workflow_dispatch --limit 30 --out tmp/be-0517
    ```
 
 3. Apply the criteria.
@@ -791,11 +791,12 @@ The verdict takes one of four values.
 |---|---|
 | `adopt` | Every criterion passes |
 | `reject` | At least one criterion does not pass |
-| `trace` | The counts pass, but a scenario did not pass with the change on |
+| `trace` | The counts pass, but a job did not pass with the change on |
 | `incomplete` | An arm holds fewer than twenty jobs |
 
 A `trace` verdict needs a person. Run each listed scenario again with the suspect service left
-on. A pass then counts against the change.
+on. A pass then counts against the change. The report also lists each `run` or `actuation` job whose
+log the fetch could not read. Such a job has no arm, and its arm may then fall short of twenty.
 
 ## Running bajutsu in your app's CI
 

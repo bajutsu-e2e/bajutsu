@@ -550,31 +550,32 @@ def test_fisher_one_sided(hits: int, other_hits: int, expected: float) -> None:
 
 
 def _job(
-    mode: str,
+    mode: str | None,
     *,
     video: int = 0,
     retries: int = 0,
     reboots: int = 0,
+    replacements: int = 0,
     event: str = "workflow_dispatch",
     started: str = "2026-12-01T01:00:00Z",
-    start: int | None = 166,
     end: int | None = 166,
     failed: str | None = None,
-    logs: bool = True,
+    red: bool = False,
 ) -> dict[str, Any]:
     signals = {
         "video_start_unconfirmed": video,
         "channel_retries": retries,
         "recovery_reboots": reboots,
-        "device_replacements": 0,
+        "device_replacements": replacements,
     }
+    # `fetch` reads the arm and the signals from one log, so an unreadable log leaves both None.
     return {
-        "api": {"job_name": "run", "conclusion": "failure" if failed else "success",
-                "started_at": started},
+        "api": {"job_name": "run (xcuitest)",
+                "conclusion": "failure" if failed or red else "success", "started_at": started},
         "ci": {"run_id": "9"},
         "run_event": event,
-        "simulator_services": {"mode": mode, "start": start, "end": end},
-        "log_signals": signals if logs else None,
+        "simulator_services": {"mode": mode, "start": 166, "end": end} if mode else None,
+        "log_signals": signals if mode else None,
         "scenarios": [{"scenario": failed, "ok": False}] if failed else [],
     }  # fmt: skip
 
@@ -590,8 +591,15 @@ def _arms(reduced: list[dict[str, Any]], stock: list[dict[str, Any]]) -> list[di
     )
 
 
+def _adopt(records: list[dict[str, Any]], since: str = "") -> dict[str, Any]:
+    return ct.adoption(records, since=since)
+
+
+_STOCK_SIGNAL = [_job("stock", video=1)] * 5
+
+
 def test_adoption_adopts_when_every_fixed_criterion_passes() -> None:
-    result = ct.adoption(_arms([], [_job("stock", video=1) for _ in range(5)]))
+    result = _adopt(_arms([], _STOCK_SIGNAL))
     assert result["verdict"] == "adopt"
     assert result["video_start_p"] == pytest.approx(0.0236, abs=1e-4)
     assert "adoption: adopt" in ct.render_adoption(result)
@@ -599,59 +607,82 @@ def test_adoption_adopts_when_every_fixed_criterion_passes() -> None:
 
 def test_adoption_rejects_on_any_failing_criterion() -> None:
     # Four stock jobs leave the Fisher test short of alpha, as the roadmap item works out.
-    assert ct.adoption(_arms([], [_job("stock", video=1)] * 4))["verdict"] == "reject"
-    more_retries = _arms([_job("reduced", retries=3)], [_job("stock", video=1)] * 5)
-    result = ct.adoption(more_retries)
+    assert _adopt(_arms([], [_job("stock", video=1)] * 4))["verdict"] == "reject"
+    result = _adopt(_arms([_job("reduced", retries=3)], _STOCK_SIGNAL))
     assert result["criteria"]["channel_retries"] is False
     assert result["verdict"] == "reject"
-    more_reboots = _arms([_job("reduced", reboots=1)], [_job("stock", video=1)] * 5)
-    assert ct.adoption(more_reboots)["criteria"]["recovery_reboots"] is False
+    assert _adopt(_arms([_job("reduced", reboots=1)], _STOCK_SIGNAL))["verdict"] == "reject"
+    # A replacement is a recovery as much as a reboot is.
+    replaced = _adopt(_arms([_job("reduced", replacements=1)], _STOCK_SIGNAL))
+    assert replaced["criteria"]["recoveries"] is False
+    assert replaced["verdict"] == "reject"
 
 
-def test_adoption_leaves_a_failed_reduced_scenario_to_a_person() -> None:
-    records = _arms([_job("reduced", failed="permission.yaml")], [_job("stock", video=1)] * 5)
-    result = ct.adoption(records)
+def test_adoption_leaves_a_job_that_did_not_pass_to_a_person() -> None:
+    result = _adopt(_arms([_job("reduced", failed="permission.yaml")], _STOCK_SIGNAL))
     assert result["verdict"] == "trace"
     assert result["criteria"]["scenarios"] is None
     rendered = ct.render_adoption(result)
-    assert "run (run 9): permission.yaml" in rendered
+    assert "run (xcuitest) (run 9): permission.yaml" in rendered
     assert "| no scenario traced to a turned-off service | open |" in rendered
+    # A job that died before any scenario reported is traced too, not passed over.
+    died = _adopt(_arms([_job("reduced", red=True)], _STOCK_SIGNAL))
+    assert died["verdict"] == "trace"
+    assert "run (xcuitest) (run 9): no scenario result" in ct.render_adoption(died)
 
 
-def test_adoption_counts_only_fresh_dispatches_with_readable_logs() -> None:
+def test_adoption_counts_only_fresh_dispatches() -> None:
     records = [
-        *_arms([], [_job("stock", video=1)] * 5),
+        *_arms([], _STOCK_SIGNAL),
         _job("reduced", video=1, event="pull_request"),
         _job("reduced", video=1, started="2026-11-26T01:00:00Z"),
-        _job("stock", logs=False),
     ]
-    result = ct.adoption(records, since="2026-12-01T00:00:00Z")
+    result = _adopt(records, since="2026-12-01T00:00:00Z")
     assert result["arms"]["reduced"]["jobs"] == ct.ADOPTION_JOBS_PER_ARM
     assert result["arms"]["reduced"]["video_start_unconfirmed_jobs"] == 0
-    assert result["arms"]["stock"]["jobs_without_logs"] == 1
     assert result["verdict"] == "adopt"
 
 
+def test_adoption_lists_measured_jobs_whose_log_was_unreadable() -> None:
+    unread = _job(None)
+    other_lane = {**_job(None), "api": {"job_name": "golden (xcuitest)"}}
+    result = _adopt([*_arms([], _STOCK_SIGNAL), unread, other_lane])
+    assert result["unattributed_jobs"] == ["run (xcuitest) (run 9)"]
+    assert "(no arm)" in ct.render_adoption(result)
+
+
 def test_adoption_is_incomplete_until_each_arm_is_full() -> None:
-    result = ct.adoption([_job("reduced"), _job("stock", video=1)])
+    result = _adopt([_job("reduced"), _job("stock", video=1)])
     assert result["verdict"] == "incomplete"
-    assert ct.adoption([])["video_start_p"] is None
+    assert _adopt([])["video_start_p"] is None
 
 
 def test_adoption_counts_jobs_that_lost_the_change_midway() -> None:
-    records = _arms(
-        [_job("reduced", end=0), _job("reduced", end=None)], [_job("stock", video=1)] * 5
-    )
-    assert ct.adoption(records)["arms"]["reduced"]["lost_change_jobs"] == 1
+    records = _arms([_job("reduced", end=0), _job("reduced", end=None)], _STOCK_SIGNAL)
+    assert _adopt(records)["arms"]["reduced"]["lost_change_jobs"] == 1
 
 
 def test_adoption_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "records.jsonl"
     path.write_text("".join(json.dumps(r) + "\n" for r in _arms([], [])), encoding="utf-8")
-    assert ct.main(["adoption", str(path)]) == 0
+    since = ["--since", "2026-12-01T00:00:00Z"]
+    assert ct.main(["adoption", str(path), *since]) == 0
     assert "# BE-0517 adoption: reject" in capsys.readouterr().out
-    assert ct.main(["adoption", str(path), "--json"]) == 0
+    assert ct.main(["adoption", str(path), *since, "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["verdict"] == "reject"
+    # Without a start time the pilot dispatches would count, so the flag is mandatory.
+    with pytest.raises(SystemExit):
+        ct.main(["adoption", str(path)])
+
+
+def test_fetch_can_narrow_to_one_trigger(tmp_path: Path) -> None:
+    record = ct.summarize(_runs(tmp_path, ok=False), "ios", env={"RUNNER_NAME": "r1"})
+    gh = _FakeGh(record, _manifest(ok=False))
+    ct.fetch(
+        "o/r", "ios-e2e.yml", 5, tmp_path / "f", gh=gh, with_logs=False, event="workflow_dispatch"
+    )
+    listing = next(c for c in gh.calls if c[:2] == ["run", "list"])
+    assert listing[-2:] == ["--event", "workflow_dispatch"]
 
 
 def test_measure_dispatch_runs_only_the_measured_jobs() -> None:
