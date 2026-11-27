@@ -7,14 +7,23 @@
 |---|---|
 | Proposal | [BE-0168](BE-0168-self-host-high-availability.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Approved** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0168") |
 | Topic | Hosting the web UI |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
+| Superseded by | BE-XXXX |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
+
+> **Rejected — the redundant topology is general operations work that the gate cannot check.**
+> A Postgres replica with failover, a distributed MinIO, and a pair of load balancers add services,
+> yet nothing in them is specific to Bajutsu. A team that needs failover can use managed Postgres and
+> object storage instead. The part worth keeping is the backup, the restore, and a plain statement of
+> the single-node risk. That part moves to a new item, BE-XXXX (self-hosted backup, restore, and the
+> single-node risk statement). We chose `Rejected` over `Deferred` because no named condition would
+> revive this topology as written. Real demand for redundancy would start a fresh item instead.
 
 The self-hosted server backend
 ([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) runs today on a single
@@ -95,10 +104,19 @@ The deliverable includes the runbook for these drills.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Postgres HA — primary + replica with failover, or a tested point-in-time backup and restore.
-- [ ] Object store redundancy — MinIO redundancy or a backed-up, appropriately-sized bucket.
-- [ ] Redundant load balancer — floating address via keepalived/VRRP or DNS failover.
-- [ ] Documented single-node SPOF trade-off with a tested backup/restore runbook.
+- [x] ~~Postgres HA — primary + replica with failover, or a tested point-in-time backup and restore.~~
+  - Rejected: the replica with failover is general operations work. The backup and restore move to BE-XXXX.
+- [x] ~~Object store redundancy — MinIO redundancy or a backed-up, appropriately-sized bucket.~~
+  - Rejected: a distributed MinIO is general operations work. The bucket backup moves to BE-XXXX.
+- [x] ~~Redundant load balancer — floating address via keepalived/VRRP or DNS failover.~~
+  - Rejected: not pursued. A new item can take it up after the control-plane scale-out lands.
+- [x] ~~Documented single-node SPOF trade-off with a tested backup/restore runbook.~~
+  - Moved to BE-XXXX, as the single-node risk statement.
+
+Log:
+
+- Rejected the item. The redundant topology is general operations work that the gate cannot
+  check. The backup, the restore, and the single-node statement move to BE-XXXX.
 
 ## References
 
