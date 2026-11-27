@@ -128,6 +128,10 @@ On a route that supports the setting, Bajutsu applies it. Evidence kinds never n
 candidates. The report's skipped captures still list evidence that the chosen route cannot record.
 The report records the route that each run took.
 
+An `any` run also adds the chosen kind to its run coordinates. The flakiness history groups runs by
+those coordinates. Virtual and real runs then stay two histories. A difference between the two
+environments does not read as a flaky scenario.
+
 ### Dispatch
 
 Each job for an iOS or Android target requires a token that names its route, `route:<route>`. A
@@ -137,8 +141,12 @@ one worker runs the whole list.
 
 A worker must meet the tokens of one route together. A job cannot take a capability from one route and a setting
 from the other. The existing any-of group works on single tokens, so `can_serve` needs a group of token sets.
-Each set also holds the `kind:` and family tokens of its route. The family token is `device:<family>`
-for `ios-device`. The `ios-simulator` set holds `iphone` or `ipad`.
+An iOS set also holds the tokens that follow its kind today. A fan-out job adds the `kind:` token of
+the route. A target with `runsOn.ios.family` adds family tokens. The
+`ios-device` set takes `device:<family>`. The `ios-simulator` set takes `iphone` or `ipad`. A target with no family adds none.
+
+An Android set holds no `kind:` token. No worker advertises `kind:emulator`, and the route token
+already names the kind.
 
 Device Farm raises one more case. Its iOS fan-out needs `driver.runner.testRunner`. An `any` target
 cannot declare that key. A worker capability keeps such a job away from Device Farm.
@@ -163,8 +171,10 @@ The server still checks `cap:` and `setting:` needs as it does today.
 Take a Device Farm worker, which advertises neither prefix. The server still sets those needs aside
 for that worker.
 
-Operators upgrade the server and every worker together. Queued Android jobs hold `cap:android:`
-tokens, so the queue should drain before the upgrade.
+Operators upgrade the server and every worker together, and drain the queue first. Queued Android
+jobs hold `cap:android:` or `setting:android:` tokens. No upgraded worker advertises them. The
+upgraded server stops each job left behind with a message that names the upgrade. Such a job never
+waits in the queue without an error.
 
 ### Workers
 
@@ -185,7 +195,7 @@ device. The Simulator route does not change. An Appium grid worker advertises
 1. Config: `kind` on Android, `any` on both platforms, load checks, and `--kind`.
 2. Routes: split the table and the tokens, and mark Android real devices as physical.
 3. Candidate selection: compute candidates, prefer virtual devices, and record the route.
-4. Dispatch: route tokens, the group of token sets, and fan-out jobs.
+4. Dispatch: route tokens, the group of token sets, fan-out jobs, and retired queued jobs.
 5. Workers: `androidKinds`, the adb read, and the iOS `devicectl` gate.
 6. Documents and demos: update both languages and the showcase configs.
 
