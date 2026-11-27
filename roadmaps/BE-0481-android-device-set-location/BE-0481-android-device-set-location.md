@@ -112,15 +112,15 @@ own registration flag, separate from the clipboard's.
 An app enables the receiver by calling the new `Bajutsu.startLocation(context)` function. The app
 calls it from `Application.onCreate`, in a test or debug build alone. The function mirrors
 `Bajutsu.startClipboard` in shape. The receiver has the exported flag, so a release build must
-never register it. The library manifest stays empty for the same reason. Unit 1 may find that
-`appops` needs the `ACCESS_MOCK_LOCATION` permission in the manifest. In that case, the README
-tells the app to declare the permission in its debug manifest alone.
+never register it. The library manifest stays empty for the same reason. Unit 1 found that
+`appops set` needs no `ACCESS_MOCK_LOCATION` permission in the manifest.
+The app declares no such permission in its debug manifest either.
 
 We mock the `gps` and `network` providers and leave the fused provider of Google Play services
 alone. Mocking those two providers adds no Play services dependency to BajutsuAndroid. A
 fused-provider client may or may not see the mocked location. The answer depends on the device and
-its Play services version. Unit 1 records the observed behavior on hardware, and the README states
-it.
+its Play services version. Unit 1 closed with no hardware run, so that behavior stays unrecorded.
+The 2026-11-27 log entry keeps it as an open question.
 
 ### Host: commands and environment
 
@@ -177,8 +177,9 @@ runs at the release of each lease. The next scenario on the device then starts f
 location.
 
 The mock may not survive a relaunch of the app. A `relaunch` step ends the process that registered
-the providers. Android may remove the providers along with it. Unit 1 settles the behavior on
-hardware. Suppose the providers do not survive. The device control then re-sends the last location
+the providers. Android may remove the providers along with it. On the API 34
+emulator, the providers survived a force-stop and relaunch. No hardware run followed.
+Suppose the providers do not survive. The device control then re-sends the last location
 after the environment's relaunch. A scenario then sees the same location the emulator would keep.
 
 An `installApp` step loses the mock the same way. `install_member` force-stops the app before it
@@ -250,10 +251,13 @@ dialog interrupts the run.
 - [x] Unit 5 — showcase location readout and scenario
 - [x] Unit 6 — documentation in both languages
 - [x] ~~Unit 7 — on-device verification~~
-  - Closed without a run on hardware. The CI emulator lane runs the location scenario twice on
-    every PR. One run goes over the `emulator-<port>` serial, and the other goes over an
-    `adb connect` connection. That lane covers both routes, the `appops` grant, and the result
-    codes.
+  - Closed without a run on hardware. The CI emulator lane runs the scenario twice when a pull
+    request touches an adb path:
+    - the `smoke` job, over the `emulator-<port>` serial
+    - the `location over adb connect (adb)` job, over an `adb connect` connection
+  - That pair covers both routes, the `appops` grant, and the result codes. The second job sits
+    outside the `needs:` list of the `E2E (android)` check. Its coverage of the in-app route is a
+    signal rather than a gate.
 
 Log:
 
