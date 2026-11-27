@@ -1297,12 +1297,34 @@ jobs:
         id: suite
         env:
           BAJUTSU_FAULT_INJECTION_UDID: ${{ steps.toolchain.outputs.udid }}
+          # Makes Thread Performance Checker print its reports into the runner log (BE-0362 unit 1).
+          BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_PERFC_LOG_REPORTS_TO_STDERR: "1"
         run: |
           if [ -z "$BAJUTSU_FAULT_INJECTION_UDID" ]; then
             echo "::error::no Simulator UDID: the fault-injection module would skip and report green"
             exit 1
           fi
           uv run pytest tests/test_fault_injection_ondevice.py -m ondevice -n0 -v
+
+      # BE-0362 unit 1: the step above ran the runner with Thread Performance Checker's stderr reporting
+      # on, so a priority-inversion report would sit in the captured runner log. Count matches into the
+      # job summary so the measurement reads off the run page, artifact download or not. It observes
+      # and never decides: a match is a finding to record, not a failure.
+      - name: Search the runner log for Thread Performance Checker reports
+        if: always()
+        continue-on-error: true
+        run: |
+          pattern='Thread Performance Checker|priority inversion|Higher QoS thread blocked'
+          hits=$(grep -rIEc "$pattern" runs/runner-logs 2>/dev/null | awk -F: '$NF > 0' || true)
+          {
+            echo "### Thread Performance Checker (BE-0362)"
+            if [ -n "$hits" ]; then
+              echo "Matches per runner log:"; echo '```'; echo "$hits"; echo '```'
+              echo '```'; grep -rIEh -m 20 -A 8 "$pattern" runs/runner-logs | head -200; echo '```'
+            else
+              echo "No report in \`runs/runner-logs\` ($(find runs/runner-logs -type f -name '*.log' 2>/dev/null | wc -l | tr -d ' ') log file(s) searched)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Collect iOS diagnostics
         if: always()
@@ -1428,7 +1450,30 @@ jobs:
       # pixel-compares it against baselines_ios/stable.png with the status bar + tab bar masked.
       - name: Run the visual regression (VRT, pixel snapshot)
         id: vrt
+        env:
+          # Makes Thread Performance Checker print its reports into the runner log (BE-0362 unit 1).
+          BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_PERFC_LOG_REPORTS_TO_STDERR: "1"
         run: make -C demos/showcase e2e-visual SIM=${{ steps.toolchain.outputs.udid }}
+
+      # BE-0362 unit 1: the step above ran the runner with Thread Performance Checker's stderr reporting
+      # on, so a priority-inversion report would sit in the captured runner log. Count matches into the
+      # job summary so the measurement reads off the run page, artifact download or not. It observes
+      # and never decides: a match is a finding to record, not a failure.
+      - name: Search the runner log for Thread Performance Checker reports
+        if: always()
+        continue-on-error: true
+        run: |
+          pattern='Thread Performance Checker|priority inversion|Higher QoS thread blocked'
+          hits=$(grep -rIEc "$pattern" runs/runner-logs 2>/dev/null | awk -F: '$NF > 0' || true)
+          {
+            echo "### Thread Performance Checker (BE-0362)"
+            if [ -n "$hits" ]; then
+              echo "Matches per runner log:"; echo '```'; echo "$hits"; echo '```'
+              echo '```'; grep -rIEh -m 20 -A 8 "$pattern" runs/runner-logs | head -200; echo '```'
+            else
+              echo "No report in \`runs/runner-logs\` ($(find runs/runner-logs -type f -name '*.log' 2>/dev/null | wc -l | tr -d ' ') log file(s) searched)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Collect iOS diagnostics
         if: always()

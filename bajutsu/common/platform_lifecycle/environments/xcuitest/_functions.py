@@ -939,6 +939,25 @@ def _forwarded_launch(launch_env: Mapping[str, str], launch_args: list[str]) -> 
     }
 
 
+# Host env vars carrying this prefix reach the runner *process* with the prefix stripped (BE-0362
+# unit 1). `xcodebuild` does not pass its own environment through, so a diagnostic switch the
+# runner's own libraries read — `PERFC_LOG_REPORTS_TO_STDERR`, which makes Thread Performance
+# Checker print its reports into the captured runner log — has no other way in. Unset, nothing moves.
+RUNNER_PROCESS_ENV_PREFIX = "BAJUTSU_XCUITEST_RUNNER_PROCESS_ENV_"
+
+
+def _runner_process_env(environ: Mapping[str, str]) -> dict[str, str]:
+    """The prefixed host env vars, keyed by the name the runner process should see them under.
+
+    A bare prefix (an empty stripped name) is skipped, since it names no variable.
+    """
+    return {
+        name[len(RUNNER_PROCESS_ENV_PREFIX) :]: value
+        for name, value in environ.items()
+        if name.startswith(RUNNER_PROCESS_ENV_PREFIX) and len(name) > len(RUNNER_PROCESS_ENV_PREFIX)
+    }
+
+
 def _patch_xctestrun_env(runner_path: Path, forwarded: Mapping[str, str]) -> Path:
     """Write a copy of the .xctestrun with *forwarded* merged into each target's env.
 
