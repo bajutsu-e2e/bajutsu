@@ -65,8 +65,8 @@ def test_a_setting_the_route_cannot_apply_is_a_finding(tmp_path: Path) -> None:
     findings = lint_against_targets(_LOCATION, _write(tmp_path, _LOCATION), _effective, "phone")
     messages = [f.message for f in findings]
     assert any("subject.reinstall: erase is not supported on target 'phone'" in m for m in messages)
-    # A real device lacks the simctl-backed location override too.
-    assert any("deviceControl.setLocation" in m for m in messages)
+    # The runner sets the location on a real device too (BE-0475), so the step is no finding.
+    assert not any("deviceControl.setLocation" in m for m in messages)
 
 
 def test_an_ignored_setting_is_no_finding(tmp_path: Path) -> None:

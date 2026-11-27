@@ -1,3 +1,4 @@
+import CoreLocation
 import XCTest
 import BajutsuRunner
 
@@ -487,6 +488,27 @@ final class XcuitestElementProvider: ElementProviding {
         let issues = RecordedIssues.shared.collect { target.open(parsed) }
         if let first = issues.first { return .notOpened(first) }
         return waitForForeground(target) ? .ok : .notForeground
+    }
+
+    func setLocation(lat: Double, lon: Double) -> LocationResult {
+        assignLocation(CLLocation(latitude: lat, longitude: lon))
+    }
+
+    func clearLocation() -> LocationResult {
+        assignLocation(nil)
+    }
+
+    /// `XCUIDevice.location` arrived with the iOS 16.4 SDK (Xcode 16.3). The runner builds in Swift
+    /// 5.9 language mode, so `#if swift(>=6.1)` would compile the call out on every toolchain; the
+    /// compiler check tracks the toolchain itself (BE-0475).
+    private func assignLocation(_ location: CLLocation?) -> LocationResult {
+        #if compiler(>=6.1)
+        guard #available(iOS 16.4, *) else { return .unsupported }
+        XCUIDevice.shared.location = location.map { XCUILocation(location: $0) }
+        return .ok
+        #else
+        return .unsupported
+        #endif
     }
 
     /// Poll `target.state` for the bounded window the spike measured as generous —

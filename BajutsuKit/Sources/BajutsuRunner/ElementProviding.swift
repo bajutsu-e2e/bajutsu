@@ -54,6 +54,18 @@ public enum AppOpenResult: Sendable, Equatable {
     case unsupported
 }
 
+/// The result of simulating, or clearing, the device's location (BE-0475).
+public enum LocationResult: Sendable, Equatable {
+    /// `XCUIDevice.shared.location` was assigned.
+    case ok
+    /// The device runs an iOS before 16.4, or the runner was built with a toolchain older than
+    /// Xcode 16.3; either way `XCUIDevice.location` does not exist.
+    case unsupported
+    /// The assignment raised. Kept apart from `unsupported`, so the host neither falls back to simctl
+    /// nor blames the iOS / Xcode floor for a runner fault.
+    case failed
+}
+
 /// The result of a tap attempt, or of an `isHittable` query reusing the same resolution outcomes.
 public enum TapResult: Sendable {
     case ok
@@ -161,6 +173,15 @@ public protocol ElementProviding: AnyObject {
     /// `enterApp`'s, else the base — and wait, on the same bounded poll as `enterApp`, until that app
     /// holds the foreground (BE-0487). The app on the stack is unchanged either way.
     func openUrl(_ url: String) -> AppOpenResult
+
+    /// Simulate the device's location at (`lat`, `lon`) through `XCUIDevice.shared.location`
+    /// (BE-0475). On a Simulator the value is device-wide and outlives the runner's process, like
+    /// `simctl location set`, so the host clears it at every lease start (`simctl location clear` on a
+    /// Simulator, `clearLocation` on a real device).
+    func setLocation(lat: Double, lon: Double) -> LocationResult
+
+    /// Stop simulating the device's location by assigning `nil` (BE-0475).
+    func clearLocation() -> LocationResult
 
     /// The target app's own process state, so the driver can tell a crash from a missing element.
     ///

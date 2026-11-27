@@ -18,7 +18,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 import pytest
 
@@ -897,7 +897,8 @@ def test_cold_spawn_pins_the_system_locale_and_reboots_for_it(
     # type a replacement would be cloned from) -> spawn (the read, then the two writes) -> shutdown
     # -> list (confirming the device went down) -> boot (the one that re-renders SpringBoard) ->
     # bootstatus (waiting that one out too) -> spawn (the read-back that verifies it took) -> privacy
-    # (the default `reinstall: clean` resets permissions on every prepare, not just a warm resume).
+    # (the default `reinstall: clean` resets permissions on every prepare, not just a warm resume) ->
+    # location (the per-scenario clear, before the app launches, BE-0475).
     assert _verbs(simctl_calls) == [
         "boot",
         "bootstatus",
@@ -911,6 +912,7 @@ def test_cold_spawn_pins_the_system_locale_and_reboots_for_it(
         "bootstatus",
         "spawn",
         "privacy",
+        "location",
     ]
 
 
@@ -4039,3 +4041,204 @@ def test_an_attach_session_exits_by_stopping_only_the_runner(
     assert proc.poll() is not None  # the runner's process group was stopped
     terminated = [c[-1] for c in simctl_calls if c[2:3] == ["terminate"]]
     assert terminated == ["com.x.runner"]  # the XCTRunner app, never the app under test
+
+
+# --- BE-0475: setLocation through the runner, its Simulator fallback, and the lease-start reset ---
+
+
+class _LocatingDriver:
+    """Wraps the fake toolchain's driver with the runner's `/location` route (BE-0475).
+
+    `supported["v"]` False models a runtime or runner below the iOS 16.4 / Xcode 16.3 floor.
+    """
+
+    def __init__(self, inner: object, supported: dict[str, bool], log: list[str]) -> None:
+        self._inner = inner
+        self._supported = supported
+        self._log = log
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def _answer(self, what: str) -> None:
+        if not self._supported["v"]:
+            raise base.UnsupportedAction("setLocation needs iOS 16.4 or later")
+        self._log.append(what)
+
+    def set_location(self, lat: float, lon: float) -> None:
+        self._answer(f"set {lat},{lon}")
+
+    def clear_location(self) -> None:
+        self._answer("clear")
+
+
+def _locating_toolchain(
+    monkeypatch: pytest.MonkeyPatch, supported: dict[str, bool]
+) -> tuple[list[list[str]], simctl.RunFn, list[str]]:
+    _, simctl_calls, run = _fake_toolchain(monkeypatch)
+    runner_log: list[str] = []
+    make = backends.make_driver
+
+    def _make_driver(*a: Any, **kw: Any) -> _LocatingDriver:
+        return _LocatingDriver(make(*a, **kw), supported, runner_log)
+
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
+    return simctl_calls, run, runner_log
+
+
+def _no_simctl(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+    return ""
+
+
+def _location_verbs(simctl_calls: list[list[str]]) -> list[str]:
+    return [f"location {c[4]}" for c in simctl_calls if c[2:3] == ["location"]]
+
+
+def test_every_simulator_lease_clears_the_location_before_the_app_launches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A Simulator location outlives the runner (the BE-0475 Unit 1 spike), so a scenario must not
+    # inherit one set before it, not even in a launch-time location request. The runner writes the
+    # slot simctl clears, so one simctl clear in the device prep covers both routes.
+    simctl_calls, run, runner_log = _locating_toolchain(monkeypatch, {"v": True})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    env.start(eff, ResolvedPreconditions())  # cold
+    control = env.controller(eff)
+    assert control is not None
+    control.set_location(35.0, 139.0)
+    env.start(eff, ResolvedPreconditions())  # warm
+
+    assert runner_log == ["set 35.0,139.0"]
+    assert _location_verbs(simctl_calls) == ["location clear", "location clear"]
+    verbs = _verbs(simctl_calls)
+    last_clear = max(i for i, v in enumerate(verbs) if v == "location")
+    assert last_clear < max(i for i, v in enumerate(verbs) if v == "launch")
+
+
+def test_a_warm_lease_clears_a_location_the_simctl_fallback_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A runtime or runner below the floor answers `unsupported`: setLocation falls back to simctl as
+    # before BE-0475, and the next lease, warm, clears it through simctl so it starts at the
+    # device's own position.
+    simctl_calls, run, runner_log = _locating_toolchain(monkeypatch, {"v": False})
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    eff = _sim_eff(test_runner=str(_write_runner(tmp_path)))
+
+    env.start(eff, ResolvedPreconditions())
+    control = env.controller(eff)
+    assert control is not None
+    control.set_location(35.0, 139.0)
+    env.start(eff, ResolvedPreconditions())
+
+    assert runner_log == []
+    assert _location_verbs(simctl_calls) == ["location clear", "location set", "location clear"]
+
+
+def test_set_location_on_a_real_device_has_no_simctl_fallback() -> None:
+    # simctl cannot reach a real device, so the runner's `unsupported` fails the step with the floor
+    # the driver names, rather than a simctl error against a udid simctl never knew.
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        calls.append(argv)
+        return ""
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    log: list[str] = []
+    env._is_real_device = True
+    env._lease_driver = cast(base.Driver, _LocatingDriver(object(), {"v": False}, log))
+    control = env.controller(_sim_eff(test_runner="Runner.xctestrun"))
+    assert control is not None
+    with pytest.raises(base.UnsupportedAction, match=r"iOS 16\.4"):
+        control.set_location(1.0, 2.0)
+    env._reset_device_location(env._lease_driver)  # a device that cannot reset never had one set
+    assert calls == []
+
+
+def test_a_real_device_sets_the_location_through_the_runner() -> None:
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=_no_simctl)
+    log: list[str] = []
+    env._is_real_device = True
+    env._lease_driver = cast(base.Driver, _LocatingDriver(object(), {"v": True}, log))
+    control = env.controller(_sim_eff(test_runner="Runner.xctestrun"))
+    assert control is not None
+    control.set_location(1.0, 2.0)
+    assert log == ["set 1.0,2.0"]
+
+
+def test_a_real_device_without_a_runner_driver_fails_the_step() -> None:
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=_no_simctl)
+    env._is_real_device = True
+    control = env.controller(_sim_eff(test_runner="Runner.xctestrun"))
+    assert control is not None
+    with pytest.raises(base.UnsupportedAction, match="needs the XCUITest runner"):
+        control.set_location(1.0, 2.0)
+
+
+def test_a_real_device_reset_the_runner_refuses_discards_the_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A runner build that predates the route fails the lease; no driver reaches the caller, so the
+    # environment stops the runner itself rather than leaving it holding the device.
+    class _Stale:
+        def clear_location(self) -> None:
+            raise XcuitestChannelError("the runner predates the /location route")
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=_no_simctl)
+    discarded: list[bool] = []
+    monkeypatch.setattr(env, "_discard_runner", lambda **_kw: discarded.append(True))
+    with pytest.raises(XcuitestChannelError):
+        env._reset_device_location(cast(base.Driver, _Stale()))
+    assert discarded == [True]
+
+
+def test_an_attach_start_leaves_the_location_alone(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # An attach touches nothing device-wide (BE-0455), and a location is device-wide.
+    _, _, simctl_calls, run = _attach_toolchain(monkeypatch)
+    runner_log: list[str] = []
+    make = backends.make_driver
+
+    def _make_driver(*a: Any, **kw: Any) -> _LocatingDriver:
+        return _LocatingDriver(make(*a, **kw), {"v": True}, runner_log)
+
+    monkeypatch.setattr(backends, "make_driver", _make_driver)
+    _attach_env(run).start(_sim_eff(test_runner=str(_write_runner(tmp_path))), _RICH_PRE)
+    assert runner_log == []
+    _assert_read_only(simctl_calls)
+
+
+def test_a_runner_fault_on_set_location_is_not_hidden_behind_simctl() -> None:
+    # Only `unsupported` falls back: any other runner reply is a fault that must fail the step.
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        calls.append(argv)
+        return ""
+
+    class _Faulty:
+        def set_location(self, lat: float, lon: float) -> None:
+            raise XcuitestChannelError("runner error setting the location (status=error)")
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env._lease_driver = cast(base.Driver, _Faulty())
+    control = env.controller(_sim_eff(test_runner="Runner.xctestrun"))
+    assert control is not None
+    with pytest.raises(XcuitestChannelError):
+        control.set_location(1.0, 2.0)
+    assert calls == []
+
+
+def test_a_failed_simctl_fallback_set_is_a_device_error() -> None:
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        raise subprocess.CalledProcessError(1, argv, stderr="device not booted")
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    control = env.controller(_sim_eff(test_runner="Runner.xctestrun"))
+    assert control is not None
+    with pytest.raises(simctl.DeviceError):
+        control.set_location(1.0, 2.0)

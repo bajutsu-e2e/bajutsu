@@ -1600,12 +1600,10 @@ def test_preflight_allows_supported_scenario_on_xcuitest() -> None:
 
 def test_real_device_narrowing_reaches_the_preflight_from_run_all() -> None:
     # BE-0238 Unit 3: the fixed-`actuator` call site must thread `eff` into `capabilities_for_run`,
-    # so a real iOS device drops the simctl-backed capabilities. A setLocation scenario is skipped up
-    # front (no lease), guarding against a refactor that reintroduces the eff-less `capabilities_for`.
+    # so a real iOS device drops the simctl-backed capabilities. A push scenario is skipped up front
+    # (no lease), guarding against a refactor that reintroduces the eff-less `capabilities_for`.
     scenarios = [
-        Scenario.model_validate(
-            {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
-        )
+        Scenario.model_validate({"name": "push", "steps": [{"push": {"payload": {"aps": {}}}}]})
     ]
 
     def lease_must_not_run(eff: Effective, s: Scenario) -> Lease:
@@ -1615,7 +1613,7 @@ def test_real_device_narrowing_reaches_the_preflight_from_run_all() -> None:
     results = run_all(dev, scenarios, lease_must_not_run, actuator="xcuitest")
     assert len(results) == 1 and not results[0].ok
     assert results[0].backend == "xcuitest"
-    assert "deviceControl.setLocation" in (results[0].failure or "")
+    assert "deviceControl.push" in (results[0].failure or "")
 
 
 def test_simulator_still_leases_a_device_control_scenario_on_xcuitest() -> None:

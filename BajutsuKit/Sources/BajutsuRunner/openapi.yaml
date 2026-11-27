@@ -449,6 +449,46 @@ paths:
                 $ref: "#/components/schemas/ActuationReply"
         "400":
           $ref: "#/components/responses/BadRequest"
+  /location:
+    post:
+      operationId: setLocation
+      summary: Simulate the device's location through `XCUIDevice.location`.
+      description: >-
+        Assigns `XCUILocation(location: CLLocation(latitude:longitude:))` to
+        `XCUIDevice.shared.location`, on a Simulator and a real device alike (BE-0475). Reports
+        `unsupported` when the device runs an iOS before 16.4 or the runner was built with a
+        toolchain older than Xcode 16.3, where the property does not exist. A coordinate outside
+        latitude -90…90 or longitude -180…180 answers 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LocationRequest"
+      responses:
+        "200":
+          description: The assignment outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationReply"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+    delete:
+      operationId: clearLocation
+      summary: Stop simulating the device's location.
+      description: >-
+        Assigns `nil` to `XCUIDevice.shared.location` (BE-0475). The host calls it when a real-device
+        lease starts (a Simulator resets through `simctl location clear` instead), so every scenario
+        begins without a simulated location; no scenario step exposes it.
+        Reports `unsupported` under the same floor as `POST`.
+      responses:
+        "200":
+          description: The reset outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LocationReply"
   /notificationBanner/query:
     post:
       operationId: queryNotificationBanner
@@ -1087,6 +1127,29 @@ components:
           description: >-
             The absolute URL to hand to the operating system, e.g. `myapp://orders/42`. The driver
             has already applied the scheme rule; the runner only parses it.
+    LocationRequest:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat:
+          type: number
+          format: double
+          description: Latitude in degrees, -90…90.
+        lon:
+          type: number
+          format: double
+          description: Longitude in degrees, -180…180.
+    LocationReply:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, unsupported, error]
+          description: >-
+            `ok` when the assignment ran; `unsupported` when the device or the runner's toolchain
+            predates `XCUIDevice.location` (iOS 16.4, Xcode 16.3); `error` when the assignment
+            raised, which is a runner fault rather than a missing capability.
     AppRequest:
       type: object
       required: [bundleId]

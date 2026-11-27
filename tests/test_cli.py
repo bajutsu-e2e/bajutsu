@@ -1947,15 +1947,15 @@ def test_check_scenarios_missing_file_raises(tmp_path: Path) -> None:
 
 def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
     # BE-0238 Unit 3: doctor's capability check runs against the run-narrowed capabilities, so a real
-    # iOS device (runsOn.ios.kind: device) reports a setLocation scenario as unsupported — the
+    # iOS device (runsOn.ios.kind: device) reports a push scenario as unsupported — the
     # same simctl-backed capability the run preflight drops — instead of the stale "supported" the
     # static set gives. Guards doctor against the drift this item's motivation calls out.
     from bajutsu.cli.commands.doctor import check_scenarios
     from bajutsu.common.backends import capabilities_for_run
 
-    scn = tmp_path / "loc.yaml"
+    scn = tmp_path / "push.yaml"
     scn.write_text(
-        "- name: here\n  steps:\n    - setLocation: { lat: 1.0, lon: 2.0 }\n", encoding="utf-8"
+        "- name: here\n  steps:\n    - push: { payload: { aps: {} } }\n", encoding="utf-8"
     )
     dev = resolve(
         load_config(
@@ -1973,7 +1973,7 @@ def test_check_scenarios_narrows_on_a_real_ios_device(tmp_path: Path) -> None:
         load_config("targets:\n  demo:\n    platform: ios\n    subject: {id: com.x}\n"), "demo"
     )
     reasons = check_scenarios(scn, capabilities_for_run("xcuitest", dev))
-    assert len(reasons) == 1 and "setLocation" in reasons[0]
+    assert len(reasons) == 1 and "push" in reasons[0]
     # The Simulator keeps the simctl-backed capability, so the same scenario is supported there.
     assert check_scenarios(scn, capabilities_for_run("xcuitest", sim)) == []
 

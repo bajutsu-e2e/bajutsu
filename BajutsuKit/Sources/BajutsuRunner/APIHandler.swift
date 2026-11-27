@@ -436,6 +436,33 @@ final class APIHandler: APIProtocol {
         return .ok(.init(body: .json(reply)))
     }
 
+    /// Simulate the device's location (BE-0475). An out-of-range coordinate is the caller's error,
+    /// so it answers 400 rather than reaching `XCUIDevice`.
+    func setLocation(
+        _ input: Operations.setLocation.Input
+    ) async throws -> Operations.setLocation.Output {
+        let request: Components.Schemas.LocationRequest
+        switch input.body { case .json(let body): request = body }
+        let lat = request.lat, lon = request.lon
+        guard (-90.0...90.0).contains(lat), (-180.0...180.0).contains(lon) else {
+            return .badRequest(
+                .init(body: .json(.init(status: .error, message: "latitude or longitude out of range")))
+            )
+        }
+        let result = await caught(LocationResult.failed) {
+            self.provider.setLocation(lat: lat, lon: lon)
+        }
+        return .ok(.init(body: .json(locationReply(result))))
+    }
+
+    /// Stop simulating the device's location (BE-0475); the host's lease-start reset.
+    func clearLocation(
+        _ input: Operations.clearLocation.Input
+    ) async throws -> Operations.clearLocation.Output {
+        let result = await caught(LocationResult.failed, self.provider.clearLocation)
+        return .ok(.init(body: .json(locationReply(result))))
+    }
+
     /// Make a named app the base every following route addresses, without activating it (BE-0447).
     func targetApp(
         _ input: Operations.targetApp.Input
@@ -508,6 +535,14 @@ final class APIHandler: APIProtocol {
         switch result {
         case .ok: return .init(status: .ok)
         case .notForeground: return .init(status: .not_hyphen_foreground)
+        }
+    }
+
+    private func locationReply(_ result: LocationResult) -> Components.Schemas.LocationReply {
+        switch result {
+        case .ok: return .init(status: .ok)
+        case .unsupported: return .init(status: .unsupported)
+        case .failed: return .init(status: .error)
         }
     }
 

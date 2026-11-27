@@ -19,7 +19,7 @@ final class LegacyBackedTransportTests: XCTestCase {
     /// Registration is one generated call covering all twenty-five operations, so an operation
     /// dropped from `openapi.yaml` — or a path renamed in it — would leave the driver with a 404
     /// discovered only on a device. Pinning the table against the contract's own paths catches it
-    /// here. `/app/enter`, `/app/leave`, `/app/openUrl` (BE-0487), and `/systemAlert/resolve` (BE-0461) are new to the
+    /// here. `/app/enter`, `/app/leave`, `/app/openUrl` (BE-0487), `/location` (BE-0475), and `/systemAlert/resolve` (BE-0461) are new to the
     /// generated path, with no legacy `Router` twin — see `AppActivationTests`'s own doc comment for why.
     func testEveryContractOperationRegisters() throws {
         let transport = LegacyBackedTransport()
@@ -37,6 +37,7 @@ final class LegacyBackedTransportTests: XCTestCase {
                 "POST /interruptionPolicy", "POST /interruptionPolicy/drain",
                 "POST /app/state",
                 "POST /app/enter", "POST /app/leave", "POST /app/target", "POST /app/openUrl",
+                "POST /location", "DELETE /location",
             ]
         )
     }
