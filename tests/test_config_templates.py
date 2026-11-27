@@ -22,7 +22,7 @@ from bajutsu.common.config import load_config, load_config_file, resolve, unknow
 from bajutsu.common.config.effective import Effective, IosConfig
 from bajutsu.common.config.json_schema import config_json_schema
 from bajutsu.common.config.schema._templates import REBASED_PATHS, _rebased
-from bajutsu.common.config.schema.hooks import STEP_CONTAINERS
+from bajutsu.common.scenario.step_walk import STEP_CONTAINERS
 
 
 def _write(path: Path, text: str) -> Path:

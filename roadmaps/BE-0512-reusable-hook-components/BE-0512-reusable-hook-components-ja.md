@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0512](BE-0512-reusable-hook-components-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
+| 実装 PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588)（単位 1〜2） |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps-ja.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks-ja.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure-ja.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates-ja.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks-ja.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks-ja.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks-ja.md) |
 <!-- /BE-METADATA -->
@@ -368,13 +369,20 @@ Bajutsu は展開時にステップのトークンを書き換えます。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] コンポーネントのファイルと `use` リスト
-- [ ] ターゲットとシナリオの展開
+- [x] コンポーネントのファイルと `use` リスト
+- [x] ターゲットとシナリオの展開
 - [ ] 名前の範囲と別名
 - [ ] 適用単位の `when` と `inheritSetup: false`
 - [ ] 報告、実行方針、worker への配布
 - [ ] スキーマと `codegen`
 - [ ] ドキュメント
+
+ログ：
+
+- 2026-11-27 — 単位 1 と単位 2 をまとめて実装しました（[#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588)）。
+  - コンポーネントの `cmd` には引数ごとにパラメータを代入し、シェルの引用規則で結合し直します。空白を含む値も 1 つの引数のまま残ります。runner は同じ規則で行を分割します。
+  - 単位 3 と単位 4 が入るまで、`as` は 2 つの適用を区別するためだけに使います。適用に書いた `when` はロードエラーになります。
+  - コンポーネントを適用するシナリオは、コマンドを実行できる worker に振り分けます。サーバーはシナリオの本文だけを読み、コンポーネントのファイルを読まないからです。単位 5 では、コンポーネントのエントリから振り分け先を決める方式へ置き換えます。
 
 ## 参考
 

@@ -10,8 +10,8 @@ from typing import Any
 from bajutsu.common import _yaml
 from bajutsu.common.scenario.load_expanded import contained_ref, parse_yaml_named
 from bajutsu.common.scenario.models.scenario.component import is_component_file_ref
+from bajutsu.common.scenario.step_walk import STEP_CONTAINERS
 
-from .hooks import STEP_CONTAINERS
 from .target_config import MOVED_TARGET_KEYS, TARGET_KEYS
 
 # A template takes any target key, none required, plus the `extends` that chains it to others.
@@ -181,6 +181,11 @@ def _rebased(block: dict[str, Any], here: Path, config_dir: Path) -> dict[str, A
         lists += [e.get("steps") for e in _dicts(hooks.get("interrupts"))]
         for steps in lists:
             _rebase_uses(steps, rebase)
+        for use in _dicts(hooks.get("use")):
+            # A `hooks` component (BE-0512) resolves from the file that holds its entry, as a step
+            # component does.
+            if isinstance(ref := use.get("hook"), str):
+                use["hook"] = _as_file_ref(str(rebase(ref)))
     return out
 
 
@@ -190,15 +195,18 @@ def _rebase_uses(steps: object, rebase: Callable[[object], object]) -> None:
         if isinstance(use, dict):
             ref = use.get("component")
             if isinstance(ref, str) and is_component_file_ref(ref):
-                # `relpath` can drop the `/` that marked `../comp` as a file, leaving a bare `comp`
-                # that `use` would look up as a name; `./` keeps it a path.
-                new = str(rebase(ref))
-                use["component"] = new if is_component_file_ref(new) else f"./{new}"
+                use["component"] = _as_file_ref(str(rebase(ref)))
         for _, keys in STEP_CONTAINERS:
             nested: Any = step
             for key in keys:
                 nested = nested.get(key) if isinstance(nested, dict) else None
             _rebase_uses(nested, rebase)
+
+
+def _as_file_ref(ref: str) -> str:
+    # `relpath` can drop the `/` that marked `../comp` as a file, leaving a bare `comp` that `use`
+    # would look up as a name; `./` keeps it a path.
+    return ref if is_component_file_ref(ref) else f"./{ref}"
 
 
 def _dicts(value: object) -> list[dict[str, Any]]:

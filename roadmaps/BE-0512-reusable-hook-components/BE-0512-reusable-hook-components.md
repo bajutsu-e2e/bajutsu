@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0512](BE-0512-reusable-hook-components.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
+| Implementing PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588) (units 1–2) |
 | Topic | Scenario authoring features |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md) |
 <!-- /BE-METADATA -->
@@ -379,13 +380,20 @@ Content that a client uploads thus never gains the mode of the config.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Component file and `use` list
-- [ ] Expansion for targets and scenarios
+- [x] Component file and `use` list
+- [x] Expansion for targets and scenarios
 - [ ] Name scopes and aliases
 - [ ] Application-level `when` and `inheritSetup: false`
 - [ ] Reports, command policy, and delivery to workers
 - [ ] Schemas and `codegen`
 - [ ] Documentation
+
+Log:
+
+- 2026-11-27 — Units 1 and 2 landed together ([#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588)).
+  - A component's `cmd` takes parameters argument by argument and is joined back with shell quoting, so a value holding a space stays one argument. The runner splits the line the same way.
+  - Until units 3 and 4 land, `as` only tells two applications apart, and the load refuses a `when` on an application.
+  - A scenario that applies a component routes to a worker that runs command lines, because the server reads the scenario text without the component file. Unit 5 replaces this with routing by the component's own entries.
 
 ## References
 
