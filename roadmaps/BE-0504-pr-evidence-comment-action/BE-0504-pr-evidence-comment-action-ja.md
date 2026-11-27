@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0504](BE-0504-pr-evidence-comment-action-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
 | 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位）、[#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574)（最終更新日時） |
 | トピック | Integration with external services |
@@ -155,7 +155,7 @@ artifact のリンクは、サインインを必要とする URL なので、コ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スパイク：スクリーンショットと動画を `archive: false` でアップロードし、サインイン済みの読み手に表示されるかダウンロードになるかを記録する。あわせて、ジョブを再実行したとき、前回の試行の artifact 名と衝突するかを記録し、衝突するなら `overwrite` の入力を足す。
+- [x] スパイク：スクリーンショットと動画を `archive: false` でアップロードし、サインイン済みの読み手に表示されるかダウンロードになるかを記録する。あわせて、ジョブを再実行したとき、前回の試行の artifact 名と衝突するかを記録し、衝突するなら `overwrite` の入力を足す。
 - [x] 描画処理：`manifest.json` から Markdown を作る。エスケープと切り詰めを含む。`<sid>/result.json` を読むマニフェストがない場合も扱う。標準ライブラリのスクリプトと、`make test` で動くユニットテストにする。フィクスチャーは Bajutsu 自身のマニフェストの書き出し処理で生成する。スキーマを変える PR で、テストが壊れるようにする。
 - [x] コメントのクライアント：ページをたどる固定コメントの検索と更新、ジョブサマリーへの書き込み、警告を出して終了コード0で終わる経路。
 - [x] サイズの制御：ログを切り詰めるステージ済みのコピー、`size-warn-mb` の保護、`retention-days`、`compression-level`。ユニットテストの対象は、切り詰めと保護、マニフェストなしでの切り詰め。
@@ -168,6 +168,14 @@ artifact のリンクは、サインインを必要とする URL なので、コ
 変更の記録は次のとおりです。
 
 [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) で、コンポジット action の `post-evidence` を追加しました。含むのは、標準ライブラリだけの描画処理と固定コメントのクライアントです。ログの切り詰めとサイズの保護、zip と zip にしない 6 つのアップロードのスロットも含みます。ほかに、`bajutsu-e2e` の `artifact-url` 出力、ゲートの対象化、ドキュメント、web E2E ジョブへの導入があります。スパイクは実際の GitHub 上での実行が必要なため、未完了のままです。
+
+SPIKE-PR では、使い捨てのブランチでスパイクを実施しました。
+GitHub は、PNG の artifact を `inline` で、WebM と MP4 の artifact を `attachment` で配信しました。
+サインイン済みの読み手が iPhone の Safari で開くと、PNG は表示され、MP4 はブラウザー上で見られました。
+WebM では、表示するかダウンロードするかを Safari が尋ねました。
+デスクトップのブラウザーは確かめていません。
+ジョブを再実行しても、前回の artifact 名とは衝突しなかったため、`overwrite` の入力は足していません。
+結果は `docs/ja/reporting.md` に記録しました。
 
 ## 参考
 

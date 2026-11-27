@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0504](BE-0504-pr-evidence-comment-action.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
 | Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike), [#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574) (last update time) |
 | Topic | Integration with external services |
@@ -298,7 +298,7 @@ its web E2E workflow as the first user. CI thus exercises the comment shape on r
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: upload a screenshot and a video with `archive: false`. Record whether a signed-in reader sees them displayed or downloaded. Also record whether a job rerun conflicts with the previous artifact names. Add an `overwrite` input if it does.
+- [x] Spike: upload a screenshot and a video with `archive: false`. Record whether a signed-in reader sees them displayed or downloaded. Also record whether a job rerun conflicts with the previous artifact names. Add an `overwrite` input if it does.
 - [x] Renderer: `manifest.json` to Markdown. It covers escaping and truncation. It also covers the no-manifest case that reads `<sid>/result.json`. The script uses the standard library alone. Its unit tests run in `make test`. Bajutsu's own manifest writer generates the fixtures. A schema change thus breaks the tests in its own PR.
 - [x] Comment client: find-or-update the sticky comment with paging. It also covers the job-summary write and the warn-and-exit-zero path.
 - [x] Size control: the staged copy with log truncation and the `size-warn-mb` guard. It also covers `retention-days` and `compression-level`. Unit tests cover the truncation, the guard, and truncation without a manifest.
@@ -315,6 +315,11 @@ Log:
   truncation, the size guard, and the zip and six non-zipped upload slots. The PR adds the
   `artifact-url` output of `bajutsu-e2e`, gate coverage, docs, and adoption in the web E2E job. The
   spike needs a real GitHub run and stays open.
+- SPIKE-PR — ran the spike on a scratch branch. GitHub sent a PNG artifact as `inline`, and sent
+  WebM and MP4 artifacts as `attachment`. A signed-in reader used Safari on iPhone. That reader
+  saw the PNG and watched the MP4 in the browser. For the WebM, Safari asked whether to view or
+  download. We did not check desktop browsers. Re-running the job did not collide with the earlier artifact names,
+  so the action gains no `overwrite` input. `docs/reporting.md` records the result.
 
 ## References
 
