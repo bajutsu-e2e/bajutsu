@@ -382,7 +382,7 @@ Content that a client uploads thus never gains the mode of the config.
 
 - [x] Component file and `use` list
 - [x] Expansion for targets and scenarios
-- [ ] Name scopes and aliases
+- [x] Name scopes and aliases
 - [ ] Application-level `when` and `inheritSetup: false`
 - [ ] Reports, command policy, and delivery to workers
 - [ ] Schemas and `codegen`

@@ -54,6 +54,7 @@ from bajutsu.common.runner.sandbox import (
     SandboxRuntime,
     grant_container_access,
 )
+from bajutsu.common.scenario.models.hook_command import SCOPE_SEP, env_name, split_hook_token
 
 # The process seam `HookRunner` spawns through: argv, environment, working directory, the timeout it
 # is bounded by, and the raw log file its output is appended to. Injected in tests, so every
@@ -168,6 +169,14 @@ class HookContext:
     # that drive this target for a run-level list, the scenario's own for a scenario-level one.
     # Empty, the case of a command that runs no scenario file, matches no condition.
     scenario_tags: Sequence[Sequence[str]] = ()
+    # The targets whose `hooks` component outputs a scenario-level command reads: the ones the
+    # scenario drives (BE-0512). A target's own command reads its own target's alone.
+    targets: Sequence[str] = ()
+
+    @property
+    def output_targets(self) -> Sequence[str]:
+        """The targets whose component outputs this phase's commands receive."""
+        return (self.targets or (self.target,)) if self.level is not None else (self.target,)
 
     def env(self) -> dict[str, str]:
         """The context variables a command of this phase receives."""
@@ -197,13 +206,26 @@ class HookOutputs:
     # Names whose values an entry marked `mask: true`, masked in evidence like a `${secrets.*}`.
     masked: set[str] = field(default_factory=set)
 
-    def env(self) -> dict[str, str]:
-        """These outputs as the `BAJUTSU_HOOK__<name>__<key>` variables a later command reads."""
-        return {
-            f"BAJUTSU_HOOK__{name}__{key}": value
-            for name, keys in self.values.items()
-            for key, value in keys.items()
-        }
+    def env(self, targets: Iterable[str] | None = None, alias: str | None = None) -> dict[str, str]:
+        """These outputs as the `BAJUTSU_HOOK__<name>__<key>` variables a later command reads.
+
+        A target's `hooks` component writes its outputs under that target's scope (BE-0512), so a
+        command receives those of *targets* alone (every scope when None). A command that a
+        component applied under *alias* also reads its own application's outputs by their local
+        names, which win over an outer entry of the same name.
+        """
+        wanted = None if targets is None else set(targets)
+        out: dict[str, str] = {}
+        local: dict[str, str] = {}
+        for stored, keys in self.values.items():
+            scope, sep, qualified = stored.rpartition(SCOPE_SEP)
+            if sep and wanted is not None and scope not in wanted:
+                continue
+            for key, value in keys.items():
+                out[f"BAJUTSU_HOOK__{env_name(stored)}__{key}"] = value
+                if alias is not None and qualified.startswith(f"{alias}."):
+                    local[f"BAJUTSU_HOOK__{qualified.removeprefix(alias + '.')}__{key}"] = value
+        return {**out, **local}
 
     def bindings(self) -> dict[str, str]:
         """These outputs as the `hooks.<name>.<key>` tokens a step substitutes."""
@@ -483,7 +505,7 @@ class HookRunner:
                     )
                 )
                 self._gate_for(context).record_skip(
-                    self._record_field(list_name, entry.name or str(index), context),
+                    self._record_field(list_name, entry.qualified_name or str(index), context),
                     entry.cmd if entry.cmd is not None else f"use:{entry.use}",
                     cwd=self._cwd(entry.cwd, cwd_base) if entry.cmd is not None else None,
                 )
@@ -523,15 +545,15 @@ class HookRunner:
                 list_name, index, entry, context, result, sandbox, cwd_base, left
             )
             result.records.append(record)
-            if entry.name is not None:
+            if (stored := stored_name(entry, context)) is not None:
                 # Recorded even for an entry that failed: its paired teardown reads these as
                 # `BAJUTSU_HOOK__<name>__<key>`, and a half-finished `before` script is exactly the
                 # one whose work has to be undone.
-                result.outputs.values[entry.name] = values
+                result.outputs.values[stored] = values
                 if entry.mask:
                     # The values themselves were registered with the writer in `_run_entry`, before
                     # this entry's own log was copied; this records which hook asked for it.
-                    result.outputs.masked.add(entry.name)
+                    result.outputs.masked.add(stored)
             if failure is not None:
                 result.failures.append(failure)
                 if not after:
@@ -552,7 +574,7 @@ class HookRunner:
         cwd_base: Path | None = None,
         budget: float | None = None,
     ) -> tuple[HookRecord, HookFailure | None, dict[str, str]]:
-        slot = entry.name or str(index)
+        slot = entry.qualified_name or str(index)
         try:
             segments = [
                 *(
@@ -711,7 +733,12 @@ class HookRunner:
             # context and the outputs of earlier commands are not the config's doing, so they reach
             # it like any other entry — the item has every later command see them.
             named = self._resolve_named(entry, field_name, context)
-            env = {**os.environ, **context.env(), **outputs.env(), **named.env}
+            env = {
+                **os.environ,
+                **context.env(),
+                **outputs.env(context.output_targets, _alias(entry)),
+                **named.env,
+            }
             if raw_out is not None:
                 env["BAJUTSU_OUTPUT"] = str(raw_out)
             else:
@@ -725,7 +752,7 @@ class HookRunner:
         cwd = self._cwd(entry.cwd, cwd_base)
         # What Bajutsu itself gives the command, kept apart from the worker's own environment: the
         # container receives this set and the entry's own `env`, and nothing else.
-        bajutsu_env = {**context.env(), **outputs.env()}
+        bajutsu_env = {**context.env(), **outputs.env(context.output_targets, _alias(entry))}
         if raw_out is not None:
             bajutsu_env["BAJUTSU_OUTPUT"] = str(raw_out)
         if action != "sandbox":
@@ -931,6 +958,23 @@ def hook_record_dicts(records: Iterable[HookRecord]) -> list[dict[str, object]]:
     return out
 
 
+def stored_name(entry: HookCommand, context: HookContext) -> str | None:
+    """The key *entry*'s outputs are stored and substituted under, or None for an unnamed entry.
+
+    A name a target's `hooks` component brings is scoped to that target (BE-0512), so two targets
+    sharing one component keep their values apart; every other name is stored as it is read.
+    """
+    if (name := entry.qualified_name) is None:
+        return None
+    if entry.origin is not None and context.level is None:
+        return f"{context.target}{SCOPE_SEP}{name}"
+    return name
+
+
+def _alias(entry: HookCommand) -> str | None:
+    return entry.origin.alias if entry.origin is not None else None
+
+
 def run_phase(
     runner: HookRunner,
     list_name: str,
@@ -995,13 +1039,25 @@ def duplicate_hook_name(phases: Mapping[str, HookPhases]) -> str | None:
     """
     owner: dict[str, str] = {}
     for target, phase in phases.items():
-        for name in phase.named():
+        for name, entry in phase.named().items():
+            if entry.origin is not None:
+                continue
             if (first := owner.get(name)) is not None and first != target:
                 return (
                     f"targets {first!r} and {target!r} both declare a hook named {name!r}; a hook "
                     f"name must be unique across the run so ${{hooks.{name}.*}} names one command"
                 )
             owner[name] = target
+    # A name a target's hooks component brings is scoped to that target (BE-0512), so two targets
+    # may share one component; it still may not shadow a direct name of any target.
+    for target, phase in phases.items():
+        for name, entry in phase.named().items():
+            if entry.origin is not None and (first := owner.get(name)) is not None:
+                return (
+                    f"target {target!r} applies a hooks component declaring {name!r}, which "
+                    f"target {first!r} also declares directly; give the hooks.use application an "
+                    "`as`, or rename the direct entry"
+                )
     return None
 
 
@@ -1019,7 +1075,7 @@ def hook_refusal(
         for list_name, index, entry in phase.entries():
             kind: CommandKind = "named" if entry.use is not None else "command"
             action = gate.policy.action(kind)
-            field_name = f"{prefix}{HOOK_FIELD}.{list_name}[{entry.name or index}].cmd"
+            field_name = f"{prefix}{HOOK_FIELD}.{list_name}[{entry.qualified_name or index}].cmd"
             if action == "refuse":
                 try:
                     gate.refuse(field_name, entry.cmd or f"use:{entry.use}")
@@ -1064,8 +1120,7 @@ def missing_hook_key(referenced: Iterable[str], outputs: HookOutputs) -> str | N
     for token in sorted(referenced):
         if not token.startswith("hooks."):
             continue
-        _, _, rest = token.partition("hooks.")
-        name, _, key = rest.partition(".")
+        name, key = split_hook_token(token)
         if not key:
             return f"${{{token}}} names no output key; a token reads `hooks.<name>.<key>`"
         if name not in outputs.values:
@@ -1090,7 +1145,8 @@ def unknown_hook_tokens(
     for token in sorted(referenced):
         if not token.startswith("hooks."):
             continue
-        name = token.removeprefix("hooks.").partition(".")[0]
+        # A token the load already scoped to its target (BE-0512) names the entry by the rest.
+        name = split_hook_token(token)[0].rpartition(SCOPE_SEP)[2]
         if name in skipped_names:
             return (
                 f"${{{token}}} reads the hook {name!r}, which this scenario skips: "
@@ -1125,25 +1181,32 @@ def unmet_hook_condition(
         tags: The expanded scenario's own tags.
         own: The scenario's own lists (BE-0501), when it declares any.
     """
-    mine = {
-        e.name: (list_name, e)
-        for phase in [*(phases[t] for t in driven if t in phases), *([own] if own else [])]
-        for list_name in ("beforeRun", "beforeScenario")
-        for e in phase.lists[list_name]
-        if e.name is not None
-    }
+    # Keyed by the stored name too, so a token already scoped to one target (BE-0512) checks that
+    # target's entry even when another driven target's component brings the same name.
+    mine: dict[str, tuple[str, HookCommand]] = {}
+    for key, phase in [
+        *((t, phases[t]) for t in driven if t in phases),
+        *([("", own)] if own else []),
+    ]:
+        for list_name in ("beforeRun", "beforeScenario"):
+            for e in phase.lists[list_name]:
+                if (n := e.qualified_name) is None:
+                    continue
+                mine.setdefault(n, (list_name, e))
+                if key and e.origin is not None:
+                    mine[f"{key}{SCOPE_SEP}{n}"] = (list_name, e)
     elsewhere = {
-        e.name: target
+        e.qualified_name: target
         for target, phase in phases.items()
         if target not in driven
         for e in phase.before_run
-        if e.name is not None and e.when is not None
+        if e.qualified_name is not None and e.when is not None
     }
     carried = ", ".join(tags) or "none"
     for token in sorted(referenced):
         if not token.startswith("hooks."):
             continue
-        name = token.removeprefix("hooks.").partition(".")[0]
+        name = split_hook_token(token)[0]
         if name in mine:
             list_name, entry = mine[name]
             if entry.when is not None and not entry.when.matches(tags):

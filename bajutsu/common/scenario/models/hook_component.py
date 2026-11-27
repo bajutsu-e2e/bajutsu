@@ -98,8 +98,9 @@ class HookUse(_Model):
     # The component file, resolved from the file that holds this entry.
     hook: str
     with_: dict[str, str] = Field(default_factory=dict, alias="with")
-    # Tells two applications of one component apart; with `hook`, it is what identifies an
-    # application when the `use` lists of `defaults`, templates, and the target join.
+    # Tells two applications of one component apart: outside the component its names read as
+    # `<as>.<name>`. With `hook`, it is also what identifies an application when the `use` lists of
+    # `defaults`, templates, and the target join.
     as_: str | None = Field(default=None, alias="as")
     when: HookWhen | None = None
 

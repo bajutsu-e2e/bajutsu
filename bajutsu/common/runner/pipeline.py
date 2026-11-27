@@ -547,9 +547,13 @@ class _ScenarioRunner:
         """Builds one target's hook context for this scenario."""
         assert self.hooks is not None
         index = int(sid.split("-", 1)[0]) if sid.split("-", 1)[0].isdigit() else None
-        first = driven_targets(s, self.eff.target)[0]
+        driven = driven_targets(s, self.eff.target)
+        first = driven[0]
         return lambda key: self.hooks.context(  # type: ignore[union-attr]
             first if key == SCENARIO_LEVEL else key,
+            # A scenario's own command reads the component outputs of every target it drives, which
+            # the load already checked hold no name twice (BE-0512).
+            targets=tuple(driven),
             level=key if key == SCENARIO_LEVEL else None,
             scenario=s.name,
             scenario_file=str(s.source_path) if s.source_path is not None else None,

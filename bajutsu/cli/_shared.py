@@ -370,6 +370,7 @@ def _reject_unmet_hook_conditions(
     from bajutsu.common.runner.hook_commands import unmet_hook_condition
     from bajutsu.common.runner.scenario_hooks import own_phases
     from bajutsu.common.scenario.interp import find_tokens
+    from bajutsu.common.scenario.models.hook_command import SCOPE_SEP, split_hook_token
 
     effs = {name: resolve(loaded.config, name) for name in loaded.config.targets}
     phases = {name: eff.hooks for name, eff in effs.items()}
@@ -398,7 +399,7 @@ def _reject_unmet_hook_conditions(
         own = own_phases(s)
         readable = {*phases[target].named(), *(own.named() if own is not None else ())}
         names = {
-            t.removeprefix("hooks.").partition(".")[0]
+            split_hook_token(t)[0].rpartition(SCOPE_SEP)[2]
             for t in find_tokens(body(s))
             if t.startswith("hooks.")
         }

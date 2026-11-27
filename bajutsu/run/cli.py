@@ -1153,7 +1153,7 @@ def _reject_bad_target_config_hooks(
 def _reject_unknown_hook_tokens(
     target_effs: Mapping[str, Effective], scenarios: list[Scenario], primary: str
 ) -> None:
-    """Fail fast on a `${hooks.<name>.<key>}` token that can never resolve (BE-0491).
+    """Fail fast on a `${hooks.<name>.<key>}` token that can never resolve, then scope the rest.
 
     Checked when the run loads, before any device work: a token naming no `beforeRun` or
     `beforeScenario` entry of a target the scenario drives would otherwise fail halfway through the
@@ -1162,12 +1162,15 @@ def _reject_unknown_hook_tokens(
     command has run, which the run loop checks per scenario. A hook name two visible entries share
     fails the same way (BE-0501).
     """
-    from bajutsu.common.runner.scenario_hooks import scenario_hook_error
+    from bajutsu.common.runner.scenario_hooks import scenario_hook_error, scope_hook_tokens
 
     for s in scenarios:
         if (why := scenario_hook_error(s, target_effs, primary)) is not None:
             typer.echo(f"scenario {s.name!r}: {why}")
             raise typer.Exit(2)
+        # Checked above on a copy, so this cannot fail: a token reading a target's hooks component
+        # now names that target's scope, under which the run stores its values (BE-0512).
+        scope_hook_tokens(s, target_effs, primary)
 
 
 def _reject_unmatchable_conditions(
