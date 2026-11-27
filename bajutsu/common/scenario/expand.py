@@ -205,7 +205,8 @@ def _step_expander(max_depth: int) -> Callable[..., list[Step]]:  # noqa: C901
                     path=(*path, label),
                     body=body,
                 )
-                out.append(st.model_copy(update={"steps": children}))
+                # The merged target rides on the block too, which is what its condition judges.
+                out.append(st.model_copy(update={"steps": children, "target": target}))
                 continue
             if st.steps is not None:
                 # A target group (BE-0437) a component's own steps carry is never flattened at

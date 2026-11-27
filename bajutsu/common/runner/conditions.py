@@ -20,9 +20,6 @@ from bajutsu.common.config import Effective
 from bajutsu.common.scenario import CleanupRule, Step
 from bajutsu.common.scenario.models.hook_command import HookWhen, JudgedTarget, WhenFacts
 
-# How a skipped setup block or cleanup rule is labelled, in the words a skipped command uses.
-SKIPPED_WHEN = "skipped (when)"
-
 
 @dataclass(frozen=True)
 class ConditionContext:

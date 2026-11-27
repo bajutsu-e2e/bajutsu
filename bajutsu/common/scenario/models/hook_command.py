@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, get_args
 
 from pydantic import Field, field_validator, model_validator
 
@@ -48,16 +48,17 @@ def invalid_hook_name(value: str) -> str | None:
 
 
 # The platforms a `when.platforms` entry may name: a target's declared `platform` (BE-0513).
-HOOK_PLATFORMS = ("ios", "android", "web", "fake")
+HookPlatform = Literal["ios", "android", "web", "fake"]
 
 # The destinations a `when.routes` entry may name, the route names BE-0467 already gives each
 # environment. Spelled here because the scenario models may not import `capability`, whose
 # `settings_support.Route` lists the same names; a test keeps the two in step.
-HOOK_ROUTES = ("ios-simulator", "ios-device", "ios-live", "android", "web")
+HookRoute = Literal["ios-simulator", "ios-device", "ios-live", "android", "web"]
+HOOK_ROUTES: tuple[str, ...] = get_args(HookRoute)
 
 # The routes each platform can run on, which the load check on a target's own condition reads to
 # refuse a `routes` that names none of its owner's. `fake` has no route at all.
-PLATFORM_ROUTES: dict[str, tuple[str, ...]] = {
+PLATFORM_ROUTES: dict[HookPlatform, tuple[HookRoute, ...]] = {
     "ios": ("ios-simulator", "ios-device", "ios-live"),
     "android": ("android",),
     "web": ("web",),
@@ -114,10 +115,8 @@ class HookWhen(_Model):
     tags: list[str] = Field(default_factory=list)
     exclude: list[str] = Field(default_factory=list)
     targets: list[str] = Field(default_factory=list)
-    platforms: list[Literal["ios", "android", "web", "fake"]] = Field(default_factory=list)
-    routes: list[Literal["ios-simulator", "ios-device", "ios-live", "android", "web"]] = Field(
-        default_factory=list
-    )
+    platforms: list[HookPlatform] = Field(default_factory=list)
+    routes: list[HookRoute] = Field(default_factory=list)
     env: dict[str, str | None] = Field(default_factory=dict)
 
     @field_validator("env", mode="before")

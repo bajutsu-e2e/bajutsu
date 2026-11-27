@@ -45,7 +45,8 @@ def _never_holds(when: Mapping[str, Any], owner: str, platform: Any) -> str | No
         return None
     if isinstance(platforms, list) and platforms and platform not in platforms:
         return f"`platforms` leaves out {platform!r}, the platform of target {owner!r}"
-    reachable = PLATFORM_ROUTES.get(platform)
+    # `platform` is the raw config's string, so it is looked up by value rather than by key type.
+    reachable = next((r for name, r in PLATFORM_ROUTES.items() if name == platform), None)
     if (
         isinstance(routes, list)
         and routes

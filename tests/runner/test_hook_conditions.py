@@ -626,3 +626,27 @@ def test_component_expansion_keeps_a_block_whole() -> None:
     (out,) = expand_steps([block], lambda ref: pytest.fail(f"no component expected: {ref}"))
     assert out.when == block.when
     assert _ids(out.steps or []) == ["a"]
+
+
+def test_a_component_block_takes_its_callers_target() -> None:
+    from bajutsu.common.scenario import Step
+    from bajutsu.common.scenario.expand import _step_expander
+
+    block = Step.model_validate({"when": {"platforms": ["ios"]}, "steps": [{"tap": {"id": "a"}}]})
+    (out,) = _step_expander(25)([block], [], pytest.fail, level_target="app")
+    assert out.target == "app"
+    assert [step.target for step in out.steps or []] == ["app"]
+
+
+def test_lint_keeps_a_block_gated_on_any_route() -> None:
+    from bajutsu.common.target_lint import _plans
+
+    s = _scenario(
+        {
+            "setup": [{"when": {"routes": ["ios-device"]}, "steps": [{"tap": {"id": "device"}}]}],
+            "preconditions": {"inheritSetup": False},
+        }
+    )
+    effs = _effs()
+    assert _ids(_plans([s], effs.__getitem__, "app")[0].folded.setup) == []
+    assert _ids(_plans([s], effs.__getitem__, "app", keep_all=True)[0].folded.setup) == ["device"]
