@@ -594,6 +594,8 @@ Protocol（HTTP）チャネルで駆動します。Android の失敗はもう少
     一覧はラベルをカテゴリに分け、カテゴリごとに止めてよい理由を書いています。各ジョブは開始時と終了時に、
     止めたサービスの数とシミュレータのプロセス数をログに出します。手動で実行するときは
     `simulator-services: stock` を選べます。この場合は何も止めずに再起動だけを行います。
+    手動で実行するときは `lanes: measure` も選べます。この場合は build、`run`、`actuation` のジョブだけが
+    走ります。実行ごとに別の concurrency group を使うので、同時に走る 2 つの実行が互いをキャンセルしません。
 - **何も走る前のホスト。** これも `start` が担います。上限付きの `ps aux` と `vm_stat` を一度だけ
   `runs/diagnostics/ps-baseline.txt` へ書きます。ストール時の捕捉が撮る `ps` は、壊れた時点で何が
   常駐していたかには答えますが、それが平常と違うのかには答えられません。最初の収集では、この問いを
@@ -756,8 +758,16 @@ CoreSimulator、macOS の unified log を読みます。`collect-android-diagnos
 
 1. あるワークフローの直近の実行を取得します。コマンドは完了した直近 30 回の実行を一覧し、それぞれの
    計測記録の artifact をダウンロードします。各記録を、API から得たジョブの結論、キュー待ち時間、
-   ステップの所要時間と結合します。各ジョブのログからは、channel のリトライ、channel のクラッシュ、
-   開始を確認できなかった録画、ネットワークエラーを数えます。
+   ステップの所要時間と結合します。各ジョブのログからは、次の 6 種類の警告を数えます。
+
+   | 警告 | 数える対象 |
+   |---|---|
+   | channel のリトライ | runner channel の再試行 |
+   | channel のクラッシュ | 再試行の上限を超えて runner に届かなくなった回数 |
+   | 録画開始の未確認 | 開始を確認できなかった録画 |
+   | 復旧の再起動 | runner の起動に失敗したあとのシミュレータの再起動 |
+   | デバイスの交換 | 復旧できずに新しいシミュレータへ切り替えた回数 |
+   | ネットワークエラー | 名前解決の失敗や接続のリセットなど |
 
    ```bash
    python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --limit 30 --out tmp/ci-telemetry
@@ -794,6 +804,57 @@ CoreSimulator、macOS の unified log を読みます。`collect-android-diagnos
 付かなかった失敗したジョブは、
 [`investigate-ci-failure`](../../.apm/skills/investigate-ci-failure/SKILL.md) に回します。このスキルは、
 そのジョブの `runs/` artifact 全体を読みます。
+
+### 止めたシミュレータのサービスを残すかを決める
+
+`run` と `actuation` のジョブは、どのシナリオも使わないシミュレータのサービスを止めています
+（[BE-0517](../../roadmaps/BE-0517-ios-ci-simulator-service-reduction/BE-0517-ios-ci-simulator-service-reduction-ja.md)）。
+この変更を残す基準は 4 つあり、ロードマップ項目が計測の前に固定しました。`adoption` サブコマンドは、
+手動実行の 2 つの群にその基準を当てはめます。
+
+| 群 | シミュレータの状態 |
+|---|---|
+| reduced | 一覧のサービスを止めた状態 |
+| stock | 同じ再起動を経て、すべてのサービスが動いている状態 |
+
+手順は 3 段階です。最初に、`main` で各群を 10 回ずつ実行します。2 つの群は同じ時間帯で交互に走らせます。
+報告はそれより古い実行を数えないので、最初の実行の時刻を控えておきます。
+
+```bash
+gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=reduced
+```
+
+```bash
+gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=stock
+```
+
+次に、20 回の実行がすべて終わってから結果を取得します。同じワークフローの pull request の実行も一覧に
+混ざるので、`--limit` には 20 より大きな値を渡します。
+
+```bash
+python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --limit 60 --out tmp/be-0517
+```
+
+最後に、基準を当てはめます。
+
+```bash
+python3 scripts/ci_telemetry.py adoption tmp/be-0517 --since 2026-12-01T00:00:00Z
+```
+
+出力の 1 行目に判定が出ます。その下の表に、群ごとの件数と基準ごとの結果が並びます。
+
+サブコマンドは、ジョブのログに出たモードでそのジョブの群を決めます。数えるのは、手動実行が起動し、
+`--since` 以降に始まり、ログを読めたジョブだけです。判定は次の 4 つのいずれかになります。
+
+| 判定 | 意味 |
+|---|---|
+| `adopt` | すべての基準を満たした |
+| `reject` | 満たさない基準が 1 つ以上ある |
+| `trace` | 件数の基準は満たしたが、変更を入れた側で通らなかったシナリオがある |
+| `incomplete` | どちらかの群のジョブが 20 件に満たない |
+
+`trace` の判定は人の確認を要します。一覧に出たシナリオを、疑わしいサービスを動かしたまま再実行します。
+そこで通れば、その結果は変更に不利な証拠として数えます。
 
 ## あなたのアプリの CI で回す
 

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from scripts import ci_telemetry as ct
 
@@ -300,6 +301,24 @@ _LOG_SOURCES = [
         '"screenrecord on %s wrote no bytes within %ss;',
         "screenrecord on emulator-5554 wrote no bytes within 5.0s; its start is confirmed",
     ),
+    (
+        "recovery_reboots",
+        "bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py",
+        '"rebooted Simulator %s after a failed cold runner spawn"',
+        "rebooted Simulator 1A2B-3C after a failed cold runner spawn",
+    ),
+    (
+        "device_replacements",
+        "bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py",
+        '"Simulator %s could not be recovered in place; shut it down and %s"',
+        "Simulator 1A2B-3C could not be recovered in place; shut it down and created 4D5E",
+    ),
+    (
+        "device_replacements",
+        "bajutsu/common/platform_lifecycle/environments/xcuitest/xcuitest_environment.py",
+        '"Simulator %s vanished from CoreSimulator; %s"',
+        "Simulator 1A2B-3C vanished from CoreSimulator; created 4D5E",
+    ),
 ]
 
 
@@ -383,7 +402,10 @@ class _FakeGh:
         if args[0] == "api" and args[-1].endswith("/logs"):
             if args[-1].endswith("/2/logs"):
                 raise subprocess.CalledProcessError(1, "gh")
-            return "runner channel GET /elements failed (attempt 1/3), retrying: x\n"
+            return (
+                "runner channel GET /elements failed (attempt 1/3), retrying: x\n"
+                "simulator-services route=disable-then-reboot mode=stock reboot_seconds=90\n"
+            )
         raise AssertionError(f"unexpected gh call: {args}")
 
 
@@ -403,6 +425,8 @@ def test_fetch_joins_records_with_the_api(tmp_path: Path) -> None:
     assert by_job["actuation"]["scenarios"]  # joined with the uploaded record
     # A job with no record still counts, and a withheld log is unknown rather than zero.
     assert by_job["golden"]["log_signals"] is None
+    assert by_job["golden"]["simulator_services"] is None
+    assert by_job["actuation"]["simulator_services"]["mode"] == "stock"
     assert by_job["golden"]["ci"]["run_id"] == "11"
     assert (out / "manifests" / "11-r1-20260101-000000" / "manifest.json").is_file()
 
@@ -489,3 +513,154 @@ def test_summarize_reads_an_explicit_diagnostics_dir(tmp_path: Path) -> None:
     record = ct.summarize(runs, "ios", env={}, diagnostics=moved)
     assert record["host"]["ncpu"] == 3
     assert record["host_load"]["samples"] == 2
+
+
+# --- BE-0517 adoption ------------------------------------------------------------------------
+
+
+def test_simulator_services_reads_the_arm_and_both_counts() -> None:
+    log = (
+        "simulator-services disable_failed=3 of 169\n"
+        "simulator-services route=disable-then-reboot mode=reduced reboot_seconds=120\n"
+        "simulator-services start disabled=166 sim_procs=40\n"
+        "simulator-services end disabled=12 sim_procs=95\n"
+    )
+    assert ct.simulator_services(log) == {"mode": "reduced", "start": 166, "end": 12}
+    # A job that never reduced its device (every lane but run and actuation) belongs to no arm.
+    assert ct.simulator_services("simulator-services end disabled=0 sim_procs=9\n") is None
+
+
+def test_the_action_prints_the_lines_the_parser_reads() -> None:
+    action = REPO / ".github/actions/reduce-simulator-services"
+    assert "simulator-services route=disable-then-reboot mode=$mode" in (
+        action / "apply.sh"
+    ).read_text(encoding="utf-8")
+    assert "simulator-services $label disabled=$disabled" in (action / "counts.sh").read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("hits", "other_hits", "expected"),
+    # The roadmap item's own worked numbers: 0 against 4 of 20 misses alpha, 0 against 5 makes it.
+    [(0, 4, 0.0530), (0, 5, 0.0236), (0, 0, 1.0), (20, 0, 1.0)],
+)
+def test_fisher_one_sided(hits: int, other_hits: int, expected: float) -> None:
+    assert ct.fisher_one_sided(hits, 20, other_hits, 20) == pytest.approx(expected, abs=1e-4)
+
+
+def _job(
+    mode: str,
+    *,
+    video: int = 0,
+    retries: int = 0,
+    reboots: int = 0,
+    event: str = "workflow_dispatch",
+    started: str = "2026-12-01T01:00:00Z",
+    start: int | None = 166,
+    end: int | None = 166,
+    failed: str | None = None,
+    logs: bool = True,
+) -> dict[str, Any]:
+    signals = {
+        "video_start_unconfirmed": video,
+        "channel_retries": retries,
+        "recovery_reboots": reboots,
+        "device_replacements": 0,
+    }
+    return {
+        "api": {"job_name": "run", "conclusion": "failure" if failed else "success",
+                "started_at": started},
+        "ci": {"run_id": "9"},
+        "run_event": event,
+        "simulator_services": {"mode": mode, "start": start, "end": end},
+        "log_signals": signals if logs else None,
+        "scenarios": [{"scenario": failed, "ok": False}] if failed else [],
+    }  # fmt: skip
+
+
+def _arms(reduced: list[dict[str, Any]], stock: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # Pad each arm to the planned size with quiet jobs.
+    pad = ct.ADOPTION_JOBS_PER_ARM
+    return (
+        reduced
+        + [_job("reduced") for _ in range(pad - len(reduced))]
+        + stock
+        + [_job("stock") for _ in range(pad - len(stock))]
+    )
+
+
+def test_adoption_adopts_when_every_fixed_criterion_passes() -> None:
+    result = ct.adoption(_arms([], [_job("stock", video=1) for _ in range(5)]))
+    assert result["verdict"] == "adopt"
+    assert result["video_start_p"] == pytest.approx(0.0236, abs=1e-4)
+    assert "adoption: adopt" in ct.render_adoption(result)
+
+
+def test_adoption_rejects_on_any_failing_criterion() -> None:
+    # Four stock jobs leave the Fisher test short of alpha, as the roadmap item works out.
+    assert ct.adoption(_arms([], [_job("stock", video=1)] * 4))["verdict"] == "reject"
+    more_retries = _arms([_job("reduced", retries=3)], [_job("stock", video=1)] * 5)
+    result = ct.adoption(more_retries)
+    assert result["criteria"]["channel_retries"] is False
+    assert result["verdict"] == "reject"
+    more_reboots = _arms([_job("reduced", reboots=1)], [_job("stock", video=1)] * 5)
+    assert ct.adoption(more_reboots)["criteria"]["recovery_reboots"] is False
+
+
+def test_adoption_leaves_a_failed_reduced_scenario_to_a_person() -> None:
+    records = _arms([_job("reduced", failed="permission.yaml")], [_job("stock", video=1)] * 5)
+    result = ct.adoption(records)
+    assert result["verdict"] == "trace"
+    assert result["criteria"]["scenarios"] is None
+    rendered = ct.render_adoption(result)
+    assert "run (run 9): permission.yaml" in rendered
+    assert "| no scenario traced to a turned-off service | open |" in rendered
+
+
+def test_adoption_counts_only_fresh_dispatches_with_readable_logs() -> None:
+    records = [
+        *_arms([], [_job("stock", video=1)] * 5),
+        _job("reduced", video=1, event="pull_request"),
+        _job("reduced", video=1, started="2026-11-26T01:00:00Z"),
+        _job("stock", logs=False),
+    ]
+    result = ct.adoption(records, since="2026-12-01T00:00:00Z")
+    assert result["arms"]["reduced"]["jobs"] == ct.ADOPTION_JOBS_PER_ARM
+    assert result["arms"]["reduced"]["video_start_unconfirmed_jobs"] == 0
+    assert result["arms"]["stock"]["jobs_without_logs"] == 1
+    assert result["verdict"] == "adopt"
+
+
+def test_adoption_is_incomplete_until_each_arm_is_full() -> None:
+    result = ct.adoption([_job("reduced"), _job("stock", video=1)])
+    assert result["verdict"] == "incomplete"
+    assert ct.adoption([])["video_start_p"] is None
+
+
+def test_adoption_counts_jobs_that_lost_the_change_midway() -> None:
+    records = _arms(
+        [_job("reduced", end=0), _job("reduced", end=None)], [_job("stock", video=1)] * 5
+    )
+    assert ct.adoption(records)["arms"]["reduced"]["lost_change_jobs"] == 1
+
+
+def test_adoption_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = tmp_path / "records.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in _arms([], [])), encoding="utf-8")
+    assert ct.main(["adoption", str(path)]) == 0
+    assert "# BE-0517 adoption: reject" in capsys.readouterr().out
+    assert ct.main(["adoption", str(path), "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["verdict"] == "reject"
+
+
+def test_measure_dispatch_runs_only_the_measured_jobs() -> None:
+    workflow = yaml.safe_load((REPO / ".github/workflows/ios-e2e.yml").read_text(encoding="utf-8"))
+    on = workflow.get("on", workflow.get(True))
+    assert on["workflow_dispatch"]["inputs"]["lanes"]["options"] == ["all", "measure"]
+    # Alternating arms in the same hours must not cancel each other.
+    assert "github.run_id" in workflow["concurrency"]["group"]
+    measured = {"changes", "build", "run", "actuation", "e2e"}
+    for name, job in workflow["jobs"].items():
+        gated = "inputs.lanes != 'measure'" in str(job.get("if", ""))
+        assert gated is (name not in measured), name
