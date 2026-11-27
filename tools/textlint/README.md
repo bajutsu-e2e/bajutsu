@@ -125,11 +125,11 @@ count-based bar that accepts this residue instead of chasing an unreachable zero
     re-expansion everywhere else.
   - `XXXX`: the literal `BE-XXXX` placeholder every unallocated roadmap item carries. It is not an
     acronym, so no expansion could ever satisfy the rule.
-  - `HTML` / `HTTP` / `JSON` / `UTC` / `XML` / `YAML`: well-known acronyms with a nonmatching
-    expansion. Take `Coordinated Universal Time (UTC)` as one case. Its words do not spell the
-    letters in order. The rule can't accept the correct form, so passing it would bend the prose
-    (issue #2572). To pass, `HTML` and `HTTP` need the split spelling `Hyper Text`.
-    `YAML` needs its retired name, `Yet Another Markup Language`.
+  - `HTML` / `HTTP` / `JSON` / `UTC` / `XML` / `YAML`: well-known acronyms. The rule can't
+    match their usual expansion. Take `Coordinated Universal Time (UTC)` as one case. Its words
+    do not spell the letters in order. Clearing the finding would mean bending the prose (issue
+    #2572). To pass, `HTML` and `HTTP` need the split spelling `Hyper Text`. `YAML` needs its
+    retired name, `Yet Another Markup Language`.
 - `abbr-within-parentheses` — abbreviation-in-parentheses form
 - `alex` — gender-, race-, or religion-insensitive phrasing
 - `ukraine` — Ukrainian place and person names spelled the Russian way
