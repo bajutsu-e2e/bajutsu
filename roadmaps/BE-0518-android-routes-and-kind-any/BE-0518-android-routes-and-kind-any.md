@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-android-routes-and-kind-any-ja.md)
+**English** · [日本語](BE-0518-android-routes-and-kind-any-ja.md)
 
-# BE-XXXX — Split the Android environment route and let a target run on any device kind
+# BE-0518 — Split the Android environment route and let a target run on any device kind
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-android-routes-and-kind-any.md) |
+| Proposal | [BE-0518](BE-0518-android-routes-and-kind-any.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0518") |
 | Topic | Platform support |
 | Related | [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location.md) |
 <!-- /BE-METADATA -->
