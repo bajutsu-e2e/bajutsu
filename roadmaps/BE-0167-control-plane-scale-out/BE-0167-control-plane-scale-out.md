@@ -7,79 +7,84 @@
 |---|---|
 | Proposal | [BE-0167](BE-0167-control-plane-scale-out.md) |
 | Author | [@hirosassa](https://github.com/hirosassa) |
-| Status | **Approved** |
+| Status | **Rejected** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0167") |
 | Topic | Hosting the web UI |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
+| Superseded by | [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-The self-hosted control plane
-([BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md)) runs today as a **single**
-`bajutsu serve --asgi --backend=server` app container in the `deploy/self-host/` compose stack. Its
-work is cheap HTTP, so it can scale horizontally.
+> **Rejected — the premise of this item no longer holds, and [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology.md) replaces it.**
+> This item assumed that a worker posts its result once the job ends. Under that premise, no log
+> stream crosses replicas. [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md) changed that behavior. A worker now posts log lines while the job
+> runs. Replicas thus need a shared Redis bus for live logs, which this design leaves out. Other
+> items have also delivered most of the application-side work this item planned. The remaining work
+> is a different, smaller scope, and BE-0518 states that scope from the current code. `Rejected`
+> fits better than `Deferred`, because no later date makes this design correct again.
 
-This proposal specifies running **N app replicas behind a load balancer**. The control plane then
-survives a replica failure and handles more concurrent users, without changing the pull-based job
-distribution. The item is carved out of the "growing one node into a pool" work of BE-0016.
+The self-hosted control plane is the `bajutsu serve` app that queues jobs and serves the web UI.
+[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) covers self-hosting it. The `deploy/self-host/` Docker Compose stack runs it as one app
+container. Its work is cheap HTTP, so it can scale horizontally.
+
+This proposal runs **N app replicas behind a load balancer**. The control plane then survives the
+loss of one replica. It also serves more concurrent users. The pull-based job distribution stays
+unchanged. BE-0016 named this work as part of growing one node into a pool.
 
 ## Motivation
 
-Even after the Mac pool grows, the control plane stays one container. That single app process is
-a capacity ceiling, because every browser session, worker lease call, and run-history read goes
-through it. It is also a liveness risk: if the process restarts, the whole UI is briefly unavailable.
+Even after the Mac pool grows, the control plane stays one container. That one process is a
+capacity ceiling. Every browser request, worker lease call, and run-history read goes through it.
+The process is also a liveness risk. When it restarts, the whole UI goes away for a moment.
 
-The control plane is stateless HTTP over a shared database and object store. Replicating it is the
-natural way to remove both limits. The work is to make that replication correct, with no sticky
-sessions and no lost long-lived connections. The work also documents the load-balancer configuration
-that the topology needs.
+The control plane is stateless HTTP over a shared database and object store. Running replicas
+removes both limits. The work is to make the replicas correct, with no sticky routing and no lost
+long-lived connections. The work also documents the load-balancer configuration.
 
 ## Detailed design
 
-The design rests on two facts already true of the stack. Sessions live in **Postgres** (BE-0106
-folded the session store into the database). The worker model is **post-completion**, so no mid-run
-log stream has to be fanned out across replicas. The work breakdown:
+The design rests on two facts about the stack. Sign-in state lives in **Postgres**, because
+[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) moved the store into the database. The worker model posts results after completion. No
+mid-run log stream thus has to reach other replicas. The work breakdown follows.
 
-1. **Stateless replicas, no sticky sessions.** Any replica must serve any request. Auth is a signed
-   cookie and the session lives in Postgres. A request authenticated on one replica is therefore
-   honored on another, with no sticky routing. This is verified by hand: log in on one replica and
-   read run history on another.
-2. **Load-balancer policy.** Front the replicas with Caddy or HAProxy using **least-connections**
-   rather than round-robin. Server-sent events (SSE) connections are long-lived, and round-robin
-   would skew load toward whichever replica accumulated open streams. TLS terminates at the load
-   balancer (or the existing `caddy` profile).
-3. **Worker path across replicas.** The worker model is post-completion. A `bajutsu worker` can
-   therefore `POST /api/worker/lease` from any replica and post the whole result to
-   `/api/worker/result` on any replica. No per-run affinity exists between a worker and the replica
-   that served its lease. The browser reads finished runs from the shared database and object
-   store, so it needs no affinity either.
-4. **Compose wiring for N replicas.** Extend `deploy/self-host/` to run N app replicas behind the
-   load balancer (a scale factor plus the LB config). The stateful services (Postgres, MinIO) stay
-   unchanged and shared. Document the operator steps.
+1. **Stateless replicas, no sticky sessions.** Any replica must serve any request. A signed Cookie
+   names a row in Postgres. A request signed in on one replica thus works on another. A hands-on
+   check covers this step: sign in on one replica, then read run history on another.
+2. **Load-balancer policy.** Front the replicas with Caddy or HAProxy.
+   Use **least-connections** rather than round-robin. Event streams stay open for a long time. Round-robin would pile load
+   onto the replica holding the most open streams. Transport Layer Security (TLS) ends at the load
+   balancer or at the existing `caddy` profile.
+3. **Worker path across replicas.** A `bajutsu worker` can `POST /api/worker/lease` on any replica.
+   The worker can post the whole result to `/api/worker/result` on any replica. No affinity ties a
+   worker to the replica that served its lease. The browser reads finished runs from the shared
+   stores, so the browser needs no affinity either.
+4. **Compose wiring for N replicas.** Give `deploy/self-host/` a scale factor and a
+   load-balancer config. Postgres and MinIO stay shared and unchanged. Document the operator steps.
 
-**Verification.** This tier is deployment and operations work that the Linux-only `make check` gate
-cannot exercise (no Docker, no multi-container topology). It is verified by hand on a deployment:
+**Verification.** This tier is deployment and operations work. The `make check` gate runs no Docker
+and no multi-container topology, so it cannot exercise this tier. We check it by hand on a
+deployment:
 
 - Bring up two app replicas.
-- Confirm a login on one replica is honored by a request served by the other.
-- Confirm a run leased from one replica completes and its result is readable through the other.
+- Sign in through one replica, and confirm the other accepts the next request.
+- Lease a run from one replica, and read its result through the other.
 
-Any small statelessness helper that lands in `bajutsu/serve/` (for example, asserting no in-process
-session state) keeps unit coverage. The topology itself has no gate contract.
+A small statelessness helper in `bajutsu/serve/` keeps unit coverage. The topology itself has no
+gate contract.
 
 ## Alternatives considered
 
-- **Sticky sessions (session affinity at the load balancer).** Rejected: it reintroduces per-replica
-  state coupling and unbalances load when a replica restarts. It is also unnecessary once sessions
-  live in Postgres. Stateless replicas are simpler and more robust.
-- **Round-robin load balancing.** Rejected in favor of least-connections. SSE streams are
-  long-lived, so round-robin steadily concentrates open connections on some replicas.
-  Least-connections tracks actual load.
-- **Keeping a single replica and scaling vertically.** Acceptable as the starting point but
-  rejected as the end state. One app container remains a liveness single point of failure and a
-  capacity ceiling, which horizontal replicas remove.
+- **Sticky sessions at the load balancer.** We decline affinity. Affinity brings back per-replica
+  coupling. It also unbalances load when a replica restarts. Sign-in state already lives in
+  Postgres, so affinity buys nothing.
+- **Round-robin load balancing.** We pick least-connections instead. Event streams stay open for a
+  long time. Round-robin steadily piles open connections onto some replicas. Least-connections
+  tracks the actual load.
+- **One replica, scaled vertically.** This option works as a starting point but not as the end
+  state. One app container stays a capacity ceiling and a single point of liveness risk.
+  Horizontal replicas remove both.
 
 ## Progress
 
@@ -87,15 +92,15 @@ session state) keeps unit coverage. The topology itself has no gate contract.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Stateless replicas verified — any replica serves any request, no sticky sessions.
-- [ ] Load-balancer policy — least-connections over round-robin, TLS at the LB.
-- [ ] Worker lease/result path confirmed to work across replicas.
+- [ ] Stateless replicas verified, with any replica serving any request.
+- [ ] Load-balancer policy, with least-connections and TLS at the load balancer.
+- [ ] Worker lease and result path confirmed to work across replicas.
 - [ ] Compose wiring for N app replicas behind the load balancer, documented.
 
 ## References
 
-`deploy/self-host/` (the single-node compose stack this extends), `bajutsu/serve/` (the ASGI control
-plane), [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) (the self-hosting
-umbrella this is carved from),
-[BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) (the
-post-completion worker model and Postgres session store that make stateless replicas possible).
+- `deploy/self-host/`: the single-node compose stack this item extends.
+- `bajutsu/serve/`: the control plane.
+- [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md): the self-hosting umbrella this item comes from.
+- [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md): the worker model and the database store for sign-in state.
+- [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology.md): the item that replaces this one.
