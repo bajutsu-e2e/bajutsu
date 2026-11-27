@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
-| 実装 PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561) |
+| 実装 PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561), [#2586](https://github.com/bajutsu-e2e/bajutsu/pull/2586) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md) |
 <!-- /BE-METADATA -->
@@ -115,6 +115,10 @@ run を作ったマシンは、各アーティファクトを書くときに、�
 | `--browsers` の run | `<sid>/result.json` のパスは `<engine>/` が起点のため、検査も同じ起点で解決 |
 | リダイレクト | スクリプトは追従しない。追従すると `POST` が `GET` に変わり、何も取り込まれないため |
 | 起動時の掃除 | 取り除くステージングディレクトリは、1 時間を超えたものに限定 |
+
+[#2586](https://github.com/bajutsu-e2e/bajutsu/pull/2586) で、`POST /api/runs/import` を BE-0509 のキーの許可リストに載せました。許可リストに載った最初の
+ルートです。`editor` のキーで取り込んだ run は、そのキーの組織に記録します。これで、OAuth を設定した
+サーバへもスクリプトから取り込めます。`viewer` のキーには `403` を返します。
 
 ## 参考
 

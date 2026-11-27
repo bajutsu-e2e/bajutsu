@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
-| Implementing PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561) |
+| Implementing PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561), [#2586](https://github.com/bajutsu-e2e/bajutsu/pull/2586) |
 | Topic | Hosting the web UI |
 | Related | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary.md) |
 <!-- /BE-METADATA -->
@@ -224,6 +224,10 @@ Log:
 | `--browsers` runs | The path check reads a `<sid>/result.json` from `<engine>/`, where its paths start |
 | Redirects | The script follows none. A followed redirect would turn the `POST` into a `GET` that imports nothing |
 | Start-up sweep | It removes staging directories more than an hour old, not every one |
+
+- [#2586](https://github.com/bajutsu-e2e/bajutsu/pull/2586): `POST /api/runs/import` is now on the BE-0509 key allowlist, the first route there. An
+  `editor` key imports into its own organization, so the script works on a server with OAuth. A
+  `viewer` key gets `403`.
 
 ## References
 
