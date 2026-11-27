@@ -11,9 +11,20 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0457") |
 | Topic | Platform support |
 | Related | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md) |
+| Superseded by | [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
+
+> **Rejected — superseded by [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md).**
+> Skipping a *step* on some environments makes one scenario's result depend on where it ran. A
+> real-device run could then pass because it checked less, and its result would read the same as a
+> Simulator run that checked everything. BE-0467 keeps every step mandatory instead. It confines
+> what differs per environment to settings declared in the target config, and checks them at lint
+> and at worker dispatch. No condition would make a per-step skip safe to add later, so the item is
+> rejected rather than deferred. The first implementation attempt,
+> [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211), was closed unmerged. The design below
+> stays for the historical record.
 
 A scenario written against the iOS Simulator often holds steps that cannot run on a real iPhone.
 `setLocation`, `push`, and the clipboard steps all drive `simctl`, which reaches the Simulator alone.
@@ -352,8 +363,8 @@ Log:
 - Rejected before any unit shipped. Skipping a *step* on some environments makes one scenario's
   result depend on where it ran: a real-device run can pass because it checked less. The direction
   instead keeps every step mandatory and confines skipping to environment-specific *settings*,
-  declared in the target config and checked at lint and at worker dispatch. The
-  environment-specific settings item (`environment-specific-settings`) supersedes this one. The
+  declared in the target config and checked at lint and at worker dispatch. [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)
+  supersedes this one. The
   first implementation attempt, [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211), was
   closed unmerged.
 

@@ -15,7 +15,7 @@
 
 ## Introduction
 
-> **Deferred — premise retired by [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md).**
+> **Rejected — premise retired by [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders.md).**
 > This item hardens `roadmap-promote.yml`. BE-0159 deleted that workflow along with
 > `scripts/promote_roadmap_items.py`, because the flat layout leaves nothing to promote. The
 > `contents: write`, PR-influenced workflow this item guards no longer exists. A review of the
@@ -28,7 +28,9 @@
 >
 > The pattern this item guards against, a PR-head script running under `contents: write`, no
 > longer occurs anywhere. BE-0159 designed the hazard out instead of hardening it in place. This
-> item is deferred and superseded by BE-0159. It stays for the historical record.
+> item is rejected rather than deferred, because no condition would bring the hazard back and
+> give the hardening something to guard. It stays for the historical record, superseded by
+> BE-0159.
 
 `roadmap-promote.yml` checks out and runs a script from the PR's own head ref while holding
 `contents: write`. This proposal moves the executed script to the trusted base SHA. A PR then
