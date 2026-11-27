@@ -35,7 +35,7 @@ Usage:
     python3 scripts/ci_telemetry.py summarize --lane ios [--runs runs] [--out DIR]
     python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml [--limit 30] [--out DIR]
     python3 scripts/ci_telemetry.py report DIR [--json]
-    python3 scripts/ci_telemetry.py adoption DIR [--since 2026-12-01T00:00:00Z] [--json]
+    python3 scripts/ci_telemetry.py adoption DIR --since 2026-12-01T00:00:00Z [--json]
 """
 
 from __future__ import annotations
@@ -875,8 +875,8 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str) -> dict[str, A
 
     A job belongs to an arm by the mode its own log printed, and only a `workflow_dispatch` run
     started at or after `since` (an ISO-8601 UTC timestamp) counts, which leaves the pilot runs and
-    every pull-request run out. A measured job whose log could not be read has no arm; it is listed
-    as unattributed rather than dropped in silence.
+    every pull-request run out. A measured job with no arm in its log (unreadable, or stopped before
+    the reduce step printed one) is listed as unattributed rather than dropped in silence.
     """
     arms: dict[str, list[Mapping[str, Any]]] = {arm: [] for arm in _ARMS}
     unattributed: list[str] = []
@@ -887,8 +887,11 @@ def adoption(records: Sequence[Mapping[str, Any]], *, since: str) -> dict[str, A
         mode = (r.get("simulator_services") or {}).get("mode")
         if mode in arms:
             arms[mode].append(r)
-        elif r.get("log_signals") is None and _MEASURED_JOBS.match(_job_label(r)):
-            unattributed.append(_run_label(r))
+        elif _MEASURED_JOBS.match(_job_label(r)):
+            # A readable log with no route line is a job that stopped before or inside the reduce
+            # step, the failure the change itself is likeliest to cause, so it must not vanish.
+            why = "log unreadable" if r.get("log_signals") is None else "no route line"
+            unattributed.append(f"{_run_label(r)}: {why}")
     reduced, stock = (_arm_tally(arms[arm]) for arm in _ARMS)
     p = (
         fisher_one_sided(
@@ -981,7 +984,7 @@ def render_adoption(result: Mapping[str, Any]) -> str:
         lines += [f"- {name}" for name in reduced["failed_scenarios"]]
         lines += [f"- {name}: no scenario result" for name in reduced["red_without_scenario"]]
     if result["unattributed_jobs"]:
-        lines += ["", "## Measured jobs whose log could not be read (no arm)", ""]
+        lines += ["", "## Measured jobs with no arm in their log", ""]
         lines += [f"- {name}" for name in result["unattributed_jobs"]]
     return "\n".join(lines) + "\n"
 

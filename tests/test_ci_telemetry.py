@@ -647,8 +647,15 @@ def test_adoption_lists_measured_jobs_whose_log_was_unreadable() -> None:
     unread = _job(None)
     other_lane = {**_job(None), "api": {"job_name": "golden (xcuitest)"}}
     result = _adopt([*_arms([], _STOCK_SIGNAL), unread, other_lane])
-    assert result["unattributed_jobs"] == ["run (xcuitest) (run 9)"]
-    assert "(no arm)" in ct.render_adoption(result)
+    assert result["unattributed_jobs"] == ["run (xcuitest) (run 9): log unreadable"]
+    assert "with no arm in their log" in ct.render_adoption(result)
+
+
+def test_adoption_lists_a_measured_job_that_stopped_before_printing_its_arm() -> None:
+    # apply.sh exits under `set -e` before its route line when the reboot never completes.
+    stopped = {**_job("reduced", red=True), "simulator_services": None}
+    result = _adopt([*_arms([], _STOCK_SIGNAL), stopped])
+    assert result["unattributed_jobs"] == ["run (xcuitest) (run 9): no route line"]
 
 
 def test_adoption_is_incomplete_until_each_arm_is_full() -> None:

@@ -795,8 +795,11 @@ The verdict takes one of four values.
 | `incomplete` | An arm holds fewer than twenty jobs |
 
 A `trace` verdict needs a person. Run each listed scenario again with the suspect service left
-on. A pass then counts against the change. The report also lists each `run` or `actuation` job whose
-log the fetch could not read. Such a job has no arm, and its arm may then fall short of twenty.
+on. A pass then counts against the change.
+
+The report also lists each `run` or `actuation` job whose log names no arm. The fetch could not
+read its log, or the job stopped before the reduce step printed the arm. Such a job counts in
+neither arm, and an arm may then fall short of twenty.
 
 ## Running bajutsu in your app's CI
 
