@@ -187,7 +187,36 @@ def test_a_run_level_application_cannot_exclude_without_tags(tmp_path: Path) -> 
         tmp_path,
         "    hooks:\n      use: [{ hook: ./hooks/mock.hook.yaml, when: { exclude: [offline] } }]\n",
     )
-    with pytest.raises(ValidationError, match="names `exclude` without `tags`"):
+    with pytest.raises(
+        ValidationError, match=r"hooks\.use .*the component's beforeRun\[0\]\.when names `exclude`"
+    ):
+        load_config_file(config)
+
+
+def test_a_run_level_application_may_exclude_what_its_entry_tags(tmp_path: Path) -> None:
+    # The tag parts match within one scenario, so the entry's `tags` gives the `exclude` its scope.
+    _write(
+        tmp_path / "hooks" / "mock.hook.yaml",
+        "beforeRun: [{ cmd: ./mock.sh, when: { tags: [api] } }]\n",
+    )
+    config = _config(
+        tmp_path,
+        "    hooks:\n      use: [{ hook: ./hooks/mock.hook.yaml, when: { exclude: [offline] } }]\n",
+    )
+    [entry] = resolve(load_config_file(config), "web").hooks.before_run
+    assert str(entry.when) == "tags: [api] and exclude: [offline]"
+
+
+def test_a_target_condition_cannot_join_a_block_naming_another_target(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "hooks" / "seed.hook.yaml",
+        "setup:\n  - when: { tags: [smoke] }\n    target: admin\n    steps: [{ tap: { id: seed } }]\n",
+    )
+    config = _config(
+        tmp_path,
+        "    hooks:\n      use: [{ hook: ./hooks/seed.hook.yaml, when: { targets: [web] } }]\n",
+    )
+    with pytest.raises(ValidationError, match="names `target: admin`"):
         load_config_file(config)
 
 

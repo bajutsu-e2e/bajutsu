@@ -24,7 +24,11 @@ from bajutsu.common.scenario.load_expanded import (
     parse_yaml_named,
 )
 from bajutsu.common.scenario.models import CleanupRule, Scenario, Step
-from bajutsu.common.scenario.models.hook_command import HookCommand, HookWhen
+from bajutsu.common.scenario.models.hook_command import (
+    HookCommand,
+    HookWhen,
+    reject_run_level_exclude_only,
+)
 from bajutsu.common.scenario.models.hook_component import HookComponent, HookUse
 from bajutsu.common.scenario.step_walk import nested_steps, reject_scenario_only
 
@@ -120,7 +124,13 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
         for rule in cleanup:
             rule.steps = [_aliased(s, use.as_, declared) for s in rule.steps]
     if use.when is not None:
-        commands, setup, cleanup = _conditioned(use.when, commands, setup, cleanup)
+        try:
+            commands, setup, cleanup = _conditioned(use.when, commands, setup, cleanup)
+            # Here as well as on the target's lists, so the error names the `when` that joined in.
+            reject_run_level_exclude_only(commands["beforeRun"], "the component's beforeRun")
+            reject_run_level_exclude_only(commands["afterRun"], "the component's afterRun")
+        except ValueError as e:
+            raise ValueError(f"{where}: {e}") from e
     return HookApplication(use=use, path=path, commands=commands, setup=setup, cleanup=cleanup)
 
 
@@ -154,6 +164,14 @@ def _conditioned(
             wrapped.append(Step.model_validate({"when": when, "steps": run}))
             run = []
         if step is not None:
+            if step.target is not None and when.reads_target:
+                # A block naming `target` judges that target, so the application's target fields
+                # would be read against it rather than the target that applies the component.
+                raise ValueError(
+                    f"`when` reads the target ({when}), and the component's setup block names "
+                    f"`target: {step.target}`, which its condition would judge instead; move the "
+                    "target fields into the block's own `when`"
+                )
             wrapped.append(step.model_copy(update={"when": joined(step.when)}))
     cleanup = [r.model_copy(update={"when": joined(r.when)}) for r in cleanup]
     return commands, wrapped, cleanup

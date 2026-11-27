@@ -377,7 +377,9 @@ def reject_run_level_exclude_only(entries: Iterable[HookCommand], where: str) ->
     condition made of them alone is fine at run level (BE-0513).
     """
     for i, entry in enumerate(entries):
-        if entry.when is not None and any(p.exclude and not p.tags for p in entry.when.parts):
+        parts = entry.when.parts if entry.when is not None else ()
+        # The tag parts match within one scenario, so a `tags` in any part gives `exclude` its scope.
+        if any(p.exclude for p in parts) and not any(p.tags for p in parts):
             raise ValueError(
                 f"{where}[{i}].when names `exclude` without `tags`: a run-level entry runs when any "
                 "scenario of the run matches, so `exclude` alone would almost never skip it"
