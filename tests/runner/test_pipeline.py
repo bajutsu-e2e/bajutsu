@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import pytest
@@ -633,6 +633,215 @@ def test_a_non_ios_run_never_requests_a_replacement() -> None:
     assert results[0].ok
     assert replacements == []
     assert erase_seen == [None, "erase"]
+
+
+def _noop() -> None:
+    pass
+
+
+# --- quarantining a device after an ordinary failure (BE-0376) --- #
+#
+# The crash retry reads the stall signal only once an attempt crashed. A scenario that runs to an
+# ordinary failure while the signal stands would otherwise hand the degraded device to every later
+# scenario. The remedy is the same request, served by the next bring-up; the verdict never moves.
+
+
+def _quarantine_lease(
+    *,
+    stalled: bool,
+    passing: bool = False,
+    crashes: int = 0,
+    kinds: list[str] | None = None,
+    on_release: Callable[[], None] = _noop,
+) -> tuple[Callable[[Effective, Scenario], Lease], list[int]]:
+    """A lease factory whose attempts fail (or pass) on an ordinary assertion, recording requests.
+
+    The first `crashes` attempts crash mid-scenario first, so the crash retry's own rung can be
+    exercised ahead of the ordinary failure; `kinds` instead spells each lease out in order as
+    `crash`, `fail`, or `pass`, for a run whose scenarios behave differently. Returns the factory and
+    the lease numbers that asked their environment for a replacement device.
+    """
+    state = {"n": 0}
+    replacements: list[int] = []
+
+    def kind_of(n: int) -> str:
+        if kinds is not None:
+            return kinds[n - 1]
+        if n <= crashes:
+            return "crash"
+        return "pass" if passing else "fail"
+
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        state["n"] += 1
+        n = state["n"]
+        kind = kind_of(n)
+        if kind == "crash":
+            driver = _crashing_driver()
+        elif kind == "pass":
+            driver = _fake_driver()
+        else:
+            driver = FakeDriver([_el("other", "Other", ["button"])])
+        return Lease(
+            driver=driver,
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=on_release,
+            video_start_stalled=lambda: stalled,
+            request_device_replacement=lambda n=n: replacements.append(n),  # type: ignore[misc]
+        )
+
+    return lease, replacements
+
+
+def _tap_ok(name: str = "a") -> Scenario:
+    return Scenario.model_validate({"name": name, "steps": [{"tap": {"id": "ok"}}]})
+
+
+def _verdict(r: RunResult) -> dict[str, object]:
+    """Everything a result says about its verdict, with the wall-clock and the new field dropped."""
+    d = asdict(r)
+    for key in ("device_suspect", "duration_s", "video_anchor_s", "wall_offset_s"):
+        d.pop(key)
+    for step in d["steps"]:
+        step.pop("duration_s")
+        step.pop("started_at")
+    return d
+
+
+def test_an_ordinary_failure_with_a_stalled_video_quarantines_the_device() -> None:
+    lease, replacements = _quarantine_lease(stalled=True)
+    results = run_all(_replaceable_eff(), [_tap_ok()], lease, actuator="xcuitest")
+    assert not results[0].ok
+    assert replacements == [1]
+    assert "requested a replacement device" in results[0].device_suspect
+
+
+def test_a_passing_scenario_with_a_stalled_video_keeps_its_device() -> None:
+    # A pass proves the automation path served the scenario, whatever the video did, so replacing
+    # the device would spend one on a run that is working.
+    lease, replacements = _quarantine_lease(stalled=True, passing=True)
+    results = run_all(_replaceable_eff(), [_tap_ok()], lease, actuator="xcuitest")
+    assert results[0].ok
+    assert replacements == []
+    assert results[0].device_suspect == ""
+
+
+def test_an_ordinary_failure_without_a_stall_keeps_its_device() -> None:
+    lease, replacements = _quarantine_lease(stalled=False)
+    results = run_all(_replaceable_eff(), [_tap_ok()], lease, actuator="xcuitest")
+    assert not results[0].ok
+    assert replacements == []
+    assert results[0].device_suspect == ""
+
+
+def test_the_quarantine_never_changes_the_failing_scenarios_verdict() -> None:
+    # The regression that pins verdict-neutrality: the stall decides which device later scenarios
+    # lease, never what this scenario's result says.
+    stalled_lease, _ = _quarantine_lease(stalled=True)
+    healthy_lease, _ = _quarantine_lease(stalled=False)
+    stalled = run_all(_replaceable_eff(), [_tap_ok()], stalled_lease, actuator="xcuitest")[0]
+    healthy = run_all(_replaceable_eff(), [_tap_ok()], healthy_lease, actuator="xcuitest")[0]
+    assert stalled.device_suspect and not healthy.device_suspect
+    assert _verdict(stalled) == _verdict(healthy)
+
+
+def test_a_run_quarantines_at_most_one_device_for_ordinary_failures() -> None:
+    # A replacement that stalls again points at the host, and one more device does not fix a host,
+    # so a chronically stalling run mints one device rather than one per failing scenario.
+    lease, replacements = _quarantine_lease(stalled=True)
+    results = run_all(_replaceable_eff(), [_tap_ok("a"), _tap_ok("b")], lease, actuator="xcuitest")
+    assert replacements == [1]
+    assert not results[1].ok
+    assert "already replaced one device" in results[1].device_suspect
+
+
+def test_a_scenario_whose_crash_retry_already_replaced_the_device_asks_no_more() -> None:
+    # The crash retry's per-scenario allowance is shared: the attempt that failed ran on the fresh
+    # replacement, so the device that stalled is the new one.
+    lease, replacements = _quarantine_lease(stalled=True, crashes=1)
+    results = run_all(_replaceable_eff(), [_tap_ok()], lease, actuator="xcuitest")
+    assert not results[0].ok
+    assert replacements == [1]  # the crash retry's own escalation, and nothing after it
+    assert "crash retry had already requested" in results[0].device_suspect
+
+
+def test_a_pinned_run_records_the_stall_but_keeps_the_named_device() -> None:
+    # The gate is the crash retry's own, so `--udid` still keeps the device the operator named, but
+    # the connection between the stall and the failure is recorded all the same.
+    lease, replacements = _quarantine_lease(stalled=True)
+    results = run_all(
+        _replaceable_eff(), [_tap_ok()], lease, actuator="xcuitest", lease_udid_spec="1234-ABCD"
+    )
+    assert replacements == []
+    assert "cannot replace a device" in results[0].device_suspect
+
+
+def test_a_quarantine_leaves_a_later_crash_its_own_replacement_rung() -> None:
+    # The run-wide allowance bounds the ordinary-failure path alone: a later scenario's crash retry
+    # keeps its per-scenario rung, so `b`'s stalled crash still escalates.
+    lease, replacements = _quarantine_lease(stalled=True, kinds=["fail", "crash", "pass"])
+    results = run_all(_replaceable_eff(), [_tap_ok("a"), _tap_ok("b")], lease, actuator="xcuitest")
+    assert [r.ok for r in results] == [False, True]
+    assert replacements == [1, 2]
+
+
+def test_a_crash_replacement_does_not_spend_a_later_scenarios_quarantine() -> None:
+    # `replaced` is per scenario: `a`'s crash retry spending it must not silence `b`'s quarantine.
+    lease, replacements = _quarantine_lease(stalled=True, kinds=["crash", "fail", "fail"])
+    results = run_all(_replaceable_eff(), [_tap_ok("a"), _tap_ok("b")], lease, actuator="xcuitest")
+    assert replacements == [1, 3]
+    assert "requested a replacement device" in results[1].device_suspect
+
+
+def test_device_suspect_names_no_erase_as_what_kept_the_device() -> None:
+    lease, replacements = _quarantine_lease(stalled=True)
+    results = run_all(
+        _replaceable_eff(), [_tap_ok()], lease, actuator="xcuitest", force_erase_on_retry=False
+    )
+    assert replacements == []
+    assert "--no-erase asked to keep" in results[0].device_suspect
+
+
+def test_device_suspect_names_a_route_that_cannot_replace_a_device() -> None:
+    # Every backend reports the stall the same way, so the message stays honest off the Simulator.
+    lease, replacements = _quarantine_lease(stalled=True)
+    results = run_all(_eff(), [_tap_ok()], lease)
+    assert replacements == []
+    assert "this route cannot replace a device" in results[0].device_suspect
+
+
+def test_device_suspect_names_a_scenario_that_keeps_its_app_data() -> None:
+    lease, replacements = _quarantine_lease(stalled=True)
+    scenario = Scenario.model_validate(
+        {
+            "name": "a",
+            "preconditions": {"subject": {"reinstall": "overwrite"}},
+            "steps": [{"tap": {"id": "ok"}}],
+        }
+    )
+    results = run_all(_replaceable_eff(), [scenario], lease, actuator="xcuitest")
+    assert replacements == []
+    assert "reinstall: overwrite" in results[0].device_suspect
+
+
+def test_a_cancelled_run_does_not_quarantine_the_device() -> None:
+    # The cancel arrives as the lease is released, after the scenario already failed: a run that is
+    # ending has no later scenario for a replacement to serve.
+    flag = {"cancelled": False}
+    lease, replacements = _quarantine_lease(
+        stalled=True, on_release=lambda: flag.update(cancelled=True)
+    )
+    results = run_all(
+        _replaceable_eff(),
+        [_tap_ok()],
+        lease,
+        actuator="xcuitest",
+        cancelled=lambda: flag["cancelled"],
+    )
+    assert replacements == []
+    assert "the run was cancelled" in results[0].device_suspect
 
 
 def test_run_all_still_propagates_a_device_error_from_a_bare_lease() -> None:

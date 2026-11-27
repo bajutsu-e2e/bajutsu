@@ -104,6 +104,7 @@ from bajutsu.common.runner.hook_session import HookSession
 from bajutsu.common.runner.mailbox import build_mailbox_reader
 from bajutsu.common.runner.recovery import (
     CrashRecoveryBudget,
+    DeviceQuarantine,
     RunCrashRecoveryBudget,
     _default_crash_recovery_budget,
     _default_crash_retries,
@@ -312,6 +313,9 @@ class _ScenarioRunner:
     run_crash_budget: RunCrashRecoveryBudget = field(
         default_factory=lambda: RunCrashRecoveryBudget(None)
     )
+    # The run's one allowance for quarantining a device after an ordinary failure (BE-0376), shared by
+    # every scenario like `run_crash_budget` and for the same reason: one runner serves one run.
+    device_quarantine: DeviceQuarantine = field(default_factory=DeviceQuarantine)
     # Whether a crash-triggered retry (attempt > 1) may force `preconditions.subject.reinstall: erase`.
     # True (the default) matches every existing caller. `bajutsu run`'s `--no-erase` is the one signal
     # this forced retry must still honor, and no scenario's own value carries it: `_filter_scenarios`
@@ -1175,8 +1179,11 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(
+                    result = self._run_on_lease(
                         lz, others, handler, i, s, sid, derived, actuator, hook_outputs
+                    )
+                    return self._quarantine_after_failure(
+                        result, lz, s, can_replace=can_replace, replaced=replaced
                     )
                 except BackendCrashError as crash:
                     # Nothing is released here: `_lease_set` already rolls back its own partial
@@ -1682,6 +1689,71 @@ class _ScenarioRunner:
         if hook_outputs is None or not hook_outputs.values:
             return self.bindings
         return {**(self.bindings or {}), **hook_outputs.bindings()}
+
+    def _quarantine_after_failure(
+        self, result: RunResult, lz: Lease, s: Scenario, *, can_replace: bool, replaced: bool
+    ) -> RunResult:
+        """Quarantine the device a scenario failed on when its video never confirmed it started (BE-0376).
+
+        The crash retry reads the stall signal only once an attempt has crashed, so a respawned attempt
+        that ran to an ordinary failure would hand a device already known to be degraded to every later
+        scenario. The remedy is the crash retry's own replacement request, served by the *next*
+        bring-up; `can_replace` implies the pool of one device that makes that next lease this same
+        device. A passing scenario is evidence the automation path still works, so it never asks.
+
+        Verdict-neutral by construction: nothing is re-run, and the returned result differs from
+        *result* only in `device_suspect`, which records why the device is suspect so a reader need not
+        correlate the warning with the failure by hand. That field is evidence; nothing reads it back
+        into a verdict.
+        """
+        if result.ok or not lz.video_start_stalled():
+            return result
+        if replaced:
+            # The crash retry already moved this scenario onto a replacement, so the device that
+            # stalled is the fresh one: the host, not the device, is the likely cause.
+            outcome = (
+                "kept it, because this scenario's crash retry had already requested a replacement "
+                "device"
+            )
+        elif not can_replace:
+            outcome = f"kept it, because {self._replacement_refusal(s)}"
+        elif self.cancelled():
+            outcome = "kept it, because the run was cancelled"
+        elif not self.device_quarantine.claim():
+            outcome = (
+                "kept it, because this run already replaced one device for the same signal, which "
+                "points at the host rather than the device"
+            )
+        else:
+            lz.request_device_replacement()
+            outcome = "requested a replacement device for the scenarios after this one"
+            _logger.warning(
+                "scenario %s: failed while the video recording never confirmed it started; "
+                "quarantining the device for the scenarios after it",
+                s.name,
+            )
+        return replace(
+            result,
+            device_suspect=(
+                "the video recording never confirmed it started, so this device's capture services "
+                f"may have degraded; the run {outcome}"
+            ),
+        )
+
+    def _replacement_refusal(self, s: Scenario) -> str:
+        """Which of `can_replace`'s exclusions held, so `device_suspect` names it rather than a list.
+
+        The two opt-outs are checked first because they are the operator's and the scenario's own
+        choices; whatever is left is the route, which `device_replacement_supported` decides as one.
+        """
+        if not self.force_erase_on_retry:
+            return "--no-erase asked to keep the device"
+        if resolve_preconditions(self.eff, s.preconditions).reinstall == "overwrite":
+            return "the scenario keeps its app data (reinstall: overwrite)"
+        return (
+            "this route cannot replace a device (a pinned --udid, a target with no subject.path, "
+            "or a route other than the Simulator XCUITest one)"
+        )
 
     def _run_on_lease(
         self,

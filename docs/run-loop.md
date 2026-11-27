@@ -468,6 +468,22 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > other route ignores the request and keeps the strongest retry it has. Both signals are advisory to
 > the *rung*, never to the verdict: a scenario that keeps crashing still exhausts its budget and
 > fails loudly.
+>
+> A degraded device does not always crash, so the stall signal also acts after an ordinary failure
+> ([BE-0376](../roadmaps/BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md)).
+> Suppose a scenario fails on its own assertion while its recording never confirmed it started. The
+> run then quarantines the device: it asks for the same replacement, and the next scenario's lease
+> serves it. The rules below keep that quarantine bounded and verdict-neutral:
+>
+> - Nothing re-runs. The failing scenario keeps the device it ran on, its evidence, and its verdict.
+> - A passing scenario never asks, because a pass shows that the automation path still works.
+> - The quarantine sits behind the same gate as the replacement rung, so a pinned run keeps its device.
+> - A scenario whose crash retry already replaced the device asks for nothing more.
+> - A run spends at most one quarantine. A replacement that stalls again points at the host, and one
+>   more device would not fix a host.
+>
+> The result's `device_suspect` field records the stall and what the run did about the device. A
+> reader then sees why a `wait` timeout may say more about the device than about the app.
 
 > **Cooperative cancellation (BE-0370).** A cancelled run finishes on its own terms and lands in the
 > run history as a failed run, instead of dying wherever it happens to be. `bajutsu run` answers

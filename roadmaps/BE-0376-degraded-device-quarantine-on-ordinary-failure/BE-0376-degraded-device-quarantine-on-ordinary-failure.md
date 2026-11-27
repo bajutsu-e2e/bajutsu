@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0376](BE-0376-degraded-device-quarantine-on-ordinary-failure.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0376") |
 | Topic | Platform support |
 | Related | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
@@ -109,9 +109,9 @@ unchanged. The caller applies that gate itself, because every exclusion is confi
 the environment never has to second-guess a request. That gate also guarantees a pool of one device,
 which is what lands a remedy served on a later lease on the run's only device.
 
-unchanged. The caller applies that gate itself, because every exclusion is config-static precisely so
-the environment never has to second-guess a request. That gate also guarantees a pool of one device,
-which is what lands a remedy served on a later lease on the run's only device.
+### Quarantine, not retry
+
+The request goes through the lease's own `request_device_replacement`
 (`bajutsu/runner/types.py:73`, wired to the environment's method in `bajutsu/runner/pool.py:520`), the
 mechanism
 [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md)
@@ -163,6 +163,35 @@ switch by the next scenario.
 Unit 0 confirms on the lane that the request survives that gap in practice. It also settles the
 allowance question. Both answers come before Units 1 and 2 encode either one.
 
+### What Unit 0 found
+
+The lane could not answer the survival question. The actuation lane runs pinned, and pinning
+disables both this path and BE-0354's rung. A developer's Mac offers no clean substitute. An
+unpinned `--udid booted` run there would drive whichever Simulator is already booted, and a
+shared machine must not allow that. Unit 0 settled survival by reading the pool code instead, and
+tests pin the answer. The modules now live under `bajutsu/common/runner/`, so the paths above name
+an older tree.
+
+- **The request survives the gap in the common case.** The XCUITest environment records the
+  request on itself. Its next `start` consumes the request. The pool keeps that environment warm per
+  device, and a same-actuator lease resumes it rather than building a fresh one. `can_replace`
+  implies a pool of one device, so the next scenario's lease serves the request. A pool test pins
+  this path.
+- **Three windows still drop the request, as BE-0354 accepts.** A teardown error in `end_lease`
+  evicts the warm environment, and a second pool test pins that window. A next scenario that
+  resolves to another actuator tears the warm environment down. The run's last scenario leaves no
+  bring-up to serve the request, and no later scenario wants one.
+- **The allowance is shared, and capped per run.** The quarantine reads the per-scenario `replaced`
+  flag that the crash retry sets. Suppose a crash retry already escalated in this scenario. Its
+  final attempt then ran on the fresh device, so the stalled device is the new one. On top of
+  that, the run spends at most one quarantine. A replacement that stalls again points at the
+  machine, and one more device would not fix the machine.
+
+The recorded connection (Unit 2) is a new `RunResult.device_suspect` field. Rewriting the reason
+text instead would change the verdict, and the new field keeps the verdict byte-identical. The
+field also records a stall on a run that cannot replace the device. The pinned lane that motivated
+this item is one such run.
+
 ### Work breakdown (`MECE`)
 
 Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
@@ -184,7 +213,8 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
    - The failing scenario's verdict is byte-identical either way. This regression pins
      verdict-neutrality.
 4. **Docs.** Update [`docs/architecture.md`](../../docs/architecture.md),
-   [`docs/run-loop.md`](../../docs/run-loop.md), and their `docs/ja/` mirrors. Both pages currently
+   [`docs/run-loop.md`](../../docs/run-loop.md), [`docs/reporting.md`](../../docs/reporting.md),
+   and their `docs/ja/` mirrors. The first two pages
    describe the stall as selecting the crash retry's rung. The update states that the stall signal
    also quarantines a device on an ordinary failure, and never re-runs a scenario or alters a
    verdict. It lands in the same change as Unit 1, per the BE-0113 norm.
@@ -251,12 +281,21 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 0 — spike: does a post-release replacement request survive the inter-scenario gap, and which
+- [x] Unit 0 — spike: does a post-release replacement request survive the inter-scenario gap, and which
       allowance does this path spend
-- [ ] Unit 1 — the quarantine on the ordinary-failure path
-- [ ] Unit 2 — the recorded connection in the failing scenario's diagnosis
-- [ ] Unit 3 — tests, including the verdict-neutrality regression
-- [ ] Unit 4 — docs (`architecture.md`, `run-loop.md`, and their `ja` mirrors)
+- [x] Unit 1 — the quarantine on the ordinary-failure path
+- [x] Unit 2 — the recorded connection in the failing scenario's diagnosis
+- [x] Unit 3 — tests, including the verdict-neutrality regression
+- [x] Unit 4 — docs (`architecture.md`, `run-loop.md`, `reporting.md`, and their `ja` mirrors)
+
+Log:
+
+- 2026-11-28 (PR #PRNUM) — Shipped Units 0–4 in one change. `run_one` now reads the stall signal
+  when a scenario ends without passing. It requests a replacement behind the same gate as the
+  retry rung. The request shares the per-scenario allowance and spends a new allowance of one per
+  run. The new `device_suspect` field records the stall in three places: the manifest, the CTRF
+  export, and the HTML Environment panel. The manifest's schema version is now 20. Unit 0 settled
+  survival in code and in pool tests, because the pinned lane cannot run this path.
 
 ## References
 

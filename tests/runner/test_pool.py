@@ -2511,6 +2511,77 @@ def test_device_pool_hands_the_lease_its_environments_replacement_request(
         shutdown()
 
 
+def test_a_replacement_requested_after_release_reaches_the_next_scenarios_bring_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # BE-0376 Unit 0: the ordinary-failure quarantine asks only once `_run_on_lease` has released the
+    # lease, and the bring-up that serves it belongs to the *next* scenario. The request survives that
+    # gap because the next same-actuator lease resumes the very environment it was recorded on — the
+    # one whose `start` consumes it — rather than building a fresh one that never heard of it.
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.common.runner.pool.environment_for",
+        _replacing_env_factory(created, replacement=None, reusable=True),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        first = lease(_eff(), _scn("s"))
+        first.release()
+        first.request_device_replacement()
+        holder = created[-1]
+        second = lease(_eff(), _scn("s2"))
+        # No environment was built for the second scenario: it resumed the one holding the request.
+        assert created[-1] is holder
+        assert holder.replacement_requests == 1
+        # And the second scenario's bring-up ran `start` on it, which is where a request is served.
+        assert holder.start_count == 2
+        second.release()
+    finally:
+        shutdown()
+
+
+def test_a_failed_end_of_lease_drops_a_replacement_requested_after_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The window BE-0354 already accepts, pinned so it is a known gap rather than a surprise: a lease
+    # whose `end_lease` failed is evicted from `warm`, so the next scenario builds a fresh environment
+    # that carries no request, and the degraded device serves it (BE-0376 Unit 0).
+    created: list[_RecordingEnv] = []
+    monkeypatch.setattr(
+        "bajutsu.common.runner.pool.environment_for",
+        _replacing_env_factory(created, replacement=None, reusable=True),
+    )
+    lease, shutdown = device_pool(
+        ["UDID-A"],
+        ["ios"],
+        _eff(),
+        Path("runs"),
+        network=False,
+        available=lambda b: True,
+        env_run=lambda *a, **k: "",
+    )
+    try:
+        first = lease(_eff(), _scn("s"))
+        holder = created[-1]
+        holder.raise_on_end_lease = True
+        first.release()
+        first.request_device_replacement()
+        second = lease(_eff(), _scn("s2"))
+        assert created[-1] is not holder
+        assert created[-1].replacement_requests == 0
+        second.release()
+    finally:
+        shutdown()
+
+
 def test_device_pool_frees_the_replacement_when_the_lease_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

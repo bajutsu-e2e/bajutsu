@@ -195,6 +195,15 @@ meaning after the run that produced it exits
   It never changes `ok`. The list is empty on a scenario that ignored nothing. The list is also empty when
   the preflight refused the scenario before any launch. Every run recorded before `schemaVersion` 17
   lacks the list. A reader treats such a run as having ignored nothing.
+- `device_suspect`: why the scenario's device is suspect, and what the run did about it
+  ([BE-0376](../roadmaps/BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md)).
+  Today one cause sets it. The scenario did not pass, and its video recording never confirmed that
+  it started. The value says whether the run asked for a replacement device. When the run kept the
+  device, the value says why. The field never changes `ok` or the scenario's reason. The HTML report
+  shows the value in the scenario's Environment panel. The Common Test Report Format (CTRF) export
+  carries it under the `deviceSuspect` key. The value is empty on every other scenario. Runs
+  recorded before `schemaVersion` 20 lack the field. A reader treats such a run as having no
+  suspect device.
 - `network.json`'s `startedAt`: each observed exchange's absolute start. The run writes one such
   file per scenario, and the manifest above does not show it. The value stands on the same footing as `steps[].started_at`.
   Both derive through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both.
@@ -214,7 +223,7 @@ meaning after the run that produced it exits
 
   The stamp groups accumulated runs by identity. A verdict may flip while the fingerprint stays the
   same. Such a flip is **true flakiness** rather than an edited scenario. The stamp is pure metadata
-  and never enters `ok`. The `schemaVersion` is `3` or higher once this block can appear, and `19`
+  and never enters `ok`. The `schemaVersion` is `3` or higher once this block can appear, and `20`
   today.
 
   A `run-set` job also records `workerEnvironment`. It names the environment of the worker

@@ -177,6 +177,8 @@ def _test_extra(r: RunResult) -> dict[str, object]:
         extra["ignoredSettings"] = [
             {"target": g.target, "key": g.key, "reason": g.reason} for g in r.ignored_settings
         ]
+    if r.device_suspect:
+        extra["deviceSuspect"] = r.device_suspect
     return extra
 
 

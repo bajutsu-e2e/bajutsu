@@ -332,6 +332,23 @@ def test_html_environment_no_sim_with_ignored_settings_omits_muted_message() -> 
     assert "no environment details captured" not in html_report("run1", [r])
 
 
+def test_html_environment_names_a_suspect_device() -> None:
+    # BE-0376: why the device is suspect sits beside the device it names, not in the failure.
+    r = _passing()
+    r.device_suspect = "the video recording never confirmed it started"
+    out = html_report("run1", [r])
+    assert "device suspect" in out
+    assert "never confirmed it started" in out
+    assert "device suspect" not in html_report("run1", [_passing()])
+
+
+def test_html_environment_no_sim_with_a_suspect_device_omits_muted_message() -> None:
+    r = _passing()
+    r.device = r.device_name = r.device_runtime = r.backend = ""
+    r.device_suspect = "x"
+    assert "no environment details captured" not in html_report("run1", [r])
+
+
 def test_html_shows_backend() -> None:
     # The actuator is shown both as a header chip and a per-scenario badge.
     out = html_report("run9", [_passing()])

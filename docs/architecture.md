@@ -508,6 +508,8 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
     - The replacement attempt drops the forced erase, because a device about to be created has nothing to erase.
     - The rung is scoped to an unpinned run with a `subject.path` to install, so `--udid` keeps the erase-level retry on the device the operator named.
     - A replacement resets strictly more than an erase does. It therefore honors the two opt-outs that the erase rung honors: `reinstall: overwrite` and `bajutsu run --no-erase`.
+    - A scenario that did not pass can quarantine the device as well, without any crash (BE-0376). Suppose the scenario stops on its own assertion while its video never confirmed it started. The run then asks for the same replacement, and the next scenario's lease serves it.
+    - That quarantine re-runs nothing, so the scenario keeps its verdict. A passing scenario never asks, and a run spends at most one such quarantine. The result's `device_suspect` field records the stall next to the verdict, even on a run that cannot replace the device.
 - **Per-scenario iOS crash-report capture** (BE-0421). A scenario that fails on an exhausted XCUITest crash retry gains a `crash-diagnostics/` subdirectory in its *own* evidence directory, `runs/<run_id>/<sid>/`.
   - The subdirectory holds a bounded tail of the runner's own captured output. It also holds the `.ips` crash report of the crashed `xcodebuild` process, whenever macOS wrote one.
   - The capture happens at lease release, before a later scenario can re-lease and overwrite the same warm environment.

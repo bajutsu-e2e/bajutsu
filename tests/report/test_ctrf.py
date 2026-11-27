@@ -284,6 +284,7 @@ def test_test_extra_carries_bajutsu_surplus() -> None:
         expect_alerts=[AlertEvent(label="Not Now")],
         skipped_captures=[SkippedCapture(kind="network", reason="no eligible backend")],
         ignored_settings=[IgnoredSetting(target="device", key="erase", reason="keeps app data")],
+        device_suspect="the video recording never confirmed it started",
     )
     extra = ctrf_json("20260704-101500", [r])["results"]["tests"][0]["extra"]  # type: ignore[index]
     assert extra["backend"] == "xcuitest"
@@ -294,6 +295,7 @@ def test_test_extra_carries_bajutsu_surplus() -> None:
     assert extra["ignoredSettings"] == [
         {"target": "device", "key": "erase", "reason": "keeps app data"}
     ]
+    assert extra["deviceSuspect"] == "the video recording never confirmed it started"
 
 
 def test_device_field_partial_and_absent() -> None:
