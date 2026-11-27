@@ -36,7 +36,7 @@ from bajutsu.common.scenario.models.hook_command import (
 
 _IOS = JudgedTarget("app", "ios", "ios-simulator")
 _DEVICE = JudgedTarget("app", "ios", "ios-device")
-_ANDROID = JudgedTarget("droid", "android", "android")
+_ANDROID = JudgedTarget("droid", "android", "android-emulator")
 
 
 def _when(**fields: Any) -> HookWhen:
@@ -370,7 +370,7 @@ def test_an_unknown_environment_keeps_an_env_block() -> None:
 
 def test_the_route_follows_the_actuator_and_the_device_spec() -> None:
     effs = _effs()
-    assert condition_context(effs).targets["droid"].route == "android"
+    assert condition_context(effs).targets["droid"].route == "android-emulator"
     assert condition_context(effs, actuators={"app": "fake"}).targets["app"].route is None
     live = condition_context(effs, udids={"app": "http://127.0.0.1:4723"})
     assert live.targets["app"].route == "ios-live"

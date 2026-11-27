@@ -16,6 +16,8 @@ from .ai_settings import AiSettings
 from .evidence import Evidence
 from .hooks import Hooks
 from .paths import Paths
+from .platform._shared import ANY_KIND
+from .platform.ios import IosDriver, IosRunsOn
 from .platform.registry import schema_for, validate_group
 from .services import Services
 
@@ -151,6 +153,22 @@ class TargetConfig(_Model):
             raise ValueError(
                 f"hooks.interrupts: a `tipKit` entry needs an iOS target; platform "
                 f"{self.platform!r} shows no TipKit popover"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _any_kind_names_no_runner(self) -> TargetConfig:
+        # Under `any` the free devices pick the kind, so one prebuilt runner would pass or break by
+        # chance (BE-0518). A list names every kind it runs, so it keeps accepting the key.
+        if (
+            isinstance(self.runs_on, IosRunsOn)
+            and self.runs_on.ios.kind == ANY_KIND
+            and isinstance(self.driver, IosDriver)
+            and self.driver.runner.test_runner is not None
+        ):
+            raise ValueError(
+                "driver.runner.testRunner names one prebuilt runner, which a target whose "
+                "runsOn.ios.kind is any cannot declare: the run picks the kind from the free devices"
             )
         return self
 

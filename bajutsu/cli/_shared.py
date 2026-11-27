@@ -48,6 +48,8 @@ from bajutsu.common.config import (
     resolve,
     web_engine,
 )
+from bajutsu.common.config.schema.platform._shared import ANY_KIND
+from bajutsu.common.config.schema.platform.android import AndroidKind
 from bajutsu.common.config.schema.platform.ios import IosKind
 from bajutsu.common.config.schema.platform.web import WebBrowser
 from bajutsu.common.config_source import (
@@ -748,19 +750,20 @@ def check_listed_browsers(eff: Effective, flag: str, kinds: Sequence[str]) -> No
         raise typer.Exit(2)
 
 
-def parse_kind_flag(value: str, *, single: bool = False) -> list[str]:
-    """Parse `--kind` into an ordered, de-duplicated list of iOS kinds (BE-0468).
+def parse_kind_flag(value: str, *, single: bool = False, platform: str = "ios") -> list[str]:
+    """Parse `--kind` into an ordered, de-duplicated list of iOS or Android kinds (BE-0468, BE-0518).
 
     Args:
         value: One kind, or a comma list of kinds, as written.
         single: The command never multiplies runs (`record`, `crawl`, `repl`), so it takes one kind.
+        platform: The target's platform, whose kinds the value is checked against.
 
     Raises:
         typer.Exit: The value names no kind, an entry is not a known kind, or *single* and more than
             one is named (exit code 2).
     """
     kinds = list(dict.fromkeys(k.strip() for k in value.split(",") if k.strip()))
-    allowed = get_args(IosKind)
+    allowed = get_args(AndroidKind) if platform == "android" else get_args(IosKind)
     if not kinds:
         typer.echo(f"--kind {value!r} names no kind: use one of {', '.join(allowed)}")
         raise typer.Exit(2)
@@ -775,11 +778,11 @@ def parse_kind_flag(value: str, *, single: bool = False) -> list[str]:
 
 
 def _resolve_kind(eff: Effective, kind: str, *, single: bool = False) -> Effective:
-    """Apply a `--kind` flag over the target's `runsOn.ios.kind` (BE-0468).
+    """Apply a `--kind` flag over the target's `runsOn.<platform>.kind` (BE-0468, BE-0518).
 
     A target that lists its kinds runs the ones the flag names; a target with a single kind accepts
-    that kind alone, so the flag may repeat it. Either way the flag never adds a kind the target does
-    not declare.
+    that kind alone, so the flag may repeat it; a target whose kind is `any` takes the one kind the
+    flag names. Either way the flag never adds a kind the target does not declare.
 
     Args:
         eff: The target's effective configuration.
@@ -787,24 +790,34 @@ def _resolve_kind(eff: Effective, kind: str, *, single: bool = False) -> Effecti
         single: The command takes one kind (`parse_kind_flag`).
 
     Raises:
-        typer.Exit: The flag is unparsable, the target is not an iOS target, or it names a kind the
-            target does not declare; the message names the target's kinds (exit code 2).
+        typer.Exit: The flag is unparsable, the target is neither an iOS nor an Android target, it
+            names a kind the target does not declare, or it names more than one kind of an `any`
+            target; the message names the target's kinds (exit code 2).
     """
     if not kind:
         return eff
-    kinds = parse_kind_flag(kind, single=single)
-    if eff.platform != "ios":
-        typer.echo(f"--kind is iOS-only; target '{eff.target}' runs on {eff.platform}")
+    if eff.platform not in ("ios", "android"):
+        typer.echo(
+            f"--kind takes an iOS or Android target; target '{eff.target}' runs on {eff.platform}"
+        )
         raise typer.Exit(2)
-    from bajutsu.run.device_matrix import driven_kind, select_kinds
+    any_kind = eff.conditions.get("kind") == ANY_KIND
+    kinds = parse_kind_flag(kind, single=single, platform=eff.platform)
+    if any_kind and len(kinds) > 1:
+        # One run lands on one kind under `any` (BE-0518); a list in the config runs once per kind.
+        typer.echo(
+            f"--kind takes one kind of target '{eff.target}', whose runsOn.{eff.platform}.kind is "
+            f"any; list the kinds under runsOn.{eff.platform}.kind to run once on each"
+        )
+        raise typer.Exit(2)
+    from bajutsu.run.device_matrix import declared_kinds, select_kinds
 
-    listed = eff.conditions.get("kind")
-    declared = list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
+    declared = declared_kinds(eff)
     missing = [k for k in kinds if k not in declared]
     if missing:
         typer.echo(
-            f"--kind {', '.join(missing)}: target '{eff.target}' runs on runsOn.ios.kind "
-            f"{', '.join(declared)}"
+            f"--kind {', '.join(missing)}: target '{eff.target}' runs on "
+            f"runsOn.{eff.platform}.kind {', '.join(declared)}"
         )
         raise typer.Exit(2)
     return select_kinds(eff, kinds)

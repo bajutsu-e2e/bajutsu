@@ -400,6 +400,8 @@ def _ios_kinds(eff: Effective) -> list[str]:
     from bajutsu.run.device_matrix import driven_kind
 
     listed = eff.conditions.get("kind")
+    # TODO(BE-0518): unit 4 gives an `any` job one token group per candidate route; until then its
+    # run stops before any device work, so the simulator token alone does no harm.
     return list(listed) if isinstance(listed, list) else [driven_kind(eff) or "simulator"]
 
 

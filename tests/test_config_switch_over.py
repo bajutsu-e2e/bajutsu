@@ -115,7 +115,7 @@ def test_the_fake_driver_skips_conditions_with_one_notice(caplog: pytest.LogCapt
 def test_a_kind_device_target_cannot_declare_a_condition() -> None:
     from pydantic import ValidationError
 
-    with pytest.raises(ValidationError, match="kind includes device cannot declare"):
+    with pytest.raises(ValidationError, match="kind is any or includes device cannot declare"):
         load_config(
             "targets:\n  t: { platform: ios, subject: { id: com.x }, runsOn: {ios: {kind: device, os: '18'}} }\n"
         )

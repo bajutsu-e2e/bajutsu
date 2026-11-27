@@ -268,7 +268,7 @@ Each field thus names what it limits, so `runsOn.ios.os` reads as an iOS version
 | Platform | Destination block | Fields |
 |---|---|---|
 | iOS | `runsOn.ios` | `model`, `os`, `kind`, `family`, `locale`, `seedPhotos` |
-| Android | `runsOn.android` | `avd`, `apiLevel`, `locale`, `seedPhotos` |
+| Android | `runsOn.android` | `kind`, `avd`, `apiLevel`, `locale`, `seedPhotos` |
 | Web | `runsOn.browser` | `kind`, `version`, `emulate` |
 | fake | none | none |
 
@@ -431,6 +431,22 @@ target whose `runsOn.ios.kind` includes `device` may not declare `model` or `os`
 compare a real device's model or release. A real device does report its family, so
 `family` stays allowed there. A target an `appium` grid serves has no pool to read, and neither does
 a Device Farm job. A condition there fails before any device work and names the field.
+
+An Android target names its kind of device with `runsOn.android.kind`
+([BE-0518](../roadmaps/BE-0518-android-routes-and-kind-any/BE-0518-android-routes-and-kind-any.md)).
+The field takes `emulator`, `device`, or a list of both, and defaults to `emulator`. A target that
+drives a real Android device must declare `kind: device`. Before any device work, the run reads
+whether its device is an emulator. A device of another kind stops the run, and the message names
+the `runsOn.android.kind` field. A list runs each scenario once per listed kind, as on iOS. A target
+whose kind includes `device` may not declare `avd`. A real device has no Android Virtual Device
+(AVD) to match. `apiLevel` stays allowed.
+
+`kind: any` lets a target accept either kind, on iOS and on Android alike. Every run still lands on
+one concrete kind. A list may not contain `any`, because a list means one run per kind. An `any`
+target may not declare the conditions a `device` target may not declare. An iOS `any` target also
+may not set `driver.runner.testRunner` to a prebuilt runner. A prebuilt runner fits one kind, and
+the free devices would pick the kind. Bajutsu does not yet choose the kind from the free devices. A
+run of an `any` target stops before any device work and asks for `--kind` to name one kind.
 
 Three `runsOn.ios` fields are device state rather than conditions. A single `kind` (`simulator` or
 `device`) selects the XCUITest destination. `locale` pins the language a run applies. iOS keeps the built-in
@@ -731,7 +747,7 @@ defaults:
 | `when.exclude` | the scenario carries none of these tags. `exclude` wins over `tags` |
 | `when.targets` | a judged target is listed. A name the config does not declare fails to load |
 | `when.platforms` | a judged target has a listed platform: `ios`, `android`, `web`, or `fake` |
-| `when.routes` | a judged target runs on a listed route: `ios-simulator`, `ios-device`, `ios-live`, `android`, or `web` |
+| `when.routes` | a judged target runs on a listed route: `ios-simulator`, `ios-device`, `ios-live`, `android-emulator`, `android-device`, or `web` |
 | `when.env` | every listed variable of the `bajutsu run` process matches |
 
 Values inside one list combine with "or". Different fields combine with "and". A `when` block with
@@ -748,6 +764,10 @@ The `--backend` and `--udid` flags decide the route. An iOS target runs on one o
 - `ios-simulator` on a Simulator
 - `ios-device` on a real device
 - `ios-live` on a WebDriver endpoint
+
+An Android target runs on `android-emulator` or `android-device`, as its `runsOn.android.kind`
+decides. `routes: [android]` still loads and names both Android routes. Android had one route
+named `android` until BE-0518 split it.
 
 The `fake` backend has no route. A `routes` condition never holds there.
 

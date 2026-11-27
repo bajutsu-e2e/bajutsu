@@ -6,8 +6,10 @@
 # try to `adb install` a local file — a None `app_path` is the runner's "run against the
 # already-installed app" path, and `subject.id` alone is enough to clear / launch it. The scenarios,
 # ids, launch env, and pre-granted permission match the local target so the same suite runs
-# unchanged; only the install step differs, which is a per-environment difference and so lives in
-# config (the app-agnostic principle), not in the tool.
+# unchanged; only the install step and the device kind differ, which are per-environment differences
+# and so live in config (the app-agnostic principle), not in the tool. Device Farm reserves a real
+# phone, so the target says so with `runsOn.android.kind: device` (BE-0518); without it the run stops
+# before any device work, since an Android target runs on an emulator by default.
 targets:
   showcase-compose:
     platform: android
@@ -18,6 +20,8 @@ targets:
       # local target; the shared permission.yaml relies on this to stay deterministic on Android.
       grantPermissions: [android.permission.POST_NOTIFICATIONS]
       idNamespaces: [stable, horse, search, log, notice, perm, sys, net]
+    runsOn:
+      android: { kind: device }
     hooks:
       # ANR-dialog dismissal — see ../showcase.config.yaml's showcase-compose comment. This lane is a
       # bare `bajutsu run` on a reserved device with no Makefile-run ANR_QUIET around it, so it is the

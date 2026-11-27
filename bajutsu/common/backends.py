@@ -367,7 +367,7 @@ def capabilities_for_route(route: str) -> frozenset[str]:
             - base.SIMCTL_EVIDENCE_CAPABILITIES
             - {base.Capability.DEVICE_GROUP}
         )
-    if route == "android":
+    if route in ("android-emulator", "android-device"):
         return capabilities_for("adb")
     if route == "web":
         return capabilities_for("playwright")

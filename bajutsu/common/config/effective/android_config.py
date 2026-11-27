@@ -32,3 +32,6 @@ class AndroidConfig:
     # `runsOn.android.locale`: the app's per-app language (BE-0478). None keeps the device's own,
     # which `Effective.locale` cannot say — it always holds the iOS default.
     locale: str | None = None
+    # The kind of device this run drives: an `emulator` or a physical `device` (BE-0518). A target
+    # that lists its kinds, or declares `any`, holds its first until a run applies its own.
+    device_kind: str = "emulator"

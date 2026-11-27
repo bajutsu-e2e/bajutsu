@@ -21,6 +21,7 @@ import json
 import subprocess
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from bajutsu.common.backend_cli import adb, simctl
@@ -64,8 +65,9 @@ class DeviceFacts:
     `model` is what a `model` (iOS) or `avd` (Android) condition compares exactly; `release` is what
     a version range compares. `avd` stays None for a physical Android device, which never matches an
     `avd` condition. `family` is what a `family` condition compares (BE-0468); it stays None on
-    Android and the web, which have no such condition. `physical` marks a real iOS device, which a
-    run of `kind: device` takes and a run of `kind: simulator` never does.
+    Android and the web, which have no such condition. `physical` marks a real iOS or Android device,
+    which a run of `kind: device` takes and a run of `kind: simulator` or `kind: emulator` never does
+    (BE-0518).
     """
 
     udid: str
@@ -331,7 +333,8 @@ def read_android(serials: Sequence[str], run: adb.RunFn = _timed_adb) -> list[De
     """Read the API level, and the AVD name or product model, of each device, in *serials* order.
 
     A physical device is matched like an emulator except that it has no AVD: its model is
-    `ro.product.model`, and it never matches an `avd` condition.
+    `ro.product.model`, it never matches an `avd` condition, and it is marked physical, so the kind
+    filter tells it from an emulator (BE-0518).
 
     Raises:
         DeviceReadError: A property could not be read or did not answer in time, the API level is
@@ -343,9 +346,7 @@ def read_android(serials: Sequence[str], run: adb.RunFn = _timed_adb) -> list[De
         sdk = _prop(serial, "ro.build.version.sdk", run)
         if not sdk.isdigit():
             raise DeviceReadError(f"{serial}: ro.build.version.sdk reads {sdk!r}, not an API level")
-        emulator = serial.startswith("emulator-") or any(
-            _prop(serial, prop, run) == "1" for prop in adb.EMULATOR_PROPS
-        )
+        emulator = adb.is_emulator_target(serial, partial(_prop, serial, run=run))
         if emulator:
             avd = _avd_name(serial, run)
             if avd is None:
@@ -358,7 +359,11 @@ def read_android(serials: Sequence[str], run: adb.RunFn = _timed_adb) -> list[De
             )
         else:
             model = _prop(serial, "ro.product.model", run)
-            facts.append(DeviceFacts(udid=serial, platform="android", model=model, release=sdk))
+            facts.append(
+                DeviceFacts(
+                    udid=serial, platform="android", model=model, release=sdk, physical=True
+                )
+            )
     return facts
 
 

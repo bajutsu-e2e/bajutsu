@@ -8,7 +8,7 @@ import math
 import re
 import shlex
 import subprocess
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any
@@ -1330,6 +1330,16 @@ def parse_push_result(out: str) -> None:
         "receiver, or is not running. Call `Bajutsu.startPush` in the app (see "
         "BajutsuAndroid/README.md), and launch the app before the push step"
     )
+
+
+def is_emulator_target(serial: str, read_prop: Callable[[str], str]) -> bool:
+    """Whether *serial* is an emulator rather than a physical device (BE-0518).
+
+    An `emulator-<port>` serial settles it without a device call. Otherwise the emulator property
+    does, which an emulator reached with `adb connect` still reports. The device facts and the
+    run's kind check both read this one rule, so the planner and the run never disagree.
+    """
+    return serial.startswith("emulator-") or any(read_prop(p) == "1" for p in EMULATOR_PROPS)
 
 
 def is_emulator_serial(serial: str) -> bool:

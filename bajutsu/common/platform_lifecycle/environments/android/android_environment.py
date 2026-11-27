@@ -126,6 +126,8 @@ class AndroidEnvironment:
     ) -> None:
         self._actuator = actuator
         self._serial = serial
+        # Whether the device is an emulator, read on the first start (BE-0518).
+        self._emulator: bool | None = None
         self._run = adb_run
         # How pre-launch interval processes are spawned (adb screenrecord); injectable for tests.
         self._spawn = spawn
@@ -219,6 +221,9 @@ class AndroidEnvironment:
             # never degrades into a silent pass.
             if not self._provision.boot_ready:
                 readiness.await_boot(e)
+            # After the boot wait, so a device still coming up answers its properties, and before
+            # anything is installed, cleared, or launched (BE-0518).
+            self._require_kind(eff)
             if android.app_path and not self._provision.app_preinstalled:
                 if not Path(android.app_path).exists():
                     raise adb.DeviceError(
@@ -290,6 +295,32 @@ class AndroidEnvironment:
         self._group_drivers = []
         self._primary_driver = driver
         return driver
+
+    def _require_kind(self, eff: Effective) -> None:
+        """Refuse a device of another kind than the target's `runsOn.android.kind` (BE-0518).
+
+        It runs before anything is installed, cleared, or launched.
+
+        Without it a target meant for a phone would pass against an emulator, an environment its
+        author did not choose. Read once: every member of a group shares this device.
+        """
+        if self._emulator is None:
+            try:
+                self._emulator = adb.Env(self._serial, run=self._run).is_emulator()
+            except subprocess.CalledProcessError as exc:
+                raise adb.device_error(exc) from exc
+            except FileNotFoundError as exc:
+                raise adb.DeviceError(
+                    f"adb not found ({exc}): cannot read whether {self._serial} is an emulator"
+                ) from exc
+        found = "emulator" if self._emulator else "device"
+        wanted = require_android(eff).device_kind
+        if found != wanted:
+            raise adb.DeviceError(
+                f"{self._serial} is {'an emulator' if self._emulator else 'a physical device'}, but "
+                f"target {eff.target!r} runs on runsOn.android.kind {wanted}; set "
+                f"runsOn.android.kind: {found} to run it here"
+            )
 
     def _driver_for(
         self, package: str, *, launched_at: Callable[[], tuple[float, str] | None]
@@ -766,6 +797,7 @@ class AndroidEnvironment:
         # the device-wide part (boot, the erase-equivalent clears of the first member), so this
         # never clears an app it did not install itself. The member's own target decides which of its
         # settings this route may apply, exactly as `start` does (BE-0467).
+        self._require_kind(eff)
         pre, permissions = enforce_settings(self._actuator, eff, pre, permissions, self._serial)
         android = require_android(eff)
         e = adb.Env(self._serial, run=self._run)

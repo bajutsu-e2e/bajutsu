@@ -1,4 +1,5 @@
-"""`--kind` and the browser-list check: a flag picks among the kinds a target declares (BE-0468)."""
+"""`--kind` and the browser-list check: a flag picks among the kinds a target declares (BE-0468,
+BE-0518)."""
 
 from __future__ import annotations
 
@@ -17,8 +18,9 @@ from bajutsu.cli._shared import (
     check_listed_browsers,
     parse_kind_flag,
 )
-from bajutsu.common.config import Effective, WebConfig, load_config, resolve
+from bajutsu.common.config import AndroidConfig, Effective, WebConfig, load_config, resolve
 from bajutsu.common.config.accessors import xcuitest_targets_real_device
+from bajutsu.run.device_matrix import driven_kind
 
 runner = CliRunner()
 
@@ -31,6 +33,10 @@ def _eff(target: str) -> Effective:
 
 def _ios(runs_on: str = "") -> Effective:
     return _eff("platform: ios, subject: { id: com.x }" + (f", {runs_on}" if runs_on else ""))
+
+
+def _android(runs_on: str = "") -> Effective:
+    return _eff("platform: android, subject: { id: com.x }" + (f", {runs_on}" if runs_on else ""))
 
 
 def _web(kind: str) -> Effective:
@@ -113,9 +119,52 @@ def test_a_single_kind_target_accepts_only_its_own_kind(
     assert _exit_code(lambda: _resolve_kind(device, "simulator")) == 2
 
 
-def test_kind_on_a_non_ios_target_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
+def test_kind_on_a_web_target_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert _exit_code(lambda: _resolve_kind(_web("chromium"), "simulator")) == 2
-    assert "--kind is iOS-only; target 't' runs on web" in capsys.readouterr().out
+    assert "--kind takes an iOS or Android target; target 't' runs on web" in (
+        capsys.readouterr().out
+    )
+
+
+def test_kind_narrows_an_android_target_to_its_own_kinds(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # BE-0518: Android names its kinds emulator and device, and the flag checks against those.
+    both = _android("runsOn: {android: {kind: [emulator, device]}}")
+    narrowed = _resolve_kind(both, "device")
+    assert narrowed.conditions["kind"] == ["device"]
+    assert isinstance(narrowed.platform_config, AndroidConfig)
+    assert narrowed.platform_config.device_kind == "device"
+    plain = _android()
+    assert _resolve_kind(plain, "emulator") == plain
+    assert _exit_code(lambda: _resolve_kind(plain, "device")) == 2
+    assert "runs on runsOn.android.kind emulator" in capsys.readouterr().out
+    assert _exit_code(lambda: _resolve_kind(plain, "simulator")) == 2
+    assert "unknown --kind 'simulator': use one of emulator, device" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("eff", "kind"),
+    [
+        (lambda: _ios("runsOn: {ios: {kind: any}}"), "device"),
+        (lambda: _android("runsOn: {android: {kind: any}}"), "device"),
+    ],
+)
+def test_kind_picks_one_kind_of_an_any_target(eff: Callable[[], Effective], kind: str) -> None:
+    # BE-0518: the flag turns `any` into the one kind it names, which then drives the target as a
+    # single `kind` would, so no condition is left for the run to settle.
+    picked = _resolve_kind(eff(), kind)
+    assert "kind" not in picked.conditions
+    assert driven_kind(picked) == kind
+
+
+def test_kind_takes_one_kind_of_an_any_target(capsys: pytest.CaptureFixture[str]) -> None:
+    # One run lands on one kind under `any`, so a list would ask for runs the value never makes.
+    anything = _android("runsOn: {android: {kind: any}}")
+    assert _exit_code(lambda: _resolve_kind(anything, "emulator,device")) == 2
+    assert "--kind takes one kind of target 't', whose runsOn.android.kind is any" in (
+        capsys.readouterr().out
+    )
 
 
 # --- `--browser` / `--browsers` over the target's browsers --------------------------------------
@@ -172,7 +221,7 @@ def _config(tmp_path: Path) -> Path:
     ("argv", "message"),
     [
         (["run", "--target", "both", "--kind", "simulator,phone"], "unknown --kind 'phone'"),
-        (["run", "--target", "site", "--kind", "device"], "--kind is iOS-only"),
+        (["run", "--target", "site", "--kind", "device"], "--kind takes an iOS or Android target"),
         (["run", "--target", "site", "--browsers", "chrome,firefox"], "--browsers firefox"),
         (["run", "--target", "site", "--browser", "webkit"], "--browser webkit"),
         (
@@ -205,6 +254,9 @@ def test_run_refuses_kind_across_two_ios_targets(capsys: pytest.CaptureFixture[s
     _reject_kind_across_targets(effs, kind="")
     _reject_kind_across_targets({"both": effs["both"], "site": effs["site"]}, kind="device")
     assert _exit_code(lambda: _reject_kind_across_targets(effs, kind="device")) == 2
-    assert "--kind applies to a run's single iOS target, but this run declares 2: both, other" in (
-        capsys.readouterr().out
+    assert (
+        "--kind applies to a run's single iOS or Android target, but this run declares 2: both, "
+        "other" in capsys.readouterr().out
     )
+    droid = {"both": effs["both"], "droid": _android()}
+    assert _exit_code(lambda: _reject_kind_across_targets(droid, kind="device")) == 2

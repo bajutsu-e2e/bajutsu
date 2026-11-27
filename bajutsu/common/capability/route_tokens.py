@@ -132,12 +132,13 @@ def report_notices(provenance: Mapping[str, object] | None) -> list[str]:
     return notices
 
 
-# Which route each actuator drives on a worker's own host. `fake` drives none: it applies nothing,
-# so a job on it needs no route token.
-_ACTUATOR_ROUTE: dict[str, Route] = {
-    "xcuitest": "ios-simulator",
-    "adb": "android",
-    "playwright": "web",
+# Which routes each actuator drives on a worker's own host. `fake` drives none: it applies nothing,
+# so a job on it needs no route token. adb drives both Android routes alike until a worker reads
+# which kinds it holds (BE-0518).
+_ACTUATOR_ROUTES: dict[str, tuple[Route, ...]] = {
+    "xcuitest": ("ios-simulator",),
+    "adb": ("android-emulator", "android-device"),
+    "playwright": ("web",),
 }
 
 
@@ -189,7 +190,7 @@ def worker_routes(
             said) counts as yes, so a worker that served real-device jobs before still does.
         appium: Whether it drives an Appium grid, which is the live WebDriver route.
     """
-    routes = {_ACTUATOR_ROUTE[a] for a in actuators if a in _ACTUATOR_ROUTE}
+    routes = {r for a in actuators for r in _ACTUATOR_ROUTES.get(a, ())}
     if real_devices is not False and "xcuitest" in actuators:
         routes.add("ios-device")
     if appium:

@@ -39,6 +39,7 @@ from ._functions import (
     get_prop_cmd,
     install_cmd,
     is_emulator_serial,
+    is_emulator_target,
     launch_cmd,
     launcher_component,
     location_broadcast_cmd,
@@ -293,6 +294,15 @@ class Env:
     # the broadcast. Home and the status bar need no app at all (BE-0478). BajutsuAndroid's push
     # receiver delivers `push` (BE-0498). Android has no keychain, so `clearKeychain` alone is not
     # wired (see `platform_lifecycle.device_control.android_device_control`).
+
+    def is_emulator(self) -> bool:
+        """Whether this target is an emulator rather than a physical device (BE-0518).
+
+        The rule the device facts read too (`is_emulator_target`).
+        """
+        return is_emulator_target(
+            self.serial, lambda prop: self._run(get_prop_cmd(self.serial, prop)).strip()
+        )
 
     def has_emulator_console(self) -> bool:
         """Whether `emu geo fix` can reach this target: a local emulator's serial on an emulator image.

@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0518](BE-0518-android-routes-and-kind-any-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0518") |
+| 実装 PR | [#2611](https://github.com/bajutsu-e2e/bajutsu/pull/2611)（単位 1〜2） |
 | トピック | Platform support |
 | 関連 | [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md) |
 <!-- /BE-METADATA -->
@@ -226,12 +227,25 @@ iOS と Android の全ジョブがキューに残るためです。
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 単位 1：Config のキー、読み込み時の検査、`--kind`
-- [ ] 単位 2：ルートの分割と Android の実機の印
+- [x] 単位 1：Config のキー、読み込み時の検査、`--kind`
+- [x] 単位 2：ルートの分割と Android の実機の印
 - [ ] 単位 3：`any` の候補の選択
 - [ ] 単位 4：振り分けのトークン
 - [ ] 単位 5：Worker の宣言と検出
 - [ ] 単位 6：文書とデモ
+
+ログは次のとおりです。
+
+2026-11-28：単位 1 と単位 2 をまとめて実装しました（[#2611](https://github.com/bajutsu-e2e/bajutsu/pull/2611)）。`runsOn.android.kind` には `emulator`、`device`、
+リスト、`any` を書け、デフォルトは `emulator` です。`any` は両プラットフォームで使え、読み込み時に検査
+します。Android の run は、デバイスを操作する前にそのデバイスがエミュレーターかどうかを読み取り、種類が
+違えば止まります。`--kind` は Android のターゲットも受け付けます。`android` のルートは
+`android-emulator` と `android-device` に分かれ、`when.routes: [android]` は引き続き両方を指します。
+単位 3 が入るまで、`any` のターゲットの run はデバイスを操作する前に止まり、`--kind` を求めます。単位 5
+が入るまで、adb のワーカーは Android の 2 つのルートを両方とも広告します。Device Farm の showcase の
+設定には `kind: device` を加え、ルート名や `--kind` を説明するページも変更に合わせて更新しました。
+単位 4 が入るまでは、アップグレードの前に Android のキューを空にしてください。`cap:android:` のトークンを
+持ったまま待っているジョブは、アップグレード後のどのワーカーにも一致せず、エラーにならないまま待ち続けます。
 
 ## 参考
 
