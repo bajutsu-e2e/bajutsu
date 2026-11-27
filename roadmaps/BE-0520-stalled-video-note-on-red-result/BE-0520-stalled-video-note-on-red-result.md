@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-stalled-video-note-on-red-result-ja.md)
+**English** · [日本語](BE-0520-stalled-video-note-on-red-result-ja.md)
 
-# BE-XXXX — Record a stalled video start on the result of a scenario that did not pass
+# BE-0520 — Record a stalled video start on the result of a scenario that did not pass
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-stalled-video-note-on-red-result.md) |
+| Proposal | [BE-0520](BE-0520-stalled-video-note-on-red-result.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0520") |
 | Topic | Platform support |
 | Related | [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
 <!-- /BE-METADATA -->

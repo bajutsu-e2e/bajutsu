@@ -1,14 +1,14 @@
-[English](BE-XXXX-stalled-video-note-on-red-result.md) · **日本語**
+[English](BE-0520-stalled-video-note-on-red-result.md) · **日本語**
 
-# BE-XXXX — 成功しなかったシナリオの結果に、動画の開始が確認できなかったことを記録する
+# BE-0520 — 成功しなかったシナリオの結果に、動画の開始が確認できなかったことを記録する
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-XXXX](BE-XXXX-stalled-video-note-on-red-result-ja.md) |
+| 提案 | [BE-0520](BE-0520-stalled-video-note-on-red-result-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0520") |
 | トピック | Platform support |
 | 関連 | [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md)、[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) |
 <!-- /BE-METADATA -->
