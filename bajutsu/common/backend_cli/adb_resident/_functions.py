@@ -50,6 +50,10 @@ _READ_MARK_HEADER = "X-Bajutsu-Read-Mark"
 # report it and on an app that opted no view in.
 _NATIVE_Z_HEADER = "X-Bajutsu-Native-Z"
 
+# The response header saying whether the server's settle closed on the tree it returns (BE-0505),
+# `true` or `false`, on `GET /source` and on a confirmed `POST /act`. An older server sends none.
+_SETTLED_HEADER = "X-Bajutsu-Settled"
+
 # The response header `POST /act` stamps when an accessibility event postdated the injection it just
 # made (BE-0339 Unit 5), carrying that event's device-clock time. Absent when the device saw none
 # within its budget — and absent from an older server that never waited at all — so its presence, and
@@ -245,11 +249,12 @@ def fetch_source(
             # rather than failing the read: the mark only ever tightens the wait.
             mark = _parse_mark(resp.getheader(_READ_MARK_HEADER))
             measured_z = _parse_native_z(resp.getheader(_NATIVE_Z_HEADER))
+            settled = _parse_settled(resp.getheader(_SETTLED_HEADER))
             # A truncated/garbled body (a mid-write device server) must degrade to the dump fallback,
             # not escape past the driver's AdbResidentError-only catch — whether it surfaces as a
             # UnicodeDecodeError (garbled bytes) or an http.client.HTTPException (IncompleteRead from
             # a short body, BadStatusLine/UnknownProtocol from a malformed status line).
-            return HierarchyRead(body.decode("utf-8"), mark, native_z=measured_z)
+            return HierarchyRead(body.decode("utf-8"), mark, native_z=measured_z, settled=settled)
     except TimeoutError as exc:
         raise AdbResidentTimeout(f"resident channel timed out on port {host_port}: {exc}") from exc
     except (OSError, UnicodeDecodeError, http.client.HTTPException) as exc:
@@ -557,13 +562,25 @@ def _act_read(resp: http.client.HTTPResponse, raw: bytes) -> HierarchyRead | Non
     if root is None:
         _warn_once("resident actuation returned an unparseable tree; reading again instead")
         return None
-    return HierarchyRead(text, mark, root=root, narrowed=narrowed, heads_up=banner)
+    return HierarchyRead(
+        text,
+        mark,
+        root=root,
+        narrowed=narrowed,
+        heads_up=banner,
+        settled=_parse_settled(resp.getheader(_SETTLED_HEADER)),
+    )
 
 
 def _warn_once(message: str) -> None:
     if message not in _warned:
         _warned.add(message)
         logger.warning(message)
+
+
+def _parse_settled(raw: str | None) -> bool | None:
+    """The settle header as a bool; None when absent or unrecognized, so an older server reads as before."""
+    return {"true": True, "false": False}.get(raw) if raw is not None else None
 
 
 def _parse_mark(raw: str | None) -> float | None:

@@ -21,6 +21,9 @@ class _Catchup:
     publishes an update. On the `uiautomator dump` fallback, which carries no mark, `actuation_mark` is
     None and the barrier falls back to the projection-changed-and-dwelt heuristic (`pre_key`/`key`/
     `since`) bounded by `deadline`.
+
+    The barrier gives up only once `deadline` has passed *and* `reads` reaches the driver's floor of
+    completed reads, so a slow host spends more wall-clock rather than getting fewer chances (BE-0505).
     """
 
     pre_key: StableKey  # the projection the screen had when the gesture fired
@@ -32,3 +35,4 @@ class _Catchup:
     )  # the device-clock mark taken before the gesture (None on the dump path)
     armed_at: float  # when the gesture fired — how long the barrier took is measured from here, and
     # `since` cannot stand in for it because the dwell logic overwrites that
+    reads: int = 0  # reads folded into this barrier since it was armed

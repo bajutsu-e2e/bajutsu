@@ -120,6 +120,7 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
     body = _MULTI_WINDOW
     status = 200
     mark: str | None = None  # the X-Bajutsu-Read-Mark header value, when set (BE-0332 Unit 3)
+    settled: str | None = None  # the X-Bajutsu-Settled header value, when set (BE-0505)
     clock = "12345"  # what GET /clock answers, a device-clock reading
     last_source_path: str | None = None  # the full GET /source target the client last sent
 
@@ -202,6 +203,8 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(payload)))
         if with_mark and self.mark is not None:
             self.send_header(adb_resident._READ_MARK_HEADER, self.mark)
+        if with_mark and self.settled is not None:
+            self.send_header(adb_resident._SETTLED_HEADER, self.settled)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -212,6 +215,7 @@ class _SourceHandler(http.server.BaseHTTPRequestHandler):
 def _serve_once(status: int = 200, mark: str | None = None) -> tuple[int, http.server.HTTPServer]:
     _SourceHandler.status = status
     _SourceHandler.mark = mark
+    _SourceHandler.settled = None  # opt in per test
     _SourceHandler.act_publish = (
         None  # opt in per test; a leaked value would confirm a publish here
     )
@@ -233,6 +237,7 @@ class _ActTreeHandler(_SourceHandler):
 
     act_body: bytes = _MULTI_WINDOW.encode("utf-8")
     act_mark: str | None = "98765"
+    act_settled: str | None = None
 
     def do_POST(self) -> None:
         type(self).last_act_path = self.path
@@ -242,6 +247,8 @@ class _ActTreeHandler(_SourceHandler):
         self.send_header(adb_resident._ACT_PUBLISH_HEADER, "98765")
         if self.act_mark is not None:
             self.send_header(adb_resident._READ_MARK_HEADER, self.act_mark)
+        if self.act_settled is not None:
+            self.send_header(adb_resident._SETTLED_HEADER, self.act_settled)
         self.end_headers()
         self.wfile.write(self.act_body)
 
@@ -548,6 +555,40 @@ def test_fetch_source_omits_since_when_not_requested() -> None:
         assert _SourceHandler.last_source_path == "/source?budgetMs=3500"
     finally:
         server.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"), [("true", True), ("false", False), (None, None), ("maybe", None)]
+)
+def test_fetch_source_reads_the_settle_header(header: str | None, expected: bool | None) -> None:
+    # BE-0505: an absent or unrecognized value is the older server, never "unsettled".
+    port, server = _serve_once()
+    _SourceHandler.settled = header
+    try:
+        assert adb_resident.fetch_source(port).settled is expected
+    finally:
+        server.shutdown()
+
+
+def test_act_reply_tree_carries_the_settle_header() -> None:
+    port, server = _serve_act_tree()
+    _ActTreeHandler.act_settled = "false"
+    try:
+        read = _tap(port).read
+        assert read is not None
+        assert read.settled is False
+    finally:
+        _ActTreeHandler.act_settled = None
+        server.shutdown()
+
+
+def test_the_resident_server_read_keeps_the_settle_flag() -> None:
+    # `_read` rebuilds the `HierarchyRead` to attach the narrowed tree; the flag must survive that.
+    server = adb_resident.ResidentServer("serial-1")
+    server._read_with_recovery = lambda since: HierarchyRead(  # type: ignore[method-assign]
+        _MULTI_WINDOW, settled=False
+    )
+    assert server._read(None).settled is False
 
 
 def test_fetch_source_without_the_mark_header_yields_a_none_mark() -> None:

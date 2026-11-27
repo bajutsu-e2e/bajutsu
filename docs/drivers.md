@@ -633,8 +633,11 @@ The driver records the frame projection the screen had beforehand after each of 
 - **every `tap`, `longPress`, or `doubleTap`, device-side or coordinate alike** (BE-0332)
 
 The next coordinate resolve then re-reads until the projection moves off that record. The projection must then hold still briefly.
-A wall-clock budget bounds the wait.
-The driver announces spending it in full.
+A wall-clock budget bounds the wait, together with a floor of four completed reads.
+The later of the two ends it.
+A slow machine thus spends more wall-clock and keeps its chances to observe the tree
+([BE-0505](../roadmaps/BE-0505-adb-read-lag-attempt-bound/BE-0505-adb-read-lag-attempt-bound.md)).
+The driver announces spending both in full.
 
 A tap can move the layout too: it can open a menu, expand a row, or advance a stepper.
 The actuator that
@@ -780,6 +783,31 @@ is not.
   Both `GET /source` and `POST /act` settle this way, so the agreeing pair is a re-fetched tree.
 - Android 13 and earlier keep the earlier settle, because no supported call clears the cache there.
   A static target still settles in two dumps.
+
+**The device says whether its settle closed** ([BE-0505](../roadmaps/BE-0505-adb-read-lag-attempt-bound/BE-0505-adb-read-lag-attempt-bound.md)).
+The settle can run out of its dump cap or wait budget.
+It ends unclosed if its last two dumps then disagree on which nodes exist and where.
+It also ends unclosed without a second dump to compare, or on a dump that does not parse.
+
+- The resident server stamps the `X-Bajutsu-Settled` header, `true` or `false`.
+  Both `GET /source` and a confirmed `POST /act` carry it.
+- The settle behind that header leaves SystemUI out of its comparison.
+  The heads-up banner's place is the one exception.
+  The status bar's clock thus cannot hold it open. The body still carries the SystemUI nodes.
+- Settled means that two dumps agree on which nodes exist and where.
+  Text that never stops changing, such as a running timer, does not make a tree unsettled.
+- On a screen whose nodes never stop moving, each bare read costs up to four server requests.
+- A bare read (`wait`, `assert`) of an unsettled tree reads again, up to three more times.
+  It then takes the latest tree and logs a warning.
+- The settle poll never takes an unsettled read as proof of rest.
+  The poll ends on the later of its eight-second deadline and four polling reads.
+- The driver does not adopt an unsettled tree from a gesture's reply.
+- A server sending no header keeps the earlier behavior, as does the `uiautomator dump` fallback.
+
+The guarantee against a slow machine covers a tree that catches up within those four reads.
+A faster machine fits more reads inside the same eight seconds.
+A later publish can thus still reach the faster one alone.
+The `scroll` loop and the `extract` poll still take `read_lag()` as seconds.
 
 The Android fault-injection lane checks both outcomes on an Android 14 emulator.
 Its fixture withholds the event by construction: a tap on one view changes what a second view reports.
