@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
-| 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位）、[#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574)（最終更新日時） |
+| 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位）、[#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574)（最終更新日時）、[#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595)（スパイク） |
 | トピック | Integration with external services |
 | 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -169,7 +169,7 @@ artifact のリンクは、サインインを必要とする URL なので、コ
 
 [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) で、コンポジット action の `post-evidence` を追加しました。含むのは、標準ライブラリだけの描画処理と固定コメントのクライアントです。ログの切り詰めとサイズの保護、zip と zip にしない 6 つのアップロードのスロットも含みます。ほかに、`bajutsu-e2e` の `artifact-url` 出力、ゲートの対象化、ドキュメント、web E2E ジョブへの導入があります。スパイクは実際の GitHub 上での実行が必要なため、未完了のままです。
 
-SPIKE-PR では、使い捨てのブランチでスパイクを実施しました。
+[#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595) では、使い捨てのブランチでスパイクを実施しました。
 GitHub は、PNG の artifact を `inline` で、WebM と MP4 の artifact を `attachment` で配信しました。
 サインイン済みの読み手が iPhone の Safari で開くと、PNG は表示され、MP4 はブラウザー上で見られました。
 WebM では、表示するかダウンロードするかを Safari が尋ねました。

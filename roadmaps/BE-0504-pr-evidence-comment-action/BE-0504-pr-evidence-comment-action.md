@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
-| Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike), [#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574) (last update time) |
+| Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike), [#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574) (last update time), [#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595) (spike) |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -315,11 +315,12 @@ Log:
   truncation, the size guard, and the zip and six non-zipped upload slots. The PR adds the
   `artifact-url` output of `bajutsu-e2e`, gate coverage, docs, and adoption in the web E2E job. The
   spike needs a real GitHub run and stays open.
-- SPIKE-PR — ran the spike on a scratch branch. GitHub sent a PNG artifact as `inline`, and sent
-  WebM and MP4 artifacts as `attachment`. A signed-in reader used Safari on iPhone. That reader
-  saw the PNG and watched the MP4 in the browser. For the WebM, Safari asked whether to view or
-  download. We did not check desktop browsers. Re-running the job did not collide with the earlier artifact names,
-  so the action gains no `overwrite` input. `docs/reporting.md` records the result.
+- [#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595) — ran the spike on a scratch branch.
+  GitHub sent a PNG artifact as `inline`, and sent WebM and MP4 artifacts as `attachment`. A
+  signed-in reader used Safari on iPhone. That reader saw the PNG and watched the MP4 in the
+  browser. For the WebM, Safari asked whether to view or download. We did not check desktop
+  browsers. Re-running the job did not collide with the earlier artifact names. The action thus
+  gains no `overwrite` input. `docs/reporting.md` records the result.
 
 ## References
 
