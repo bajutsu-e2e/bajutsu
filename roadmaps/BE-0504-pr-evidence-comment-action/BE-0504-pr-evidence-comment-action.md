@@ -7,9 +7,9 @@
 |---|---|
 | Proposal | [BE-0504](BE-0504-pr-evidence-comment-action.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
-| Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike), [#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574) (last update time) |
+| Implementing PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) (all units except the spike), [#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574) (last update time), [#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595) (spike) |
 | Topic | Integration with external services |
 | Related | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
@@ -21,8 +21,9 @@ This item adds a composite GitHub Action, `post-evidence`. It posts the result o
 stopped it, and the reason. It links to the evidence that the action uploads as GitHub Actions
 artifacts. One artifact holds the whole run as a zip. The action also covers the first three failing
 scenarios with separate, non-zipped artifacts. Those hold the failing step's screenshot and the
-scenario's video, so a browser shows each directly. A rerun updates the same comment and adds no new
-one.
+scenario's video. A reader thus gets each file without a zip. The screenshot displays in the browser.
+GitHub sends a video as a download, which a browser may still play. A rerun updates the same comment
+and adds no new one.
 
 The action reads `manifest.json` from Bajutsu. When a run left no manifest, it reads
 `<sid>/result.json` instead. It reads nothing else. It installs no Bajutsu package and calls no
@@ -53,12 +54,12 @@ cannot close the gap by itself.
 GitHub offers no in-browser view of a zip's contents. The `report.html` page carries its Cascading
 Style Sheets (CSS) and JavaScript inline. It refers to its screenshots and videos by relative path.
 A page uploaded alone opens with broken images. A single image or video file has no such problem,
-because a browser displays it natively.
+because it refers to no other file.
 
 The observable difference is the pull request page. After a failing run, one comment appears. It
 states which scenarios did not pass and why. A reviewer clicks a screenshot link and sees the image.
-A video link plays the video, with no download and no unzip. The whole run stays one click away as a
-zip. A rerun edits the comment in place. The conversation holds one comment per job, never one per run. A reader still needs read access to the repository. Artifact Uniform Resource Locators (URLs)
+A video link delivers the video with no unzip, and the browser decides whether to play or save it.
+The whole run stays one click away as a zip. A rerun edits the comment in place. The conversation holds one comment per job, never one per run. A reader still needs read access to the repository. Artifact Uniform Resource Locators (URLs)
 require sign-in.
 
 ## Detailed design
@@ -180,14 +181,13 @@ link point to the shortened file. The comment is the place that says so.
 
 ### Viewing the evidence in a browser
 
-A browser natively displays a non-zipped Portable Network Graphics (PNG), MP4, or WebM file. It needs
-no JavaScript to do so. That property makes the per-file artifacts the main path for a quick look.
-GitHub's documentation does not say how every browser handles a non-zipped artifact. A browser may
-display the file or download it. For that reason the first work item is a
-spike. The spike uploads a
-screenshot and a video with `archive: false`. It records what a signed-in reader sees. If a file type
-downloads instead of displaying, the link still delivers the file. The documentation states the
-result.
+A non-zipped artifact reaches the reader as a single file, with no unzip. That property makes the
+per-file artifacts the main path for a quick look. GitHub's documentation does not say how every
+browser handles such an artifact. The first work item was thus a spike. The spike uploaded a Portable
+Network Graphics (PNG) screenshot and two videos with `archive: false`. GitHub sent the screenshot as
+`inline` and the MP4 and WebM videos as `attachment`. A video thus arrives as a download, which a
+browser may still play. The link delivers the file either way. The [Progress](#progress) log and
+`docs/reporting.md` record what a signed-in reader saw.
 
 The action does not upload `report.html` as a non-zipped artifact. Its relative image and video paths would
 break, as the Motivation describes. A reader who wants the full report downloads the whole-run
@@ -298,7 +298,7 @@ its web E2E workflow as the first user. CI thus exercises the comment shape on r
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Spike: upload a screenshot and a video with `archive: false`. Record whether a signed-in reader sees them displayed or downloaded. Also record whether a job rerun conflicts with the previous artifact names. Add an `overwrite` input if it does.
+- [x] Spike: upload a screenshot and a video with `archive: false`. Record whether a signed-in reader sees them displayed or downloaded. Also record whether a job rerun conflicts with the previous artifact names. Add an `overwrite` input if it does.
 - [x] Renderer: `manifest.json` to Markdown. It covers escaping and truncation. It also covers the no-manifest case that reads `<sid>/result.json`. The script uses the standard library alone. Its unit tests run in `make test`. Bajutsu's own manifest writer generates the fixtures. A schema change thus breaks the tests in its own PR.
 - [x] Comment client: find-or-update the sticky comment with paging. It also covers the job-summary write and the warn-and-exit-zero path.
 - [x] Size control: the staged copy with log truncation and the `size-warn-mb` guard. It also covers `retention-days` and `compression-level`. Unit tests cover the truncation, the guard, and truncation without a manifest.
@@ -315,6 +315,12 @@ Log:
   truncation, the size guard, and the zip and six non-zipped upload slots. The PR adds the
   `artifact-url` output of `bajutsu-e2e`, gate coverage, docs, and adoption in the web E2E job. The
   spike needs a real GitHub run and stays open.
+- [#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595) — ran the spike on a scratch branch.
+  GitHub sent a PNG artifact as `inline`, and sent WebM and MP4 artifacts as `attachment`. A
+  signed-in reader used Safari on iPhone. That reader saw the PNG and watched the MP4 in the
+  browser. For the WebM, Safari asked whether to view or download. We did not check desktop
+  browsers. Re-running the job did not collide with the earlier artifact names. The action thus
+  gains no `overwrite` input. `docs/reporting.md` records the result.
 
 ## References
 

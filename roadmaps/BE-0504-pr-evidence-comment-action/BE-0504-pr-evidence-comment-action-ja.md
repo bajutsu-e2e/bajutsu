@@ -7,16 +7,16 @@
 |---|---|
 | 提案 | [BE-0504](BE-0504-pr-evidence-comment-action-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0504") |
-| 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位）、[#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574)（最終更新日時） |
+| 実装 PR | [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530)（スパイクを除くすべての単位）、[#2574](https://github.com/bajutsu-e2e/bajutsu/pull/2574)（最終更新日時）、[#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595)（スパイク） |
 | トピック | Integration with external services |
 | 関連 | [BE-0099](../BE-0099-webhook-run-notifications/BE-0099-webhook-run-notifications.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri.md), [BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export.md), [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-実行を終えた `bajutsu run` の結果を、プルリクエストまたは Issue に投稿する composite GitHub Action `post-evidence` を追加します。コメントには、失敗したシナリオ、失敗したステップ、その理由を載せます。さらに、この Action が GitHub Actions の artifact としてアップロードした証跡へのリンクを載せます。実行全体は、zip の artifact 1つにまとめます。失敗した最初の3シナリオについては、失敗ステップのスクリーンショットとシナリオの動画を、zip にしない別々の artifact としてもアップロードします。ブラウザーが、それぞれをそのまま表示します。再実行したときは、新しいコメントを増やさず、同じコメントを更新します。
+実行を終えた `bajutsu run` の結果を、プルリクエストまたは Issue に投稿する composite GitHub Action `post-evidence` を追加します。コメントには、失敗したシナリオ、失敗したステップ、その理由を載せます。さらに、この Action が GitHub Actions の artifact としてアップロードした証跡へのリンクを載せます。実行全体は、zip の artifact 1つにまとめます。失敗した最初の3シナリオについては、失敗ステップのスクリーンショットとシナリオの動画を、zip にしない別々の artifact としてもアップロードします。zip を展開せずに、各ファイルを受け取れます。スクリーンショットはブラウザーに表示されます。動画は GitHub がダウンロードとして配信しますが、ブラウザーによっては再生できます。再実行したときは、新しいコメントを増やさず、同じコメントを更新します。
 
 この Action が Bajutsu から読むのは、`manifest.json` と、マニフェストが残らなかった実行での `<sid>/result.json` だけです。Bajutsu のパッケージを入れず、Bajutsu のコマンドも呼びません。Bajutsu の実行ディレクトリを出力するリポジトリなら、`uses:` を1行足すだけで使えます。
 
@@ -26,9 +26,9 @@ Bajutsu のチェックが赤くなったプルリクエストで、レビュア
 
 [BE-0500](../BE-0500-run-set-github-check/BE-0500-run-set-github-check-ja.md) は、`serve` を運用するチームにとってこの状況を改善します。ただし、失敗したシナリオと理由を並べるチェックにとどまります。スクリーンショット、動画、レポートへのリンクは載りません。`serve` の運用と GitHub App も必要です。[BE-0161](../BE-0161-ctrf-report-export/BE-0161-ctrf-report-export-ja.md) は、外部のレポーターが表示できる結果の表を出力します。証跡そのものをプルリクエストへ添える経路は、どちらにもありません。[BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md) はオブジェクトストレージへ証跡をアップロードします。しかし、アップロードしたファイルをプルリクエスト上でレビュアーに見せる仕組みはありません。
 
-実行全体の zip は、大きさの上限がなく膨らみます。Bajutsu はデバイスログ（iOS は `simctl log stream --level debug`、Android は `logcat`）を、そのまま `device.log` へ流し込みます。上限はありません。レポートに埋め込むのは末尾2000行だけですが、ディスク上のファイルは全行を残します。動画は zip にしても縮みません。MP4 と WebM はすでに圧縮されているからです。zip の artifact だけでは、この隔たりを埋められません。GitHub には、zip の中身をブラウザーで見る機能がありません。`report.html` は Cascading Style Sheets (CSS) と JavaScript をインラインで持ちます。一方、スクリーンショットと動画は相対パスで参照します。単独でアップロードすると、画像が壊れた状態で開きます。画像や動画のファイル単体なら、この問題は起きません。ブラウザーがそのまま表示するからです。
+実行全体の zip は、大きさの上限がなく膨らみます。Bajutsu はデバイスログ（iOS は `simctl log stream --level debug`、Android は `logcat`）を、そのまま `device.log` へ流し込みます。上限はありません。レポートに埋め込むのは末尾2000行だけですが、ディスク上のファイルは全行を残します。動画は zip にしても縮みません。MP4 と WebM はすでに圧縮されているからです。zip の artifact だけでは、この隔たりを埋められません。GitHub には、zip の中身をブラウザーで見る機能がありません。`report.html` は Cascading Style Sheets (CSS) と JavaScript をインラインで持ちます。一方、スクリーンショットと動画は相対パスで参照します。単独でアップロードすると、画像が壊れた状態で開きます。画像や動画のファイル単体なら、この問題は起きません。ほかのファイルを参照しないからです。
 
-導入後に確かめられる違いは、プルリクエストのページに現れます。失敗した実行のあとには、コメントが1件付きます。コメントは、どのシナリオがなぜ失敗したかを述べます。レビュアーは、スクリーンショットのリンクをクリックすれば画像を見られ、動画のリンクをクリックすれば再生できます。ダウンロードや展開は要りません。実行全体は、zip として1クリックの先に残ります。再実行するとコメントが書き換わるので、会話に残るコメントは、実行ごとではなくジョブごとに1件です。読み手にはリポジトリの読み取り権限が要ります。artifact の Uniform Resource Locator (URL) は、サインインを必要とするからです。
+導入後に確かめられる違いは、プルリクエストのページに現れます。失敗した実行のあとには、コメントが1件付きます。コメントは、どのシナリオがなぜ失敗したかを述べます。レビュアーは、スクリーンショットのリンクをクリックすれば画像を見られ、動画のリンクをクリックすれば動画を受け取れます。再生するか保存するかは、ブラウザーによって変わります。どちらの場合も展開は要りません。実行全体は、zip として1クリックの先に残ります。再実行するとコメントが書き換わるので、会話に残るコメントは、実行ごとではなくジョブごとに1件です。読み手にはリポジトリの読み取り権限が要ります。artifact の Uniform Resource Locator (URL) は、サインインを必要とするからです。
 
 ## 詳細設計
 
@@ -99,7 +99,7 @@ zip にしないアップロードは、1つの artifact につき1ファイル�
 
 ### ブラウザーで証跡を見る
 
-Portable Network Graphics (PNG)、MP4、WebM を zip にせずアップロードすると、ブラウザーがそのまま表示します。表示に JavaScript は要りません。この性質のため、ファイルごとの artifact を、素早く確かめる主な経路とします。ただし、zip にしない artifact の配信方法は、GitHub のドキュメントに書かれていません。ブラウザーによって表示になるのか、ダウンロードになるのかは不明です。そこで、最初の作業項目はスパイクです。スクリーンショットと動画を `archive: false` でアップロードし、サインイン済みの読み手に何が見えるかを記録します。表示されずダウンロードになるファイル形式があっても、リンクからファイルは届きます。その結果は、ドキュメントに明記します。
+zip にしない artifact は、展開せずに 1 つのファイルとして読み手に届きます。この性質のため、ファイルごとの artifact を、素早く確かめる主な経路とします。ただし、こうした artifact をブラウザーがどう扱うかは、GitHub のドキュメントに書かれていません。そこで、最初の作業項目をスパイクにしました。スパイクでは、Portable Network Graphics (PNG) のスクリーンショットと 2 つの動画を `archive: false` でアップロードしました。GitHub は、スクリーンショットを `inline` で、MP4 と WebM の動画を `attachment` で配信しました。つまり動画はダウンロードとして届き、ブラウザーによっては再生もできます。どちらの場合も、リンクからファイルは届きます。サインイン済みの読み手に何が見えたかは、[進捗](#進捗)の記録と `docs/ja/reporting.md` に残しています。
 
 この Action は、`report.html` を zip にしない artifact としてはアップロードしません。動機で述べたとおり、相対パスの画像と動画が壊れるからです。レポート全体を見たい読み手は、実行全体の zip をダウンロードして展開し、`report.html` を開きます。これはオフラインでも動きます（[BE-0060](../BE-0060-run-report-zip-export/BE-0060-run-report-zip-export-ja.md)）。
 
@@ -155,7 +155,7 @@ artifact のリンクは、サインインを必要とする URL なので、コ
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] スパイク：スクリーンショットと動画を `archive: false` でアップロードし、サインイン済みの読み手に表示されるかダウンロードになるかを記録する。あわせて、ジョブを再実行したとき、前回の試行の artifact 名と衝突するかを記録し、衝突するなら `overwrite` の入力を足す。
+- [x] スパイク：スクリーンショットと動画を `archive: false` でアップロードし、サインイン済みの読み手に表示されるかダウンロードになるかを記録する。あわせて、ジョブを再実行したとき、前回の試行の artifact 名と衝突するかを記録し、衝突するなら `overwrite` の入力を足す。
 - [x] 描画処理：`manifest.json` から Markdown を作る。エスケープと切り詰めを含む。`<sid>/result.json` を読むマニフェストがない場合も扱う。標準ライブラリのスクリプトと、`make test` で動くユニットテストにする。フィクスチャーは Bajutsu 自身のマニフェストの書き出し処理で生成する。スキーマを変える PR で、テストが壊れるようにする。
 - [x] コメントのクライアント：ページをたどる固定コメントの検索と更新、ジョブサマリーへの書き込み、警告を出して終了コード0で終わる経路。
 - [x] サイズの制御：ログを切り詰めるステージ済みのコピー、`size-warn-mb` の保護、`retention-days`、`compression-level`。ユニットテストの対象は、切り詰めと保護、マニフェストなしでの切り詰め。
@@ -168,6 +168,14 @@ artifact のリンクは、サインインを必要とする URL なので、コ
 変更の記録は次のとおりです。
 
 [#2530](https://github.com/bajutsu-e2e/bajutsu/pull/2530) で、コンポジット action の `post-evidence` を追加しました。含むのは、標準ライブラリだけの描画処理と固定コメントのクライアントです。ログの切り詰めとサイズの保護、zip と zip にしない 6 つのアップロードのスロットも含みます。ほかに、`bajutsu-e2e` の `artifact-url` 出力、ゲートの対象化、ドキュメント、web E2E ジョブへの導入があります。スパイクは実際の GitHub 上での実行が必要なため、未完了のままです。
+
+[#2595](https://github.com/bajutsu-e2e/bajutsu/pull/2595) では、使い捨てのブランチでスパイクを実施しました。
+GitHub は、PNG の artifact を `inline` で、WebM と MP4 の artifact を `attachment` で配信しました。
+サインイン済みの読み手が iPhone の Safari で開くと、PNG は表示され、MP4 はブラウザー上で見られました。
+WebM では、表示するかダウンロードするかを Safari が尋ねました。
+デスクトップのブラウザーは確かめていません。
+ジョブを再実行しても、前回の artifact 名とは衝突しなかったため、`overwrite` の入力は足していません。
+結果は `docs/ja/reporting.md` に記録しました。
 
 ## 参考
 
