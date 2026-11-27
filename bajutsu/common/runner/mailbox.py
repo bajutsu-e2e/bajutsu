@@ -4,7 +4,8 @@ The deterministic parse/match/selection logic is pure (`bajutsu.common.mailbox`)
 place that touches the network. The registry is keyed on transport `kind`, so adding one is *register
 an adapter*, not *branch the runner*; it ships `imap` and `pop3` on the standard library (BE-0514).
 Every call opens its own connection, because a POP3 connection shows a fixed snapshot of the inbox.
-Neither adapter deletes mail or marks it as read.
+Neither adapter deletes mail. Neither marks mail as read, except where a POP3 server refuses `TOP`
+and the `RETR` fallback runs.
 
 Error messages name what failed without ever quoting the password or message content.
 """
@@ -44,6 +45,10 @@ _DEFAULT_PORTS = {
 _MAX_SOCKET_TIMEOUT = 30.0
 # Saying goodbye must not extend a call whose budget is spent.
 _MAX_CLOSE_TIMEOUT = 5.0
+# POP3 reads a whole message with `TOP n <this many body lines>` rather than `RETR`: a server that
+# shares flags with IMAP marks a `RETR` message read, and the email step must leave mail unread
+# (BE-0514). Servers support TOP without always listing it under CAPA, so the adapter tries it.
+_WHOLE_MESSAGE = 1_000_000_000
 
 
 def register(kind: str, adapter: MailboxAdapter) -> None:
@@ -359,9 +364,29 @@ class _Pop3Mailbox:
         out: list[MailboxMessage] = []
         with self._session(deadline) as conn:
             numbers = self._numbers(conn, deadline)
+            use_top = True
             for message_id in sorted(set(ids) & numbers.keys()):
-                deadline.arm(conn)
-                raw = b"\r\n".join(conn.retr(numbers[message_id])[1])
+                number = numbers[message_id]
+                lines: list[bytes] | None = None
+                if use_top:
+                    deadline.arm(conn)
+                    try:
+                        lines = conn.top(number, _WHOLE_MESSAGE)[1]
+                    except poplib.error_proto as e:
+                        # Only a `-ERR` status (bytes) means the server lacks this optional command.
+                        # poplib's str errors ("line too long", EOF) leave the stream mid-response,
+                        # where a RETR would misread the leftover lines.
+                        if not (
+                            e.args
+                            and isinstance(e.args[0], bytes)
+                            and e.args[0].startswith(b"-ERR")
+                        ):
+                            raise
+                        use_top = False
+                if lines is None:
+                    deadline.arm(conn)
+                    lines = conn.retr(number)[1]
+                raw = b"\r\n".join(lines)
                 out.append(parse_message(raw, message_id=message_id, received=date_header(raw)))
         return out
 
