@@ -116,7 +116,7 @@ exhaust the dump cap on a quiet app screen. The narrowing stays in the compariso
 driver reads the heads-up banner off that decor before it strips the decor out. A device dropping it
 from the wire would leave the notification-banner guard with nothing to read. The comparison keeps the
 place of the banner's two nodes for the same guard. An exit counts as closed when the last two dumps
-agree on node identity and bounds. Text that keeps changing is thus not unsettled. The device narrows its
+agree on node identity and bounds. A tree whose text keeps changing is thus not unsettled. The device narrows its
 own comparison that way for `/act`. The `/act` reply carries the header too. The tree a confirmed
 gesture brings back goes through the same helper under a tighter budget. `HierarchyRead` holds the
 answer once for both paths. The header is additive. An older server sends none, and the driver reads a missing header
