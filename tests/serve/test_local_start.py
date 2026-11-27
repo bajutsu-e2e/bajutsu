@@ -426,6 +426,29 @@ def test_serve_switches_a_local_start_to_the_fastapi_transport(
     assert "using --asgi" in capsys.readouterr().out
 
 
+def test_serve_starts_group_event_delivery_for_its_sinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from bajutsu.serve.group_notify import GroupSink, runtime
+
+    started: list[object] = []
+    sinks = {"github": GroupSink(name="github", format="github-check")}
+
+    class _Server:
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr(srv, "make_asgi_server", lambda *_a, **_k: _Server())
+    monkeypatch.setattr(srv, "_configure_oplog", lambda _state: None)
+    monkeypatch.setattr(runtime, "start_group_notify", lambda state, env: started.append(state))
+    _scn, cfg, runs = project(tmp_path)
+
+    srv.serve("127.0.0.1", 8799, None, cfg, runs, root=tmp_path, group_sinks=sinks)
+
+    assert len(started) == 1
+    assert started[0].group_sinks == sinks  # type: ignore[attr-defined]
+
+
 def test_serve_sweeps_stale_run_imports_at_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

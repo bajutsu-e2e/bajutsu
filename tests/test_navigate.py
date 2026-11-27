@@ -96,7 +96,7 @@ _BAD = {"navigate": "javascript:alert(1)"}
     ids=["setup", "cleanup", "interrupt", "if-else", "forEach", "app", "group"],
 )
 def test_every_phase_and_container_is_checked(body: dict[str, object]) -> None:
-    # Also pins `_iter_steps`, which the `http` extractBody check now shares.
+    # Also pins `_iter_steps`, which other load-time checks share.
     with pytest.raises(ValueError, match="only opens http/https"):
         Scenario.model_validate({"name": "s", "steps": [], **body})
 

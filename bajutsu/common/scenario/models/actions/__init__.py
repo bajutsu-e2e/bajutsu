@@ -33,6 +33,7 @@ from .navigate import Navigate, navigate_url_problem
 from .open_url import OpenUrl, open_url_problem
 from .otp import Otp
 from .override_status_bar import OverrideStatusBar
+from .parse_json import ParseJson, ParseJsonField
 from .paste import Paste
 from .pinch import Pinch
 from .push import Push
@@ -86,6 +87,8 @@ __all__ = [
     "OpenUrl",
     "Otp",
     "OverrideStatusBar",
+    "ParseJson",
+    "ParseJsonField",
     "Paste",
     "Pinch",
     "Push",

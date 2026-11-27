@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import Index, false
+from sqlalchemy import JSON, Index, false
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ._functions import _created_at
@@ -25,4 +27,9 @@ class JobGroup(Base):
     digest: Mapped[str | None] = mapped_column(default=None)
     # The first failing job cancels the group's unfinished jobs (BE-0499).
     fail_fast: Mapped[bool] = mapped_column(default=False, server_default=false())
+    # The sinks the request selected, its target, and the repository its machine session verified
+    # (BE-0500). SQL NULL, not JSON null, when it selected none, so a lock can filter on it.
+    notify: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON(none_as_null=True).with_variant(JSONB(none_as_null=True), "postgresql"), default=None
+    )
     created_at: Mapped[datetime] = _created_at()

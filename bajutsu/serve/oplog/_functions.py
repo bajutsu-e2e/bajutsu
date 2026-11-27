@@ -73,6 +73,15 @@ EVENTS: frozenset[str] = frozenset(
         "worker.job.started",
         "worker.job.finished",
         "artifact.upload.failed",
+        # A group event could not reach its sink (BE-0500): a failed delivery that will retry, and
+        # a row given up on, after its last attempt or because no process defines its sink.
+        "group_event.retry",
+        "group_event.abandoned",
+        # A whole delivery pass failed, most likely on the store; the loop runs the next pass.
+        "group_event.pass_failed",
+        # A delivery yielded its claim to another process's, so the yielded row stays due for a later
+        # pass. Its own name, since the retry and abandonment events count failures.
+        "group_event.contended",
     }
 )
 

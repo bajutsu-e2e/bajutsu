@@ -51,7 +51,7 @@
     "write-good": true,
     "stop-words": true,
     "unexpanded-acronym": {
-      "ignore_acronyms": ["MECE", "XXXX"]
+      "ignore_acronyms": ["MECE", "XXXX", "HTML", "HTTP", "JSON", "UTC", "XML", "YAML"]
     },
     "abbr-within-parentheses": true,
     "alex": true,

@@ -672,6 +672,14 @@ def test_step_eval_shows_every_written_value() -> None:
     assert driver.actions == []
 
 
+def test_step_parse_json_shows_every_written_value() -> None:
+    session, _ = _session()
+    line = session.dispatch(
+        """step {parseJson: {from: '{"a": "x", "b": 2}', extract: [{var: a, path: a}, {var: b, path: b}]}}"""
+    )
+    assert line == ["ran step: parseJson (vars.a = 'x', vars.b = '2')"]
+
+
 def test_step_eval_on_a_secret_fails_before_printing_anything() -> None:
     # The shell binds no `${secrets.*}`, so a secret input is an unbound token: the step fails as a
     # command error the shell reports and moves on from, without writing or printing a value

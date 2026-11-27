@@ -9,11 +9,12 @@ from typing import Any
 from pydantic import Field, ValidationError, model_validator
 
 from bajutsu.common.scenario import Interrupt, tip_kit_entry
+from bajutsu.common.scenario.step_walk import nested_steps
 
 from ._model import _Model
 from .ai_settings import AiSettings
 from .evidence import Evidence
-from .hooks import Hooks, _nested_steps
+from .hooks import Hooks
 from .paths import Paths
 from .platform.registry import schema_for, validate_group
 from .services import Services
@@ -132,7 +133,7 @@ class TargetConfig(_Model):
             if not isinstance(entry, Interrupt):
                 continue
             conditions = [entry.condition]
-            for step in _nested_steps(entry.steps):
+            for step in nested_steps(entry.steps):
                 conditions.extend(step.assert_ or [])
                 if step.if_ is not None:
                     conditions.append(step.if_.condition)

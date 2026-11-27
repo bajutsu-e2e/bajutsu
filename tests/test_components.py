@@ -81,17 +81,17 @@ EXTRACT_DUP_PARAMS = load_component(
     """
 params: [name1, name2]
 steps:
-  - http:
-      url: "https://api.test/data"
-      extractBody:
+  - parseJson:
+      from: "${vars.body}"
+      extract:
         - { var: "${params.name1}", path: "a" }
         - { var: "${params.name2}", path: "b" }
 """
 )
 
 
-def test_use_expansion_re_checks_extract_body_var_collision() -> None:
-    # BE-0440: the component's two entries use distinct `${params.*}` tokens, so the raw
+def test_use_expansion_re_checks_parse_json_var_collision() -> None:
+    # BE-0516: the component's two entries use distinct `${params.*}` tokens, so the raw
     # component parses cleanly on its own — the collision exists only once `expand_components`
     # substitutes both to the same caller-supplied name, which the load-time `Scenario` validator
     # never sees (it runs before `use` is expanded).

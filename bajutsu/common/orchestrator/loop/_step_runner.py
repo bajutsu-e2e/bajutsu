@@ -17,6 +17,10 @@ from bajutsu.common.orchestrator.actions import (
     _step_label,
 )
 from bajutsu.common.orchestrator.actions.handlers.eval_ import record_eval
+from bajutsu.common.orchestrator.actions.handlers.parse_json import (
+    record_parse_json,
+    target_names,
+)
 from bajutsu.common.orchestrator.evidence_rules import _collect_captures, _kind_of, _run_extract
 from bajutsu.common.orchestrator.substitution import _interp_step, _resolve_system_alert
 from bajutsu.common.orchestrator.types import (
@@ -1009,6 +1013,13 @@ class _StepRunner:
             # state to record — adding an `after.png` later would pair pixels from then with a tree
             # from now.
             return f"step {idx} ({kind}): {outcome.reason}"
+        # Read before the action: a `parseJson` may overwrite a variable one of its own `var`
+        # tokens names, and the secret marking below needs the names it actually wrote (BE-0516).
+        parse_json_names = (
+            target_names(step.parse_json, self.state.bindings)
+            if step.parse_json is not None
+            else []
+        )
         # `before` is needed only for a `screenChanged` policy. Reuse the previous step's
         # post-step tree when we have one (same device state — nothing actuated in between), so
         # the read drops to (near) zero across the scenario; only the first step, or a step after
@@ -1526,6 +1537,17 @@ class _StepRunner:
                 )
                 if outcome.ok:
                     outcome.generated = produced
+            # Marked before the capture for the same reason. Unlike `eval`, the values are not
+            # recorded on the outcome: they are often read out of a response no mask knows, such as
+            # a login token.
+            if step.parse_json is not None:
+                record_parse_json(
+                    step.parse_json,
+                    parse_json_names,
+                    self.state.bindings,
+                    self.state.derived,
+                    completed=outcome.ok,
+                )
 
             # Evidence only, recorded whatever the verdict: `ok` and `reason` never see it, so a
             # passing step carries no failure text (BE-0474).

@@ -1125,6 +1125,100 @@ Removing an `allowedRepositories` entry stops *new* sessions and leaves live one
 configuration binds at the exchange. Revoking is the second half of that operator duty. Rename,
 transfer, or delete a listed repository, and you remove the entry **and** revoke what it minted.
 
+### Publishing a run-set as a GitHub check run (optional, BE-0500)
+
+A GitHub Actions job can dispatch a `run-set` group and finish at once. `serve` then writes the
+group's result to the pull request as one check run. The check's default name is
+`bajutsu / <target>`. The check moves from queued to in progress to its conclusion as the group
+does. Without this feature, the job polls `GET /api/run-set/<groupId>` until the group concludes.
+The runner sits idle all that time.
+
+The feature needs three prerequisites:
+
+- a CI job that authenticates with its OpenID Connect (OIDC) token (see the previous section).
+  The check goes to the repository that the machine session verified;
+- a GitHub App with the **Checks: write** permission, installed on each repository it publishes to;
+- the App's credentials in the environment of `serve`. These are the variables the Git config
+  source reads ([GitHub App](#github-app)), and the `githubapp` extra.
+  A check resolves the App's installation from its repository and ignores
+  `BAJUTSU_GITHUB_APP_INSTALLATION_ID`.
+
+**Define a sink.** A sink is a named destination that a request selects. Its `format` names the
+adapter that delivers to it. Write the sinks in a file outside every org's config:
+
+```yaml
+groupNotify:
+  - name: github
+    format: github-check
+    checkName: "bajutsu / {target}"   # optional; {target} expands to the group's target
+```
+
+**Start `serve` with the file.** Pass the path with `--group-notify-config`.
+`BAJUTSU_GROUP_NOTIFY_CONFIG` works too. `serve` refuses to start, exiting with code 2, in these cases:
+
+- the file cannot be read, or is not a well-formed sink file;
+- a sink names a format other than `github-check`. The message names the sink;
+- two sinks share a name;
+- a `github-check` sink exists and `BAJUTSU_GITHUB_APP_ID` or the private key is unset;
+- `BAJUTSU_GITHUB_APP_PRIVATE_KEY_FILE` names no readable file.
+
+**Select the sink in the request.** The workflow adds a `notify` list to `POST /api/run-set`. A
+selection names a sink and never a URL. No request can then make `serve` call an address that
+the operator did not define. A `github-check` selection also needs `headSha`, the commit to check:
+
+```yaml
+      - name: Dispatch the scenarios and let serve report the result
+        run: |
+          curl -sSf -b cookies.txt -X POST "$BAJUTSU_URL/api/run-set" \
+            -H 'Content-Type: application/json' \
+            -d "{\"target\": \"demo\", \"groupKey\": \"gha/$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT\",
+                 \"notify\": [{\"sink\": \"github\", \"headSha\": \"$HEAD_SHA\"}]}"
+        env:
+          BAJUTSU_URL: https://bajutsu.example.com
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+```
+
+Pass `github.event.pull_request.head.sha`, not `GITHUB_SHA`. On a `pull_request` event,
+`GITHUB_SHA` names the merge commit GitHub creates for the run. A check run on that commit does not
+appear on the pull request.
+
+**Check the result.** The pull request's checks list shows `bajutsu / demo` as queued.
+The check turns to in progress when a worker leases the group's first
+job. The check ends with the group's `conclusion`: `success`, `failure`, or `cancelled`. The
+title counts the scenarios that did not pass, such as `3 of 40 scenarios did not pass`. The
+summary lists each of those scenarios:
+
+| Outcome | When | Reason shown |
+|---|---|---|
+| failed | the job ended `done` with exit code 1 | the first failure line of the run's manifest |
+| error | the job ended `done` with another exit code | the exit code and its meaning, such as a usage error (2) |
+| worker lost | the job's lease expired on its last attempt | the attempt count |
+| worker error | a worker reported an error | the error's first line |
+| cancelled | the job ended cancelled for a reason other than `failFast` | none |
+| skipped | the group's `failFast` stop cancelled the job | none |
+
+Every reason is text a worker or a scenario reported, so the adapter escapes it. A reported error
+cannot split a table row or render Markdown. The summary stops before GitHub's limit of 65,535
+characters and counts the rows it left out.
+
+**A re-run takes over the earlier check.** A re-run of the workflow registers a new group.
+`GITHUB_RUN_ATTEMPT` changes the group key. The new group takes over the earlier attempt's
+finished check run. No second check appears beside it.
+
+**Delivery never touches the verdict.** Each event lands in the store transaction that causes it. A restart of `serve` thus never loses an event. A loop on `serve`
+delivers the events in order, after the group's verdict exists. A delivery that does not succeed
+retries with a backoff that grows from 15 seconds to 15 minutes. After eight attempts, about half
+an hour, `serve` gives the event up. The `group_event.abandoned` log line records the event.
+The `bajutsu_group_events_abandoned_total` metric counts it. The group, its jobs, and its runs
+stay as they were.
+
+Two replicas can claim the same event at once. Each then yields its claim, and the event stays
+due for a later pass. A yield counts no attempt. A pair of replicas that keeps colliding leaves
+a `group_event.contended` log line as the sole trace.
+
+**Roll out a new sink within 46 minutes.** A replica claims the events of its own sinks alone. A replica abandons an event whose sink no file on it defines. The replica
+waits until the event is about 46 minutes old. Update every replica's sink file within that time.
+
 ### API keys for a script
 
 This section is optional. A script on a developer's machine cannot complete a browser sign-in, and it
@@ -1133,8 +1227,9 @@ holds no token from a CI platform. An administrator can issue it an **API key** 
 key as `Authorization: Bearer <key>` and acts as that organization. A key needs a database, so without
 one the three routes below answer `409`.
 
-**A key opens no route yet.** It reaches only the routes on an allowlist that ships empty, and each
-feature that adds a key-callable route adds it there. Any other route answers `403`.
+**A key opens one route today.** It reaches only the routes on an allowlist, and each feature that
+adds a key-callable route adds it there. The allowlist names
+[`POST /api/runs/import`](#importing-a-finished-run) alone. Any other route answers `403`.
 
 | Request | What it does |
 |---|---|
@@ -1707,12 +1802,11 @@ The route needs the `editor` role. The credential the script can send depends on
 
 | Server | Script sign-in |
 |---|---|
-| Shared token, no OAuth | Yes, with the shared token |
-| OAuth | Not yet: such a server accepts the shared token for worker routes alone |
+| Shared token, no OAuth | Yes, with the shared token, or with an `editor` API key when the server has a database |
+| OAuth | Yes, with an `editor` API key. Such a server accepts the shared token for worker routes alone |
 
-Organization-scoped API keys
-([BE-0509](../roadmaps/BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md)) will close that
-gap.
+An [API key](#api-keys-for-a-script) imports into the organization that it was issued for. A
+`viewer` key gets `403`.
 
 The server reserves the run id before it writes any file. The history leaves out the reservation
 until the import finishes. An import that stops midway leaves the reservation behind. A retry from
@@ -1895,7 +1989,8 @@ across processes. A line looks like:
 ```
 
 The `event` field names a stable event (`run.dispatched`, `quota.rejected`, `worker.job.started`,
-`worker.job.finished`, `artifact.upload.failed`, `server.startup_warning`, `oauth.login`,
+`worker.job.finished`, `artifact.upload.failed`, `group_event.retry`, `group_event.abandoned`,
+`server.startup_warning`, `oauth.login`,
 `oauth.denied`, …) so you can grep and alert on it.
 
 `server.startup_warning` also carries a `check` field (e.g. `admin_teams_empty`) naming which startup
@@ -1941,6 +2036,7 @@ state it already tracks (the jobs table and lease/heartbeat records) — so it a
 | `bajutsu_oldest_in_flight_seconds` | gauge | Seconds since the oldest in-flight job was enqueued (includes time it waited in the queue) — a slow / stuck-run signal. |
 | `bajutsu_unroutable_jobs` | gauge | Queued jobs no live worker can serve — their required capabilities match no worker's advertised set ([capability routing](#capability-routed-queues-be-0166)). A rising count means "add a worker with the missing capability." |
 | `bajutsu_max_concurrent` | gauge | Configured cap on concurrent jobs (0 = unlimited). |
+| `bajutsu_group_events_abandoned_total{format}` | counter | Group events this process gave up delivering, by sink format ([GitHub check runs](#publishing-a-run-set-as-a-github-check-run-optional-be-0500)). `unknown` counts an event whose sink no file on this process defines. |
 
 `/metrics` is **not** a public surface: it sits behind the same auth gate as the rest of serve
 (BE-0051), so with a token configured a scraper must send `Authorization: Bearer <token>`. The

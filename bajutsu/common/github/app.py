@@ -49,10 +49,33 @@ def installation_token(
     Resolves the installation from the repo when *installation_id* is not pinned, then exchanges the
     App JWT for the installation token. *fetch* is injectable so the flow tests offline.
     """
+    return repository_installation_token(
+        app_id,
+        private_key_pem,
+        f"{spec.owner}/{spec.repo}",
+        installation_id=installation_id,
+        fetch=fetch,
+    )
+
+
+def repository_installation_token(
+    app_id: str,
+    private_key_pem: str,
+    repository: str,
+    *,
+    installation_id: str | None = None,
+    fetch: Fetch | None = None,
+) -> str:
+    """A short-lived installation access token for the `owner/repo` *repository* (BE-0500).
+
+    The repository-keyed form of `installation_token`, for a caller that holds a repository name
+    rather than a config source: a group's check run goes to the repository its machine session
+    verified.
+    """
     jwt = _app_jwt(app_id, private_key_pem)
     get = fetch if fetch is not None else _fetch
     if not installation_id:
-        body = get(f"{_API}/repos/{spec.owner}/{spec.repo}/installation", jwt, "GET")
+        body = get(f"{_API}/repos/{repository}/installation", jwt, "GET")
         installation_id = str(_json_field(body, "id"))
     body = get(f"{_API}/app/installations/{installation_id}/access_tokens", jwt, "POST")
     return str(_json_field(body, "token"))
@@ -112,6 +135,16 @@ def _app_jwt(app_id: str, private_key_pem: str, *, now: int | None = None) -> st
     signing_input = f"{header}.{claims}".encode("ascii")
     signature = key.sign(signing_input, padding.PKCS1v15(), hashes.SHA256())
     return f"{header}.{claims}.{_b64url(signature)}"
+
+
+def check_app_key(app_id: str, private_key_pem: str) -> None:
+    """Sign one throwaway App JWT, offline, so a key that cannot sign fails where it is configured.
+
+    Raises:
+        GitHubAccessError: `cryptography` is missing, or the key is malformed, passphrase-protected,
+            or not RSA.
+    """
+    _app_jwt(app_id, private_key_pem)
 
 
 def _b64url(data: bytes) -> str:

@@ -1093,8 +1093,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   out of scope here ([BE-0015](../roadmaps/BE-0015-web-ui-public-hosting/BE-0015-web-ui-public-hosting.md)).
 - **Organization-scoped API keys (BE-0509).** On a deployment with a database, an admin issues a key
   for one organization with `POST /api/orgs/<slug>/keys`, lists them with `GET`, and revokes one with
-  `DELETE /api/orgs/<slug>/keys/<id>`. A key opens only the routes on an allowlist, which is empty
-  today. See [API keys for a script](self-hosting.md#api-keys-for-a-script).
+  `DELETE /api/orgs/<slug>/keys/<id>`. A key opens only the routes on an allowlist, which names
+  `POST /api/runs/import` alone today. See [API keys for a script](self-hosting.md#api-keys-for-a-script).
 - **CSRF + security headers (BE-0051).** When a token is set, a state-changing POST whose `Origin`
   doesn't match the `Host` is rejected (defense-in-depth atop the `SameSite=Strict` session cookie);
   non-browser clients (no `Origin`) are unaffected. Every response carries `X-Content-Type-Options:
@@ -1273,7 +1273,8 @@ bajutsu serve [--port 8765] [--config bajutsu.config.yaml] [--root .] [--runs ru
   only warns. Needs the `s3` or `gcs` extra **on the server** (the worker needs neither). See
   [self-hosting](self-hosting.md) for the topology.
 - **`POST /api/runs/import` takes a run that finished elsewhere.** The route needs the `editor` role.
-  It accepts a zip of one run, which `scripts/upload_run.py` builds and sends
+  An `editor` API key reaches it, so a script can import into a server with OAuth. The route accepts
+  a zip of one run, which `scripts/upload_run.py` builds and sends
   ([BE-0510](../roadmaps/BE-0510-serve-run-import/BE-0510-serve-run-import.md)).
   [Self-hosting](self-hosting.md#importing-a-finished-run) covers the checks and the answers.
 - **Every job runs on a worker (BE-0449).** `serve` queues every kind of job for a

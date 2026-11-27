@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 import zlib
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -13,12 +15,14 @@ from ._shared import (
     DEFAULT_LEASE_MAX_ATTEMPTS,
     DEFAULT_RUN_LIMIT,
     IMPORTING_STATUS,
+    LEASE_EXPIRED,
     TERMINAL_JOB_STATUSES,
     cancelled_job_result,
     job_failed,
 )
 from .api_key_record import ApiKeyRecord
 from .concurrency_caps import ConcurrencyCaps
+from .group_event_claim import GroupEventClaim
 from .job_metrics import JobMetrics
 from .leased_job import LeasedJob
 from .org_record import OrgRecord
@@ -30,7 +34,13 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import InstrumentedAttribute, Session
     from sqlalchemy.sql.elements import ColumnElement
 
-    from bajutsu.serve.server.models import JobGroup, JobRecord
+    from bajutsu.serve.server.models import GroupEvent, JobGroup, JobRecord
+
+# The delivery loop's logger, so a yielded claim reads beside the retries and abandonments (BE-0500).
+_contended_log = logging.getLogger("bajutsu.serve.group_notify")
+
+# The order one group and sink's events deliver in (BE-0500).
+_RANKS = {"queued": 0, "started": 1, "completed": 2}
 
 # A lease with no heartbeat for this long is treated as a dead worker and reclaimed; a job that is
 # reclaimed this many times is failed rather than re-queued forever (BE-0016 worker liveness). The
@@ -85,7 +95,15 @@ def _reclaimed_outcome(
     if cancelling:
         return {"status": "cancelled", "result": cancelled_job_result(job_id)}
     if exhausted:
-        return {"status": "failed", "result": {"error": f"lease expired after {attempts} attempts"}}
+        # `reason` lets a reader tell a lost worker from a reported error without parsing `error`.
+        return {
+            "status": "failed",
+            "result": {
+                "error": f"lease expired after {attempts} attempts",
+                "reason": LEASE_EXPIRED,
+                "attempts": attempts,
+            },
+        }
     return {"status": "queued"}
 
 
@@ -833,6 +851,7 @@ class SqlRepository:
         compat_key: str | None,
         jobs: Sequence[QueuedJob],
         fail_fast: bool = False,
+        notify: dict[str, Any] | None = None,
     ) -> str | None:
         from sqlalchemy.exc import IntegrityError
         from sqlalchemy.orm import Session
@@ -845,8 +864,17 @@ class SqlRepository:
             if held is not None:
                 return held.id if held.digest == digest else None
             session.add(
-                JobGroup(id=group_id, org_id=org_id, key=key, digest=digest, fail_fast=fail_fast)
+                JobGroup(
+                    id=group_id,
+                    org_id=org_id,
+                    key=key,
+                    digest=digest,
+                    fail_fast=fail_fast,
+                    notify=notify,
+                )
             )
+            if notify:
+                session.add_all(_group_event_rows(group_id, notify, "queued"))
             session.add_all(
                 JobRecord(
                     id=job.id,
@@ -892,9 +920,15 @@ class SqlRepository:
             row = session.get(JobGroup, group_id)
             if row is None:
                 return None
-            return {"id": row.id, "org_id": row.org_id, "key": row.key, "fail_fast": row.fail_fast}
+            return {
+                "id": row.id,
+                "org_id": row.org_id,
+                "key": row.key,
+                "fail_fast": row.fail_fast,
+                "notify": row.notify,
+            }
 
-    def group_jobs(self, group_id: str) -> list[dict[str, Any]]:
+    def group_jobs(self, group_id: str, *, include_spec: bool = False) -> list[dict[str, Any]]:
         from sqlalchemy import func, select
         from sqlalchemy.orm import Session
 
@@ -902,16 +936,17 @@ class SqlRepository:
 
         # Jobs of one request often share a `created_at` second on SQLite; ids are the registry's
         # counter, so ordering by length then text keeps "9" ahead of "10".
+        columns = [JobRecord.id, JobRecord.status, JobRecord.result, JobRecord.cancel_reason]
+        keys = ("id", "status", "result", "cancel_reason") + (("spec",) if include_spec else ())
+        if include_spec:
+            columns.append(JobRecord.spec)
         query = (
-            select(JobRecord.id, JobRecord.status, JobRecord.result, JobRecord.cancel_reason)
+            select(*columns)
             .where(JobRecord.group_id == group_id)
             .order_by(JobRecord.created_at, func.length(JobRecord.id), JobRecord.id)
         )
         with Session(self._engine) as session:
-            return [
-                {"id": i, "status": status, "result": result, "cancel_reason": reason}
-                for i, status, result, reason in session.execute(query)
-            ]
+            return [dict(zip(keys, row, strict=True)) for row in session.execute(query)]
 
     def max_job_id(self) -> int:
         # Pulls every job id into Python to find the max — fine for a once-per-boot startup query,
@@ -1150,6 +1185,11 @@ class SqlRepository:
                 for row in session.scalars(query).all()
                 for claimed in self._claim_row(session, row, worker_id, advertised)
             ]
+            if leased:
+                # One `started` per lease transaction rather than per row (BE-0500): the event is
+                # per group, and the unique index still absorbs a later lease of the same group. A
+                # plain job (`_claim_plain`) belongs to no group, so it records none.
+                _record_group_event(session, group_id, "started")
             session.commit()
             return leased
 
@@ -1481,7 +1521,7 @@ class SqlRepository:
         max_attempts: int = DEFAULT_LEASE_MAX_ATTEMPTS,
         on_stopped: Callable[[list[str]], None] | None = None,
     ) -> list[str]:
-        from sqlalchemy import delete, select
+        from sqlalchemy import delete, or_, select
         from sqlalchemy.orm import Session
 
         from bajutsu.serve.server.models import JobGroup, JobRecord, WorkerRecord
@@ -1508,26 +1548,30 @@ class SqlRepository:
                 # one delayed heartbeat stall queue service for every worker.
                 scan = scan.with_for_update(skip_locked=True)
             expired = session.execute(scan).all()
-            failing = [
+            ending = [
                 job_id
                 for job_id, attempts, cancelling in expired
-                if attempts + 1 >= max_attempts and not cancelling
+                if attempts + 1 >= max_attempts or cancelling
             ]
-            fail_fast = (
+            locking = (
                 set(
                     session.scalars(
                         select(JobRecord.id)
                         .join(JobGroup, JobGroup.id == JobRecord.group_id)
-                        .where(JobRecord.id.in_(failing), JobGroup.fail_fast.is_(True))
+                        .where(
+                            JobRecord.id.in_(ending),
+                            or_(JobGroup.fail_fast.is_(True), JobGroup.notify.is_not(None)),
+                        )
                     )
                 )
-                if failing
+                if ending
                 else set()
             )
             for job_id, previous_attempts, cancelling in expired:
-                if job_id in fail_fast:
-                    # Its failure stops the group, which takes the group's lock before any job
-                    # row; this transaction already holds every scanned row (BE-0499).
+                if job_id in locking:
+                    # Its end may stop the group (BE-0499) or complete it (BE-0500), and both take
+                    # the group's lock before any job row; this transaction already holds every
+                    # scanned row.
                     deferred.append((job_id, previous_attempts))
                     continue
                 status = _reclaim_row(
@@ -1539,7 +1583,7 @@ class SqlRepository:
         stopped: list[str] = []
         for job_id, previous_attempts in deferred:
             with Session(self._engine) as session:
-                group_id = self._lock_fail_fast_group(session, job_id)
+                locked = self._lock_group(session, job_id)
                 # Re-read: an earlier deferred job's stop may have flagged this one, a bundle-mate.
                 cancelling = bool(
                     session.scalar(select(JobRecord.cancel_requested).where(JobRecord.id == job_id))
@@ -1547,8 +1591,11 @@ class SqlRepository:
                 status = _reclaim_row(
                     session, job_id, previous_attempts, cancelling, cutoff, max_attempts
                 )
-                if status == "failed" and group_id is not None:
-                    stopped += _stop_group(session, group_id, job_id)
+                if locked is not None and status in TERMINAL_JOB_STATUSES:
+                    group_id, fail_fast = locked
+                    if status == "failed" and fail_fast:
+                        stopped += _stop_group(session, group_id, job_id)
+                    _note_group_completion(session, group_id)
                 session.commit()
         if stopped and on_stopped is not None:
             on_stopped(stopped)
@@ -1680,9 +1727,7 @@ class SqlRepository:
         if worker_id is not None:
             conditions.append(JobRecord.leased_by == worker_id)
         with Session(self._engine) as session:
-            group_id = (
-                self._lock_fail_fast_group(session, job_id) if job_failed(status, payload) else None
-            )
+            locked = self._lock_group(session, job_id, failing=job_failed(status, payload))
             finished = session.execute(
                 update(JobRecord)
                 .where(*conditions)
@@ -1690,30 +1735,51 @@ class SqlRepository:
                 .values(status=status, result=payload, handoff_pending=False, handoff_response=None)
             )
             applied = _rowcount(finished) == 1
-            stopped = _stop_group(session, group_id, job_id) if applied and group_id else []
+            stopped: list[str] = []
+            if applied and locked is not None:
+                group_id, fail_fast = locked
+                if fail_fast and job_failed(status, payload):
+                    stopped = _stop_group(session, group_id, job_id)
+                _note_group_completion(session, group_id)
             session.commit()
         if stopped and on_stopped is not None:
             on_stopped(stopped)
         return applied
 
-    def _lock_fail_fast_group(self, session: Session, job_id: str) -> str | None:
-        """The fail-fast group *job_id* belongs to, locked, or None when it has none.
+    def _lock_group(
+        self, session: Session, job_id: str, *, failing: bool = True
+    ) -> tuple[str, bool] | None:
+        """The group *job_id* belongs to and its fail-fast flag, locked, or None when nothing the
+        group does at this finish needs the lock.
 
-        Every stop takes the group's lock before any job row, so two failures of one group stop it
-        one after the other rather than each holding a row the other's stop waits on.
+        Every stop and every completion check takes the group's lock before any job row, so two
+        failures of one group stop it one after the other rather than each holding a row the other's
+        stop waits on, and the last two jobs to finish never both read the other as unfinished.
+        A fail-fast flag matters only to a *failing* finish, so a clean finish of a group that
+        notifies nobody takes no lock and serializes behind nothing (BE-0499 took none).
+
+        Args:
+            failing: Whether this finish is a failure. Pass the default where the job is cancelled
+                or reclaimed, which can complete a group whether or not it failed.
         """
-        from sqlalchemy import select
+        from sqlalchemy import or_, select
 
         from bajutsu.serve.server.models import JobGroup, JobRecord
 
         query = (
-            select(JobGroup.id)
+            select(JobGroup.id, JobGroup.fail_fast)
             .join(JobRecord, JobRecord.group_id == JobGroup.id)
-            .where(JobRecord.id == job_id, JobGroup.fail_fast.is_(True))
+            .where(
+                JobRecord.id == job_id,
+                or_(JobGroup.fail_fast.is_(True), JobGroup.notify.is_not(None))
+                if failing
+                else JobGroup.notify.is_not(None),
+            )
         )
         if self._engine.dialect.name != "sqlite":
             query = query.with_for_update(of=JobGroup)
-        return session.scalar(query)
+        row = session.execute(query).first()
+        return None if row is None else (row[0], bool(row[1]))
 
     def cancel_job(self, job_id: str) -> tuple[str, bool] | None:
         from sqlalchemy import func, update
@@ -1728,6 +1794,7 @@ class SqlRepository:
             # terminal status ends it at once.
             status = "queued"
             for _ in range(_CANCEL_ATTEMPTS):
+                locked = self._lock_group(session, job_id)
                 queued = session.execute(
                     update(JobRecord)
                     .where(JobRecord.id == job_id, JobRecord.status == "queued")
@@ -1738,6 +1805,8 @@ class SqlRepository:
                     )
                 )
                 if _rowcount(queued) == 1:
+                    if locked is not None:
+                        _note_group_completion(session, locked[0])
                     session.commit()
                     return "cancelled", True
                 leased = session.execute(
@@ -1828,6 +1897,228 @@ class SqlRepository:
                 return None
             run_arn = (row.batch_state or {}).get("run_arn")
             return str(run_arn) if run_arn is not None else None
+
+    def claim_group_events(
+        self, sinks: Collection[str], *, now: datetime, hold: timedelta, limit: int = 20
+    ) -> list[GroupEventClaim]:
+        if not sinks:
+            return []
+        claimed, yielded = self._claim_due_events(sinks, now, hold, limit)
+        if yielded and not claimed:
+            # Every claim yielded to another pass's. Look again, now that its commit is visible,
+            # rather than end the pass with other groups' events still due.
+            claimed, _ = self._claim_due_events(sinks, now, hold, limit)
+        return claimed
+
+    def _claim_due_events(
+        self, sinks: Collection[str], now: datetime, hold: timedelta, limit: int
+    ) -> tuple[list[GroupEventClaim], bool]:
+        """One scan-and-claim round of `claim_group_events`, and whether a claim yielded in it."""
+        from sqlalchemy import select, update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import GroupEvent, JobGroup
+
+        # ponytail: reads every pending row of the known sinks, up to twice per claim (once more when
+        # every claim yielded) rather than once per pass (`deliver_once` claims with `limit=1`);
+        # filter in SQL if a backlog makes this heavy.
+        scan = (
+            select(GroupEvent, JobGroup.notify, JobGroup.org_id)
+            .join(JobGroup, JobGroup.id == GroupEvent.group_id)
+            .where(GroupEvent.state == "pending", GroupEvent.sink.in_(list(sinks)))
+            .order_by(GroupEvent.occurred_at, GroupEvent.id)
+        )
+        claimed: list[GroupEventClaim] = []
+        with Session(self._engine) as session:
+            pending = [(row, notify or {}, org) for row, notify, org in session.execute(scan)]
+            first = _first_pending_rank(row for row, _, _ in pending)
+            # A queued row waits while another of the same commit and sink is claimed, since both
+            # may adopt or take over the same check run (BE-0500).
+            busy = {
+                _queued_key(row, notify)
+                for row, notify, _ in pending
+                if row.event == "queued" and _held(row, now)
+            }
+            for row, notify, org in pending:
+                if len(claimed) >= limit:
+                    break
+                if _RANKS[row.event] != first[(row.group_id, row.sink)] or _held(row, now):
+                    continue
+                if _as_utc(row.next_attempt_at) > now:
+                    continue
+                if row.event == "queued":
+                    key = _queued_key(row, notify)
+                    if key in busy:
+                        continue
+                    busy.add(key)
+                token = uuid.uuid4().hex
+                taken = session.execute(
+                    update(GroupEvent)
+                    .where(
+                        GroupEvent.id == row.id,
+                        GroupEvent.state == "pending",
+                        GroupEvent.claim_token.is_(None)
+                        if row.claim_token is None
+                        else GroupEvent.claim_token == row.claim_token,
+                    )
+                    .values(claimed_until=now + hold, claim_token=token)
+                    .execution_options(synchronize_session=False)
+                )
+                if _rowcount(taken) == 1:
+                    claimed.append(_claim(row, token, org, notify))
+            session.commit()
+            taken_count = len(claimed)
+            claimed = self._yield_contended(session, claimed, now)
+            references = _latest_references(session, claimed)
+        return (
+            [
+                replace(c, reference=references.get((c.group_id, c.sink), c.reference))
+                for c in claimed
+            ],
+            len(claimed) < taken_count,
+        )
+
+    @staticmethod
+    def _yield_contended(
+        session: Session, claimed: list[GroupEventClaim], now: datetime
+    ) -> list[GroupEventClaim]:
+        """Release each queued claim that sees another live claim on the same commit and sink.
+
+        Two passes can each see the other's row unclaimed and claim both. Each yields on seeing the
+        other, whatever the order: yielding by row order alone lets a pass that checks before the
+        other commits keep its row while the other keeps one too. When both yield, a later pass
+        retries, so at most one delivery per commit and sink adopts or takes over a check run.
+        """
+        from sqlalchemy import select, update
+
+        from bajutsu.serve import oplog
+        from bajutsu.serve.server.models import GroupEvent, JobGroup
+
+        queued = [c for c in claimed if c.event == "queued"]
+        if not queued:
+            return claimed
+        held = session.execute(
+            select(GroupEvent, JobGroup.notify)
+            .join(JobGroup, JobGroup.id == GroupEvent.group_id)
+            .where(
+                GroupEvent.state == "pending",
+                GroupEvent.event == "queued",
+                GroupEvent.claimed_until > now,
+            )
+        ).all()
+        order = {
+            row.id: (_as_utc(row.occurred_at), row.id, _queued_key(row, notify or {}))
+            for row, notify in held
+        }
+        released: set[str] = set()
+        for claim in queued:
+            mine = order.get(claim.id)
+            if mine is None:
+                continue
+            if any(key != claim.id and other[2] == mine[2] for key, other in order.items()):
+                session.execute(
+                    update(GroupEvent)
+                    .where(GroupEvent.id == claim.id, GroupEvent.claim_token == claim.token)
+                    .values(claimed_until=None, claim_token=None)
+                )
+                released.add(claim.id)
+                # A release leaves no attempt count and no retry time, so without this line a pair
+                # of replicas that keeps colliding would stall a check with a clean log.
+                oplog.log_event(
+                    _contended_log,
+                    "group_event.contended",
+                    f"yielded {claim.event} of group {claim.group_id} to another delivery",
+                    sink=claim.sink,
+                    group=claim.group_id,
+                )
+        session.commit()
+        return [c for c in claimed if c.id not in released]
+
+    def save_group_event_snapshot(
+        self, event_id: str, token: str, snapshot: dict[str, Any]
+    ) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import GroupEvent
+
+        with Session(self._engine) as session:
+            saved = session.execute(
+                update(GroupEvent)
+                .where(GroupEvent.id == event_id, GroupEvent.claim_token == token)
+                .values(snapshot=snapshot)
+            )
+            session.commit()
+            return _rowcount(saved) == 1
+
+    def settle_group_event(
+        self,
+        event_id: str,
+        token: str,
+        *,
+        state: str,
+        reference: str | None = None,
+        next_attempt_at: datetime | None = None,
+    ) -> bool:
+        from sqlalchemy import update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import GroupEvent
+
+        values: dict[str, Any] = {
+            "state": state,
+            "attempts": GroupEvent.attempts + 1,
+            "claimed_until": None,
+            "claim_token": None,
+        }
+        if reference is not None:
+            values["reference"] = reference
+        if next_attempt_at is not None:
+            values["next_attempt_at"] = next_attempt_at
+        with Session(self._engine) as session:
+            settled = session.execute(
+                update(GroupEvent)
+                .where(
+                    GroupEvent.id == event_id,
+                    GroupEvent.claim_token == token,
+                    GroupEvent.state == "pending",
+                )
+                .values(**values)
+            )
+            session.commit()
+            return _rowcount(settled) == 1
+
+    def abandon_orphan_group_events(self, sinks: Collection[str], *, before: datetime) -> list[str]:
+        from sqlalchemy import select, update
+        from sqlalchemy.orm import Session
+
+        from bajutsu.serve.server.models import GroupEvent
+
+        if not sinks:
+            # An empty `not_in` renders always-true, which would abandon every pending row.
+            return []
+        with Session(self._engine) as session:
+            orphans = session.execute(
+                select(GroupEvent.id, GroupEvent.sink).where(
+                    GroupEvent.state == "pending",
+                    GroupEvent.sink.not_in(list(sinks)),
+                    GroupEvent.occurred_at < before,
+                )
+            ).all()
+            abandoned = [
+                sink
+                for event_id, sink in orphans
+                if _rowcount(
+                    session.execute(
+                        update(GroupEvent)
+                        .where(GroupEvent.id == event_id, GroupEvent.state == "pending")
+                        .values(state="abandoned", claimed_until=None, claim_token=None)
+                    )
+                )
+                == 1
+            ]
+            session.commit()
+        return abandoned
 
     def metrics_snapshot(self) -> JobMetrics:
         from collections import defaultdict
@@ -2024,6 +2315,138 @@ def _stop_group(session: Session, group_id: str, job_id: str) -> list[str]:
     # A reclaim may have re-queued a sibling between the two passes, out of both; the leased pass
     # waited out any reclaim still holding a row, so this pass sees it.
     return stopped + cancel_queued()
+
+
+def _record_group_event(session: Session, group_id: str, event: str) -> None:
+    """Owe each sink *group_id* selected its *event*, in the caller's transaction (BE-0500).
+
+    An event a sink is already owed is left as it is, so a repeated call records nothing new.
+    """
+    from sqlalchemy import select
+
+    from bajutsu.serve.server.models import GroupEvent, JobGroup
+
+    notify = session.scalar(select(JobGroup.notify).where(JobGroup.id == group_id))
+    if not notify:
+        return
+    rows = [
+        {column: getattr(row, column) for column in _EVENT_COLUMNS}
+        for row in _group_event_rows(group_id, notify, event)
+    ]
+    if session.get_bind().dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert  # type: ignore[assignment]
+    session.execute(
+        insert(GroupEvent)
+        .values(rows)
+        .on_conflict_do_nothing(index_elements=["group_id", "sink", "event"])
+    )
+
+
+_EVENT_COLUMNS = (
+    "id",
+    "group_id",
+    "sink",
+    "event",
+    "occurred_at",
+    "state",
+    "attempts",
+    "next_attempt_at",
+)
+
+
+def _group_event_rows(group_id: str, notify: dict[str, Any], event: str) -> list[GroupEvent]:
+    """One pending *event* row per sink *notify* selects, due at once."""
+    from bajutsu.serve.server.models import GroupEvent
+
+    now = datetime.now(UTC)
+    return [
+        GroupEvent(
+            id=uuid.uuid4().hex,
+            group_id=group_id,
+            sink=selection["sink"],
+            event=event,
+            occurred_at=now,
+            state="pending",
+            attempts=0,
+            next_attempt_at=now,
+        )
+        for selection in notify["sinks"]
+    ]
+
+
+def _first_pending_rank(rows: Iterator[GroupEvent]) -> dict[tuple[str, str], int]:
+    """The earliest event still pending for each group and sink, which alone may deliver."""
+    first: dict[tuple[str, str], int] = {}
+    for row in rows:
+        key = (row.group_id, row.sink)
+        first[key] = min(first.get(key, _RANKS[row.event]), _RANKS[row.event])
+    return first
+
+
+def _held(row: GroupEvent, now: datetime) -> bool:
+    return row.claimed_until is not None and _as_utc(row.claimed_until) > now
+
+
+def _queued_key(row: GroupEvent, notify: dict[str, Any]) -> tuple[str, str, str]:
+    sha = next((s.get("headSha", "") for s in notify.get("sinks", []) if s["sink"] == row.sink), "")
+    return (str(notify.get("repository", "")), sha, row.sink)
+
+
+def _claim(row: GroupEvent, token: str, org: str, notify: dict[str, Any]) -> GroupEventClaim:
+    return GroupEventClaim(
+        id=row.id,
+        token=token,
+        group_id=row.group_id,
+        org_id=org,
+        sink=row.sink,
+        event=row.event,
+        occurred_at=_as_utc(row.occurred_at),
+        attempts=row.attempts,
+        reference=None,
+        snapshot=row.snapshot,
+        notify=notify,
+    )
+
+
+def _latest_references(
+    session: Session, claims: list[GroupEventClaim]
+) -> dict[tuple[str, str], str]:
+    """What the latest event of each claim's group and sink returned, for the next to address."""
+    from sqlalchemy import select
+
+    from bajutsu.serve.server.models import GroupEvent
+
+    if not claims:
+        return {}
+    rows = session.execute(
+        select(GroupEvent.group_id, GroupEvent.sink, GroupEvent.event, GroupEvent.reference).where(
+            GroupEvent.group_id.in_({c.group_id for c in claims}),
+            GroupEvent.reference.is_not(None),
+        )
+    ).all()
+    latest: dict[tuple[str, str], tuple[int, str]] = {}
+    for group_id, sink, event, reference in rows:
+        key = (group_id, sink)
+        if key not in latest or _RANKS[event] > latest[key][0]:
+            latest[key] = (_RANKS[event], reference)
+    return {key: ref for key, (_, ref) in latest.items()}
+
+
+def _note_group_completion(session: Session, group_id: str) -> None:
+    """Record `completed` once no job of *group_id* is unfinished; the caller holds its lock."""
+    from sqlalchemy import func, select
+
+    from bajutsu.serve.server.models import JobRecord
+
+    unfinished = session.scalar(
+        select(func.count())
+        .select_from(JobRecord)
+        .where(JobRecord.group_id == group_id, JobRecord.status.not_in(TERMINAL_JOB_STATUSES))
+    )
+    if unfinished == 0:
+        _record_group_event(session, group_id, "completed")
 
 
 def _capped_scopes(caps: ConcurrencyCaps, org_id: str, actor: str | None) -> list[tuple[int, str]]:

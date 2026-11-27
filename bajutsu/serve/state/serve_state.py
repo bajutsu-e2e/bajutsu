@@ -37,6 +37,7 @@ from .store_bundle import StoreBundle
 if TYPE_CHECKING:
     from cryptography.fernet import Fernet
 
+    from bajutsu.serve.group_notify import GroupSink
     from bajutsu.serve.server.db import ConcurrencyCaps, Repository
 
 Popen = Callable[..., Any]
@@ -164,6 +165,9 @@ class ServeState:
     # server backend assigns a SqlRepository only when BAJUTSU_DATABASE_URL is set, so behavior is
     # unchanged without one. Annotated as a string (lazy) so the default path never loads SQLAlchemy.
     repository: Repository | None = None
+    # The operator's group-notification sinks by name (BE-0500), which a `run-set` request selects
+    # from; empty unless `serve` was started with `--group-notify-config`.
+    group_sinks: dict[str, GroupSink] = field(default_factory=dict)
     simctl: _simctl.RunFn = (
         _simctl.real_run
     )  # runs `xcrun simctl …` (booting devices, listing them)

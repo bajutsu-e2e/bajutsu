@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
-| 実装 PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584)（単位 1〜3） |
+| 実装 PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584)（単位 1〜3）、[#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587)（単位 4 の道具） |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming-ja.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md) |
 <!-- /BE-METADATA -->
@@ -136,6 +136,16 @@ BE-0494 の空きメモリは、アプリのインストール後の 1 回の値
 | 適用の方法 | 代替案の方法を採りました。起動後に `launchctl disable` を実行し、再起動します。非公開の launchd ストアへ起動前に書き込む方法は、まだ試していません |
 | 実行する位置 | `bootstatus` の後に独立したステップとして実行します。起動済みの端末を再利用した場合も新しく起動した場合も同じなので、起動のアクションは変えていません |
 | 比較のための条件 | 手動で実行するときに `simulator-services: stock` を選ぶと、何も止めずに再起動だけを行います |
+
+[#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) で、作業単位 4 に使う道具を実装しました。計測そのものはまだ
+行っていないので、単位 4 は未完了のままです。追加した内容は、次の表のとおりです。
+
+| 項目 | 実装した内容と理由 |
+|---|---|
+| 計測用の実行 | 手動実行で `lanes: measure` を選ぶと、build、`run`、`actuation` のジョブだけが走ります。実行ごとに別の concurrency group を使うので、交互に走らせる 2 つの群が互いをキャンセルしません |
+| 復旧の件数 | 各ジョブのログから、復旧のための再起動とデバイスの交換を数えます。3 つ目の基準は両者の合計で判定します |
+| 変更の喪失 | ジョブの終了時に止まっているサービスが開始時より少なければ、変更を失ったジョブとして数えます。初期化を示すログ行がないので、この件数で代わりに捉えます |
+| 判定 | `scripts/ci_telemetry.py adoption` が 4 つの基準を当てはめ、`adopt`、`reject`、`trace`、`incomplete` のいずれかを出力します。変更を入れた側で通らなかったジョブがあれば `trace` になります |
 
 ## 参考
 

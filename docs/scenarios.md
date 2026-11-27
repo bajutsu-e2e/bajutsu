@@ -1213,12 +1213,13 @@ or more actions fails validation (`scenario/models/steps.py` `_one_action`).
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | terminate + relaunch the app (re-applying launch env/args, plus the given overrides), then wait until ready |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | override the simulated GPS location (`simctl location set`) |
 | `push` | `push: { payload: {...} }` | deliver a simulated push notification with this APNs (Apple Push Notification service) payload: `simctl push` on iOS, the in-app BajutsuAndroid push receiver on Android |
-| `http` | `http: { method?, url, headers?, body?, status?, timeout?, saveBody?, extractBody?: [{ var, path }] }` | issue an HTTP request (test-data setup / webhook / API); checks `status`, stores the body as `${vars.<saveBody>}`, and/or pulls named JSON fields into `${vars.<var>}` by `path`; `timeout` repeats the request until `status` ([below](#http-request-for-test-data-setup)) |
+| `http` | `http: { method?, url, headers?, body?, status?, timeout?, saveBody? }` | issue an HTTP request (test-data setup / webhook / API); checks `status` and stores the body as `${vars.<saveBody>}`; `timeout` repeats the request until `status` ([below](#http-request-for-test-data-setup)) |
 | `totp` | `totp: { secret, into?: { var }, name? }` | generate an RFC 6238 time-based one-time password (2FA) locally into `${vars.<var>}`; `name` also registers the secret for later `otp` steps |
 | `otp` | `otp: { from, into: { var }, minRemaining? }` | write the current code of the generator a `totp` step registered as `from` into `${vars.<var>}` ([below](#fetch-a-fresh-code-later-with-otp)) |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | poll the configured mailbox until a matching message arrives, extract a code into `${vars.<var>}` |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | compute a random or current-datetime value at run time into `${vars.<var>}` ([below](#generate-a-value-computed-at-run-time)) |
 | `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | split, join, filter, and otherwise transform a value the scenario already holds, into `${vars.*}` ([below](#eval-transform-a-value-held-in-a-variable)) |
+| `parseJson` | `parseJson: { from, extract: [{ var, path }] }` | copy the values at JSON paths in a text into `${vars.<var>}` ([below](#parsejson-read-values-out-of-json-text)) |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | a human takeover recorded during `record` (BE-0185); has no deterministic run-time equivalent, so it **fails loudly** at `run` time — never a silent pass |
 | `background` | `background: {}` | send the app to the background (Home button) |
 | `foreground` | `foreground: {}` | bring the step's target app to the front without terminating it; an app that is not running launches the way `relaunch` would, minus the terminate, then waits until ready. iOS and Android |
@@ -1846,14 +1847,6 @@ payload exceeds the limit fails at run time. Its message names the size and the 
 ```yaml
 - http: { method: POST, url: "https://api.test/seed", body: '{"n":1}', status: 200 }   # fails if status != 200
 - http: { url: "https://api.test/token", saveBody: token }   # vars.token ← response body text
-- http:
-    method: POST
-    url: "${secrets.API}/login"
-    body: '{"user": "e2e"}'
-    status: 200
-    extractBody:
-      - { var: token, path: "data.token" }        # vars.token ← the nested field, not the whole body
-      - { var: userId, path: "data.user.id" }
 - assert:
     - exists: { id: home.title }
 ```
@@ -1861,37 +1854,8 @@ payload exceeds the limit fails at run time. Its message names the size and the 
 `http` issues the request from the runner over HTTP, and does **not** go through the UI driver. A
 `status` mismatch fails the step, and `saveBody` stores the response body text as
 `${vars.<name>}` for later steps. Because it touches no device, `http` is the one device-independent
-action here.
-
-`extractBody` (BE-0440) sits beside `saveBody` on the same step, and a step may set either, both, or
-neither. Each entry parses the response body as JSON, walks a `path`, and stores the value it finds
-as `vars.<var>`. A `path` walks object keys and `[n]` (zero-based) array indexes:
-
-- An opening key carries no leading dot (`data.token`).
-- An index may follow a key or another index (`items[0].id`, `rows[0][1]`).
-- A path may open on an index when the body is itself a JSON array (`[0].id`).
-
-A string value lands as-is. Any other JSON value (number/boolean/null/object/array) renders as
-the same compact JSON text a captured event body field would (`42`, `true`, `null`, `{"id":42}`), so
-a later `${vars.*}` comparison reads the shape the API returned.
-
-These cases fail the step:
-
-- A response body that fails to parse as JSON fails with the JSON parser's own message.
-- A `path` that does not resolve fails with an error naming the `var` and the `path`. A path does not
-  resolve when it hits a missing key, an out-of-range index, a key applied to anything but an
-  object, or an index applied to anything but an array.
-- A malformed `path` (a negative or non-numeric index, an empty segment, a trailing dot) fails the
-  same way.
-
-`path` and `var` may themselves use `${vars.*}` / `${secrets.*}` substitution
-(`path: "items[${vars.i}].id"`). A value substituted into a `path` must supply exactly one path
-segment. An empty segment, or one carrying `.`, `[`, or `]`, fails the step, so a field name arriving
-from a response body can never redirect the walk to a different field.
-
-Two `extractBody` entries sharing one `var`, or an entry whose `var` equals `saveBody`, is a scenario
-load error. When only a substitution reveals the collision, it is a step failure at run time. A
-collision is never a silent overwrite decided by write order.
+action here. To read single values out of a JSON response, follow it with a
+[`parseJson`](#parsejson-read-values-out-of-json-text) step.
 
 #### Waiting for a status with `timeout`
 
@@ -1908,7 +1872,7 @@ Some data appears later, such as a code that arrives seconds after a button pres
 ```
 
 The step repeats the request about once a second until the response status equals `status`.
-`saveBody` and `extractBody` then read the body of that response alone.
+`saveBody` then stores the body of that response alone.
 
 - `timeout` without `status` is a scenario load error.
 - `timeout` requires the `GET` or `HEAD` method, because repeating another method can create data
@@ -1923,6 +1887,64 @@ The step repeats the request about once a second until the response status equal
 The status is the sole success condition. A service that answers 200 with an empty body before the
 data exists cannot use this wait. The wait also has no notion of new data, unlike `email`. To avoid a
 stale value, ask for something unique to the run. The `generate` step can build such an address.
+
+### `parseJson` (read values out of JSON text)
+
+```yaml
+- http:
+    method: POST
+    url: "${secrets.API}/login"
+    body: '{"user": "e2e"}'
+    status: 200
+    saveBody: login
+- parseJson:
+    from: "${vars.login}"
+    extract:
+      - { var: token, path: "data.token" }        # vars.token ← the nested field
+      - { var: userId, path: "data.user.id" }
+```
+
+`parseJson` reads the text in `from` as JavaScript Object Notation (JSON)
+([BE-0516](../roadmaps/BE-0516-parse-json-step/BE-0516-parse-json-step.md)). `from` takes the usual
+`${...}` substitution, so it can read any value the scenario holds. For each `extract` entry, the step
+walks `path` and stores the value it finds as `vars.<var>`. A `path` walks object keys and `[n]`
+(zero-based) array indexes:
+
+- An opening key carries no leading dot (`data.token`).
+- An index may follow a key or another index (`items[0].id`, `rows[0][1]`).
+- A path may open on an index when the text is itself a JSON array (`[0].id`).
+
+A string value lands as-is. Any other JSON value (number/boolean/null/object/array) renders as
+compact JSON text (`42`, `true`, `null`, `{"id":42}`).
+
+All entries resolve together, so one bad entry leaves every variable unchanged. These cases fail the
+step:
+
+- The text is not JSON, or is longer than 1,048,576 characters.
+- A `path` is malformed (a negative or non-numeric index, an empty segment, a trailing dot).
+- A `path` does not resolve: a missing key, an out-of-range index, a key applied to anything but an
+  object, or an index applied to anything but an array.
+- A `${...}` token has no value.
+
+The message names the entry and its `path` as written. It never quotes the text or a substituted
+value, either of which may be a secret.
+
+`path` and `var` may themselves use `${vars.*}` / `${secrets.*}` substitution
+(`path: "items[${vars.i}].id"`). A value substituted into a `path` must supply exactly one path
+segment. An empty segment, or one carrying `.`, `[`, or `]`, fails the step, so a field name arriving
+from a response body can never redirect the walk to a different field.
+
+Two entries sharing one `var` are a scenario load error. When only a substitution reveals the
+collision, it is a step failure at run time.
+
+A value counts as a secret when `from`, a `var`, or a `path` reads `${secrets.*}`. It also counts when
+one of them reads a variable that an earlier `eval` or `parseJson` marked secret. The run masks such a
+value in every later artifact, as it does for [`eval`](#eval-transform-a-value-held-in-a-variable).
+The run's record does not list the extracted values. Every codegen target renders `parseJson` as a
+labeled `// TODO`.
+
+The `http` step's former `extractBody` option has been removed. A scenario that still uses it fails
+to load, and the message points to `saveBody` plus `parseJson`.
 
 ### `totp` (two-factor one-time password)
 
@@ -2016,7 +2038,11 @@ The step reads each message by these rules.
 
 The wait is a **condition wait with a mandatory `timeout`**, with no fixed sleep. Mail present when
 the step starts never counts. A stale code from an earlier run thus cannot match. Each new message
-downloads once. Neither adapter deletes mail or marks it as read.
+downloads once. Neither adapter deletes mail. A POP3 server may share read flags with IMAP. Such a
+server marks a message read when a client fetches it with the `RETR` command. The POP3 adapter
+thus reads each message with the `TOP` command instead. When a server refuses `TOP`, the adapter
+falls back to `RETR` for the rest of that connection. Apart from that fallback, neither adapter marks
+mail as read.
 
 Among new matches, the newest wins. The step ends on the first poll that holds a match, and compares the
 matches of that poll alone. It stops when it cannot tell which of them is newest. One may lack a

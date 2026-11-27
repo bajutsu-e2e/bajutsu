@@ -698,7 +698,7 @@ that organization cannot. A script that holds a key alone cannot either.
 
 | Input | Behavior |
 |---|---|
-| Key | Read from `$BAJUTSU_SERVE_KEY`, or from the file `--key-file` names. No argument takes the key itself. |
+| Key | An `editor` API key, or the shared token on a server without OAuth. Read from `$BAJUTSU_SERVE_KEY`, or from the file `--key-file` names. No argument takes the key itself. |
 | `--server` | `https://`, or `http://` to a loopback address. Any other `http://` address is refused. |
 | Redirect | Not followed, and the upload stops. The key stays with the named server. |
 | `--dry-run` | Lists the files and sends nothing. |

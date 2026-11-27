@@ -20,7 +20,7 @@ import pytest
 from _shared import FakeProc, _post, _serve, project
 
 from bajutsu import serve as srv
-from bajutsu.common.capability.command_policy import CommandExecution
+from bajutsu.common.capability.command_policy import CommandExecution, command_requirement
 from bajutsu.serve.commands import run_command
 from bajutsu.serve.helpers import scenario_command_needs
 from bajutsu.serve.jobs import _build_app
@@ -371,6 +371,14 @@ def test_an_unreadable_artifact_entry_adds_no_routing_text(
 def test_a_scenario_that_does_not_load_adds_no_command_need(text: str | None) -> None:
     # The run judges it either way, so the job routes on its platform and host alone.
     assert scenario_command_needs(text, "uploaded") == {}
+
+
+def test_a_scenario_applying_a_hooks_component_asks_for_command_execution() -> None:
+    # The component's own entries sit in a file the text alone cannot reach (BE-0512).
+    text = "- name: s\n  hooks: { use: [{ hook: ./seed.hook.yaml }] }\n  steps: [{ tap: { id: ok } }]\n"
+    assert scenario_command_needs(text, "uploaded") == {
+        command_requirement("uploaded"): ["s: hooks.use"]
+    }
 
 
 @pytest.mark.parametrize("flag", ["--scenario-source", "--config-source", "--worker-config"])

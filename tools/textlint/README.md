@@ -120,11 +120,16 @@ count-based bar that accepts this residue instead of chasing an unreachable zero
   only when the expansion is spelled as capitalized words matching the acronym's letters (`ABC` next to
   `Australian Broadcasting Commission`). A lowercase gloss such as
   `MECE (mutually exclusive, collectively exhaustive)` therefore still fires. `ignore_acronyms` in
-  `.textlintrc.json` lists two entries:
+  `.textlintrc.json` lists three kinds of entries:
   - `MECE`: BE roadmap items' own jargon, defined once in `docs/ai-development.md` and reused without
     re-expansion everywhere else.
   - `XXXX`: the literal `BE-XXXX` placeholder every unallocated roadmap item carries. It is not an
     acronym, so no expansion could ever satisfy the rule.
+  - `HTML` / `HTTP` / `JSON` / `UTC` / `XML` / `YAML`: well-known acronyms. The rule can't
+    match their usual expansion. Take `Coordinated Universal Time (UTC)` as one case. Its words
+    do not spell the letters in order. Clearing the finding would mean bending the prose (issue
+    #2572). To pass, `HTML` and `HTTP` need the split spelling `Hyper Text`. `YAML` needs its
+    retired name, `Yet Another Markup Language`.
 - `abbr-within-parentheses` — abbreviation-in-parentheses form
 - `alex` — gender-, race-, or religion-insensitive phrasing
 - `ukraine` — Ukrainian place and person names spelled the Russian way

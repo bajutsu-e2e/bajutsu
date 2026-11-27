@@ -44,7 +44,8 @@ from bajutsu.serve.server.db import (
     TERMINAL_JOB_STATUSES,
     RunRecord,
     cancelled_job_result,
-    job_failed,
+    ended_cancelled,
+    group_conclusion,
 )
 from bajutsu.serve.state import ServeState
 
@@ -1131,30 +1132,16 @@ def job_group_view(
             "exitCode": row["result"].get("exitCode"),
             "runId": row["result"].get("runId"),
             # The column records a request to stop, which a leased job can outrun by finishing.
-            "cancelReason": row["cancel_reason"] if _ended_cancelled(row) else None,
+            "cancelReason": row["cancel_reason"] if ended_cancelled(row) else None,
         }
         for row in rows
     ]
     return {
         "groupId": group_id,
         "groupKey": group["key"],
-        "conclusion": _group_conclusion(rows),
+        "conclusion": group_conclusion(rows),
         "jobs": jobs,
     }, 200
-
-
-def _group_conclusion(rows: list[dict[str, Any]]) -> str:
-    """The group's outcome, named after a GitHub check run's conclusion values."""
-    # Anything not terminal counts as unfinished, so a status added later never reads as a failure.
-    if any(row["status"] not in TERMINAL_JOB_STATUSES for row in rows):
-        return "pending"
-    if any(job_failed(row["status"], row["result"]) for row in rows):
-        return "failure"
-    return "cancelled" if any(_ended_cancelled(row) for row in rows) else "success"
-
-
-def _ended_cancelled(row: dict[str, Any]) -> bool:
-    return row["status"] == "cancelled" or bool(row["result"].get("cancelled"))
 
 
 def cancel_job_group(

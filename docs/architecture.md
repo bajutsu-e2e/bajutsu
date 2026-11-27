@@ -553,11 +553,17 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - The vocabulary is `split`, `join`, `filter`, `pick`, `count`, `sort`, `unique`, `reverse`, `json`, `regex`, `replace`, `substring`, `trim`, and `case`.
   - `into: { var }` stores the result in one variable. `into: { vars: [...] }` spreads a list result over several variables in order.
   - The loader type-checks the pipeline (string in, string or list at each step) before the run starts. It rejects an operation applied to the wrong type.
-  - A list result is stored as compact JSON array text, the same `json_text` rendering that `extractBody` uses.
+  - A list result is stored as compact JSON array text, the same `json_text` rendering that `parseJson` uses.
   - When any input traces back to `${secrets.*}` or to a variable that an earlier step marked secret, the result is registered as a new secret value before the step is recorded. A derived value is thus masked in every later artifact. The result of `count` is exempt, since it carries no character of the input.
   - The masking is scenario-scoped. Under `--workers > 1`, a value derived in one scenario does not mask matching text in another scenario's evidence.
   - `eval` has no XCUITest/Playwright/UI Automator equivalent, so every codegen target emits a labeled `// TODO`.
   - Despite the name, `eval` runs no code. `ops` draws from the vocabulary above alone, and a scenario cannot extend it. The step stays local and deterministic, with no model and no network.
+- DSL `parseJson` step (BE-0516): reads JSON text from `from` and copies the values at the `extract` paths into `${vars.*}`.
+  - A `path` is a fixed grammar of object keys and zero-based `[n]` indexes. A string value is stored as it stands, any other as compact JSON text.
+  - All entries resolve together. Text that is not JSON, a malformed or unresolved path, or text over 1,048,576 characters fails the step and writes nothing. No failure message quotes the text or a substituted value.
+  - A value read from a secret input is registered as a secret, under the same rules as `eval`. The extracted values are not recorded on the step's manifest entry.
+  - Every codegen target emits a labeled `// TODO`.
+  - It replaces the `extractBody` option of `http`, which no longer loads.
 - DSL `sleep` step (BE-0451) is the one sanctioned exception to condition waits. It is a fixed pause for a wait that no condition on the screen, the tree, or the network log can observe, such as a server-side throttle or an animation that outlives `until: settled`.
   - `seconds` (strict, `0 < seconds ≤ 30`) and a non-blank `reason` are both required. The loader rejects a longer or unexplained pause and points at `wait` instead.
   - The run loop executes the step beside `wait`, through the injected `Clock`, in quarter-second slices. A cancelled run leaves promptly, and a fake-clock test advances time with no wall-clock wait. The step touches no driver and needs no capability token.
@@ -639,7 +645,7 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
 - DSL device and system actions (iOS):
   - `background`, `clearKeychain`, `clearClipboard`.
   - `overrideStatusBar` / `clearStatusBar` (deterministic status bar).
-  - The `http` action for test-data setup and webhooks. `saveBody` stores the whole response body. `extractBody` (BE-0440) pulls one or more named fields out of a JSON body by a fixed key/index `path` grammar, straight into `${vars.*}`. An optional `timeout` (BE-0515) turns a `GET` or `HEAD` request into a condition wait. The request repeats until the response carries `status`.
+  - The `http` action for test-data setup and webhooks. `saveBody` stores the whole response body. An optional `timeout` (BE-0515) turns a `GET` or `HEAD` request into a condition wait. The request repeats until the response carries `status`.
 - DSL `setPickerValue` (BE-0356) moves a wheel-style picker to a named row. On iOS the picker is a `UIPickerView`, or a `UIDatePicker` in a wheel mode. The step calls XCUITest's own `adjust(toPickerWheelValue:)` on the resolved wheel.
   - On Android (BE-0480) the picker is an `android.widget.NumberPicker`, spinner-mode `DatePicker` and `TimePicker` included. The adb driver resolves the wheel as it resolves a tap target. It sends the wheel's identity to the resident server's `/setPickerValue` endpoint. The server steps the wheel one row at a time through `NumberPicker`'s accessibility scroll actions. It reads the row back after each step. A 400-row cap and a deadline bound the walk. The step has no coordinate fallback.
   - The step is handle-based like `tap`, not coordinate-based like `swipe`/`drag`/`scroll`. A wheel's rows are not separately addressable elements that a coordinate drag could reliably stop on.
@@ -852,15 +858,15 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - The machine session is a third caller shape beside a human's OAuth session and the worker's shared token. It is not a role but an explicit endpoint allowlist in `gate.py`: the content-miss probe `GET /api/artifacts/exists`, the three artifact uploads, `POST /api/run`, `POST /api/run-set` and `GET /api/run-set/<groupId>` (BE-0484), and reading its own org's runs and the job it dispatched.
   - The session is revocable per repository. It is refused outright on a database-less deployment, or on a session store that cannot enforce a per-session expiry.
 - **Organization-scoped API keys** (BE-0509): an admin issues a key for one org through `/api/orgs/<slug>/keys`, and a script sends it as a bearer token.
-  - A key is a fourth caller shape with no session. Both backends judge it ahead of the session gates, against its own empty-by-default endpoint allowlist in `gate.py` and its role (`viewer` or `editor`).
+  - A key is a fourth caller shape with no session. Both backends judge it ahead of the session gates, against its own default-deny endpoint allowlist in `gate.py` and its role (`viewer` or `editor`).
   - The database holds the identifier and a SHA-256 hash of the secret. Issuing, revoking, and each use are audited by identifier.
 - **Importing a run finished elsewhere into the run history** (BE-0510). `POST /api/runs/import` takes a zip of one run and answers with the path of the run's report. The standalone `scripts/upload_run.py` builds and sends that zip.
   - The route refuses a malformed zip, a traversal path, or a symlink outright. It also refuses an artifact path that points outside the zip's own entries.
   - It drops every entry whose extension is absent from a fixed allowlist of passive file types. `serve` thus never hands an uploaded HTML, SVG, or XML page back from its own origin. The viewer's sign-in Cookie applies on that origin.
   - It reserves the run id before placing any file, and refuses a run id collision.
   - It regenerates `report.html` / `junit.xml` / `ctrf.json` from the stored `manifest.json` and `scenario.yaml`, stamps the manifest's `provenance.source` as `import`, and records the run under the caller's organization.
-  - The route needs the editor role. The organization-API-key allowlist above does not name it yet. The BE-0414 machine allowlist omits it too.
-  - On a server with OAuth, a signed-in user alone can call it. A server without OAuth accepts the shared token. `scripts/upload_run.py` works there with that token as its key.
+  - The route needs the editor role. The organization-API-key allowlist above names it, and it is the only route there. The BE-0414 machine allowlist omits it.
+  - A signed-in user or an `editor` API key can call it, and a key imports into its own organization. A server without OAuth also accepts the shared token. `scripts/upload_run.py` sends either one as its key.
 - **Per-job artifact overrides, independent of the active config binding** ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)): on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the sha256 of an already-stored artifact (BE-0268).
   - A named leg resolves against that artifact alone: the binary placed at the job's own target `subject.path`, or a `scenarios` zip replacing that target's scenarios directory.
   - An unnamed leg keeps resolving through the org's active config binding, untouched. Two concurrent CI dispatches against one deployment thus no longer contend for the deployment's fallback binding or write the org's remembered configuration.
@@ -881,6 +887,15 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
     - Each job stores its group, compatibility, route, and base keys. A lease with `maxJobs` returns a bundle. The bundle holds the oldest servable job and that group's next queued jobs with the same route key (the same base key, for a worker that checks no routes). The lease scans one candidate per group and route key.
     - The concurrency caps apply to group jobs at lease time, not at registration. The caps thus never cut a group short.
     - A group registered with `failFast` stops at its first failed job ([BE-0499](../roadmaps/BE-0499-run-set-fail-fast/BE-0499-run-set-fail-fast.md)). The failure cancels the group's queued jobs and sets the cancel flag on its leased jobs, which their workers read on the next heartbeat. `GET /api/run-set/<groupId>` reports `cancelReason: failFast` on each job the stop ended.
+    - A group may publish its lifecycle to operator-defined sinks ([BE-0500](../roadmaps/BE-0500-run-set-github-check/BE-0500-run-set-github-check.md)). `job_groups.notify` holds the request's `notify` selections and their repository.
+      - The `group_events` table holds three events per selected sink. The transaction that causes an event writes its row.
+      - `queued` lands with the registration, and `started` with the first lease.
+      - `completed` lands with the change that leaves no job of the group unfinished.
+      - A completion check takes the group's row lock first. The last two jobs to finish thus cannot both miss each other.
+    - A loop on `serve` (`serve/group_notify/`) delivers the events after the verdict.
+      - The loop claims a due event with a claim that expires. One group and sink's events go out in order.
+      - A delivery that does not succeed retries with a bounded backoff, then gives the event up. The loop writes nothing back to a job or a group.
+      - The `github-check` adapter mints a GitHub App installation token for the group's repository. The adapter writes one check run per group and takes over an earlier attempt's finished run.
     - A Device Farm worker reuses an upload between the jobs it has in flight at once. It keys the application by compatibility key and the package by group, and drops the upload once no job in flight holds the key.
 - The `serve` local web UI (Tier 1) covers these areas:
   - **Authoring and running.** Author (`record` / `crawl`), edit, and run scenarios.

@@ -181,6 +181,18 @@ def eval_todo(step: Step) -> str | None:
     return f"// TODO: eval(into: {names}) — runner-computed value; not generated"
 
 
+def parse_json_todo(step: Step) -> str | None:
+    """The `// TODO` for a `parseJson` step (BE-0516), else None.
+
+    Like `eval`, it computes `${vars.*}` values inside the bajutsu runner, so it renders as a labeled
+    comment naming the variables it would have written, never a silent skip.
+    """
+    if step.parse_json is None:
+        return None
+    names = ", ".join(_collapse_line_terminators(f.var) for f in step.parse_json.extract)
+    return f"// TODO: parseJson(into: {names}) — runner-computed values; not generated"
+
+
 def totp_todo(step: Step) -> str | None:
     """The `// TODO` for a `totp` or `otp` step (BE-0046), else None.
 

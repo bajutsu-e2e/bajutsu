@@ -8,6 +8,7 @@ from pydantic import Field, model_validator
 
 from bajutsu.common.scenario.models._base import _Model
 from bajutsu.common.scenario.models.hook_command import HookCommand, reject_outcome_on_before
+from bajutsu.common.scenario.models.hook_component import HookUse
 
 # A target's `hooks` key a scenario's block cannot carry, and where the author writes it instead.
 _MISPLACED = {
@@ -29,6 +30,9 @@ class ScenarioHooks(_Model):
 
     before_scenario: list[HookCommand] = Field(default_factory=list, alias="beforeScenario")
     after_scenario: list[HookCommand] = Field(default_factory=list, alias="afterScenario")
+    # `hooks` components this scenario applies (BE-0512). The scenario loader expands them into the
+    # two lists above and the scenario's own `setup` / `cleanup`, then empties this list.
+    use: list[HookUse] = Field(default_factory=list)
 
     @property
     def lists(self) -> dict[str, list[HookCommand]]:

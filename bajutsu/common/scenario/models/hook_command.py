@@ -267,3 +267,18 @@ def reject_outcome_on_before(entries: Iterable[HookCommand], where: str) -> None
                 f"{where}[{i}] cannot set `on`: no verdict exists before the thing it precedes, so "
                 "`on` belongs to afterRun / afterScenario"
             )
+
+
+def reject_run_level_exclude_only(entries: Iterable[HookCommand], where: str) -> None:
+    """Fail a run-level entry whose `when` names `exclude` without `tags`.
+
+    Such a condition skips only when *every* scenario of the run carries an excluded tag, which is
+    not what an author who writes it means (BE-0497). The other fields need no scenario, so a
+    condition made of them alone is fine at run level (BE-0513).
+    """
+    for i, entry in enumerate(entries):
+        if entry.when is not None and entry.when.exclude and not entry.when.tags:
+            raise ValueError(
+                f"{where}[{i}].when names `exclude` without `tags`: a run-level entry runs when any "
+                "scenario of the run matches, so `exclude` alone would almost never skip it"
+            )

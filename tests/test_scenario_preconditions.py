@@ -558,3 +558,19 @@ def test_an_empty_device_locale_fails_rather_than_falling_back() -> None:
     # An empty value would quietly yield the target's locale, so a written key would do nothing.
     with pytest.raises(ValueError, match="locale"):
         _pre('{ device: { ios: { locale: "" } } }')
+
+
+def test_a_plan_stored_with_extract_body_still_loads() -> None:
+    # BE-0516 removed it; an earlier run's report must still render, nested steps included.
+    text = """
+- name: s
+  steps:
+    - if:
+        condition: { exists: { id: a } }
+        then:
+          - http: { url: "https://x", saveBody: b, extractBody: [ { var: v, path: p } ] }
+"""
+    (scenario,) = load_stored_scenario_file(text).scenarios
+    assert scenario.steps[0].if_ is not None
+    http = scenario.steps[0].if_.then[0].http
+    assert http is not None and http.save_body == "b"

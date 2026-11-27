@@ -1119,12 +1119,9 @@ def test_run_rejects_a_bad_target_config_hook_end_to_end(tmp_path: Path) -> None
     assert "declares no targets" in r.output
 
 
-def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_path: Path) -> None:
-    # BE-0440: `with_lifecycle_phases` folds a target config's `hooks.setup`/`cleanup` in via
-    # `model_copy`, which never re-runs `Scenario`'s own model_validator — and `_hooks_for` reads
-    # those hooks as a bare `list[Step]` straight off the target config, never through a full
-    # `Scenario.model_validate`. A duplicate `extractBody`/`saveBody` var inside one of a hook's own
-    # `http` steps must still fail at load time, the same as one written directly into the scenario.
+def test_run_rejects_extract_body_in_a_target_config_hook(tmp_path: Path) -> None:
+    # A target config's hooks are read as bare steps, so the BE-0516 removal message has to reach
+    # an author through that path too, not only through a scenario file.
     cfg = tmp_path / "bajutsu.config.yaml"
     cfg.write_text(
         (
@@ -1138,7 +1135,6 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
             "          url: https://api.test/data\n"
             "          extractBody:\n"
             "          - {var: a, path: p1}\n"
-            "          - {var: a, path: p2}\n"
         ),
         encoding="utf-8",
     )
@@ -1161,9 +1157,8 @@ def test_run_rejects_a_duplicate_extract_body_var_in_a_target_config_hook(tmp_pa
             str(tmp_path / "runs"),
         ],
     )
-    assert r.exit_code == 2
-    assert "'a'" in r.output
-    assert "extractBody" in r.output
+    assert r.exit_code == 1  # refused while the config loads
+    assert "extractBody was removed" in str(r.exception)
 
 
 def test_run_tag_filtering_away_a_multi_target_scenario_lets_the_rest_run(
@@ -2133,6 +2128,41 @@ def test_serve_refuses_non_loopback_without_token() -> None:
     r = invoke(runner, app, ["serve", "--host", "0.0.0.0"])
     assert r.exit_code == 2
     assert "without a token" in r.output
+
+
+def test_serve_loads_the_group_notify_sinks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.serve as srv
+
+    sinks = tmp_path / "sinks.yaml"
+    sinks.write_text("groupNotify:\n  - name: github\n    format: github-check\n", "utf-8")
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_ID", "1")
+    monkeypatch.setenv("BAJUTSU_GITHUB_APP_PRIVATE_KEY", "pem")
+    monkeypatch.setattr("bajutsu.common.github.app.check_app_key", lambda *_a: None)
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(srv, "serve", lambda **kw: captured.update(kw))  # don't start a server
+
+    r = invoke(runner, app, ["serve", "--group-notify-config", str(sinks)])
+
+    assert r.exit_code == 0, r.output
+    assert list(captured["group_sinks"]) == ["github"]  # type: ignore[call-overload]
+
+
+def test_serve_refuses_a_group_notify_file_it_cannot_honour(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bajutsu.serve as srv
+
+    sinks = tmp_path / "sinks.yaml"
+    sinks.write_text("groupNotify:\n  - name: hook\n    format: webhook\n", "utf-8")
+    monkeypatch.setenv("BAJUTSU_GROUP_NOTIFY_CONFIG", str(sinks))
+    monkeypatch.setattr(srv, "serve", lambda **kw: pytest.fail("serve must not start"))
+
+    r = invoke(runner, app, ["serve"])
+
+    assert r.exit_code == 2
+    assert "hook" in r.output and "webhook" in r.output
 
 
 def test_serve_emit_launchagent_prints_plist_and_exits() -> None:

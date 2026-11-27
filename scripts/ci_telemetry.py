@@ -9,7 +9,7 @@ of them answers the question a recurring flake raises: *which factor do the red 
 green ones do not?* That needs one machine-readable record per job, keyed so records from many runs
 line up, and a report that compares them.
 
-Three subcommands, split by where they run:
+Four subcommands, split by where they run:
 
   summarize   in CI, on every job, as the diagnostics `collect` phase's last step. Reads only what
               is already on the runner — no device call, no network — and writes
@@ -22,16 +22,20 @@ Three subcommands, split by where they run:
   report      offline. Groups the fetched records and prints, for each candidate cause, how often
               its signal shows up on red jobs against green ones, and failure rates by runner
               image, hardware, toolchain version, and hour of day.
+  adoption    offline. Applies BE-0517's fixed criteria to the dispatched runs of its two arms,
+              the reduced Simulator services against the stock ones, and prints the verdict.
 
 Everything here observes. The candidate causes are fixed threshold rules over measured numbers,
 written into the record as a hint for whoever reads the report; they never reach a verdict, and
-the scenario's pass/fail stays the deterministic runner's alone. Standard library only, so the
+the scenario's pass/fail stays the deterministic runner's alone. `adoption`'s verdict decides a CI
+configuration change (BE-0517), never a scenario's result. Standard library only, so the
 `summarize` step runs on the runner's system `python3` before (or without) any environment sync.
 
 Usage:
     python3 scripts/ci_telemetry.py summarize --lane ios [--runs runs] [--out DIR]
     python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml [--limit 30] [--out DIR]
     python3 scripts/ci_telemetry.py report DIR [--json]
+    python3 scripts/ci_telemetry.py adoption DIR --since 2026-12-01T00:00:00Z [--json]
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 import platform
 import re
@@ -95,6 +100,12 @@ LOG_SIGNALS: Mapping[str, re.Pattern[str]] = {
     "channel_crashes": re.compile(r"the runner became unreachable past the retry budget"),
     "video_start_unconfirmed": re.compile(
         r"recordVideo did not report 'Recording started'|screenrecord on \S+ wrote no bytes within"
+    ),
+    # The two recovery rungs that change the device under a job (BE-0517 unit 4 counts both).
+    "recovery_reboots": re.compile(r"rebooted Simulator \S+ after a failed cold runner spawn"),
+    "device_replacements": re.compile(
+        r"Simulator \S+ could not be recovered in place; shut it down and"
+        r"|Simulator \S+ vanished from CoreSimulator;"
     ),
     "network_errors": re.compile(
         r"Could not resolve host|Temporary failure in name resolution|Connection reset by peer"
@@ -399,6 +410,24 @@ def count_log_signals(log: str) -> dict[str, int]:
     return {name: len(pattern.findall(log)) for name, pattern in LOG_SIGNALS.items()}
 
 
+# The lines `.github/actions/reduce-simulator-services` prints: which arm a job ran, and how many
+# services were off at the start and at the end of the job.
+_SERVICES_ROUTE = re.compile(r"simulator-services route=\S+ mode=(\w+)")
+_SERVICES_COUNT = re.compile(r"simulator-services (start|end) disabled=(\d+)")
+
+
+def simulator_services(log: str) -> dict[str, Any] | None:
+    """The BE-0517 arm a job ran and its disabled-service counts, or None when it ran neither."""
+    route = _SERVICES_ROUTE.findall(log)
+    if not route:
+        return None
+    # A job reduces its device once; the last route line is the one its scenarios ran under.
+    facts: dict[str, Any] = {"mode": route[-1], "start": None, "end": None}
+    for label, count in _SERVICES_COUNT.findall(log):
+        facts[label] = int(count)
+    return facts
+
+
 def job_facts(job: Mapping[str, Any]) -> dict[str, Any]:
     """The API's view of one job: its conclusion, queue time, and each step's duration."""
     steps = [
@@ -473,9 +502,9 @@ def _run_records(gh: Gh, repo: str, run_id: str, out: Path) -> dict[str, dict[st
     return by_runner
 
 
-def _job_log_signals(gh: Gh, repo: str, job_id: Any) -> dict[str, int] | None:
+def _job_log(gh: Gh, repo: str, job_id: Any) -> str | None:
     try:
-        return count_log_signals(gh(["api", f"repos/{repo}/actions/jobs/{job_id}/logs"]))
+        return gh(["api", f"repos/{repo}/actions/jobs/{job_id}/logs"])
     except subprocess.CalledProcessError:
         return None  # logs expired or withheld: unknown, which is not the same as zero
 
@@ -505,6 +534,7 @@ def fetch(
     *,
     gh: Gh = _gh,
     with_logs: bool = True,
+    event: str = "",
 ) -> int:
     """Download the last `limit` completed runs' telemetry and write `records.jsonl` under `out`.
 
@@ -515,7 +545,8 @@ def fetch(
     out.mkdir(parents=True, exist_ok=True)
     runs = json.loads(
         gh(["run", "list", "--repo", repo, "--workflow", workflow, "--status", "completed",
-            "--limit", str(limit), "--json", "databaseId,attempt,createdAt,headBranch,event"])
+            "--limit", str(limit), "--json", "databaseId,attempt,createdAt,headBranch,event",
+            *(["--event", event] if event else [])])
     )  # fmt: skip
     records: list[dict[str, Any]] = []
     for run in runs:
@@ -541,7 +572,9 @@ def fetch(
             record["run_event"] = run.get("event")
             record["run_branch"] = run.get("headBranch")
             if with_logs and facts["job_id"]:
-                record["log_signals"] = _job_log_signals(gh, repo, facts["job_id"])
+                log = _job_log(gh, repo, facts["job_id"])
+                record["log_signals"] = None if log is None else count_log_signals(log)
+                record["simulator_services"] = None if log is None else simulator_services(log)
             records.append(record)
     overlaps = concurrency([r["api"] for r in records])
     for i, record in enumerate(records):
@@ -770,6 +803,198 @@ def render(summary: Mapping[str, Any], records_dir: Path | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
+# --- BE-0517 adoption: the criteria fixed before the measurement ------------------------------
+# The roadmap item fixes these before the first measured run, so the report only applies them; it
+# never moves a threshold to fit what came back. 10 dispatches per arm, each with `run` and
+# `actuation`, give 20 jobs an arm.
+ADOPTION_ALPHA = 0.05
+ADOPTION_JOBS_PER_ARM = 20
+_ARMS = ("reduced", "stock")
+
+
+def fisher_one_sided(hits: int, jobs: int, other_hits: int, other_jobs: int) -> float:
+    """One-sided Fisher's exact p that the first arm's rate is below the second's.
+
+    The probability, with the margins held fixed, of the first arm seeing `hits` or fewer.
+    """
+    total = hits + other_hits
+    denominator = math.comb(jobs + other_jobs, total)
+    low = max(0, total - other_jobs)
+    numerator = sum(
+        math.comb(jobs, x) * math.comb(other_jobs, total - x) for x in range(low, hits + 1)
+    )
+    return numerator / denominator
+
+
+def _lost_change(record: Mapping[str, Any]) -> bool:
+    # Fewer services off at the end than at the start: an erase or a replacement device dropped
+    # the list midway. The job stays in its arm (BE-0517 unit 4), and the report counts it.
+    services = record.get("simulator_services") or {}
+    start, end = services.get("start"), services.get("end")
+    return isinstance(start, int) and isinstance(end, int) and end < start
+
+
+# The jobs that apply the arm (`.github/workflows/ios-e2e.yml`'s `run` and `actuation`).
+_MEASURED_JOBS = re.compile(r"^(run|actuation) \(")
+
+
+def _run_label(record: Mapping[str, Any]) -> str:
+    return f"{_job_label(record)} (run {(record.get('ci') or {}).get('run_id')})"
+
+
+def _arm_tally(records: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    def total(signal: str) -> int:
+        return sum(int((r.get("log_signals") or {}).get(signal) or 0) for r in records)
+
+    failed_scenarios: list[str] = []
+    red_without_scenario: list[str] = []
+    for r in records:
+        names = [s.get("scenario") for s in r.get("scenarios") or [] if s.get("ok") is False]
+        failed_scenarios += [f"{_run_label(r)}: {name}" for name in names]
+        # A job that died in setup, or before its runner came up, leaves no failed scenario to
+        # trace, yet a turned-off service could explain it as well as a failed scenario.
+        if is_failed(r) and not names:
+            red_without_scenario.append(_run_label(r))
+    return {
+        "jobs": len(records),
+        "red_jobs": sum(1 for r in records if is_failed(r)),
+        "video_start_unconfirmed_jobs": sum(
+            1 for r in records if (r.get("log_signals") or {}).get("video_start_unconfirmed")
+        ),
+        "channel_retries": total("channel_retries"),
+        "recovery_reboots": total("recovery_reboots"),
+        "device_replacements": total("device_replacements"),
+        "lost_change_jobs": sum(1 for r in records if _lost_change(r)),
+        "failed_scenarios": sorted(failed_scenarios),
+        "red_without_scenario": sorted(red_without_scenario),
+    }
+
+
+def adoption(records: Sequence[Mapping[str, Any]], *, since: str) -> dict[str, Any]:
+    """Apply BE-0517 unit 4's fixed criteria to the dispatched jobs of each arm.
+
+    A job belongs to an arm by the mode its own log printed, and only a `workflow_dispatch` run
+    started at or after `since` (an ISO-8601 UTC timestamp) counts, which leaves the pilot runs and
+    every pull-request run out. Only the `run` and `actuation` jobs of a run on `main` count, and
+    each arm must hold exactly `ADOPTION_JOBS_PER_ARM` of them. A measured job with no arm in its log (unreadable, or stopped before
+    the reduce step printed one) is listed as unattributed rather than dropped in silence.
+    """
+    arms: dict[str, list[Mapping[str, Any]]] = {arm: [] for arm in _ARMS}
+    unattributed: list[str] = []
+    for r in records:
+        started = str((r.get("api") or {}).get("started_at") or "")
+        if r.get("run_event") != "workflow_dispatch" or started < since:
+            continue
+        # Only the two measured jobs of a run on `main` belong to an arm: a lane that later applies
+        # the list (unit 5) or a dispatch on another ref would add jobs the plan never counted.
+        if r.get("run_branch") != "main" or not _MEASURED_JOBS.match(_job_label(r)):
+            continue
+        mode = (r.get("simulator_services") or {}).get("mode")
+        if mode in arms:
+            arms[mode].append(r)
+        else:
+            # A readable log with no route line is a job that stopped before or inside the reduce
+            # step, the failure the change itself is likeliest to cause, so it must not vanish.
+            why = "log unreadable" if r.get("log_signals") is None else "no route line"
+            unattributed.append(f"{_run_label(r)}: {why}")
+    reduced, stock = (_arm_tally(arms[arm]) for arm in _ARMS)
+    p = (
+        fisher_one_sided(
+            reduced["video_start_unconfirmed_jobs"],
+            reduced["jobs"],
+            stock["video_start_unconfirmed_jobs"],
+            stock["jobs"],
+        )
+        if reduced["jobs"] and stock["jobs"]
+        else None
+    )
+
+    def recoveries(arm: Mapping[str, Any]) -> int:
+        # A replacement is the rung above a reboot, and the item counts both as recoveries.
+        return int(arm["recovery_reboots"]) + int(arm["device_replacements"])
+
+    # `None` is a criterion the numbers cannot settle: a job that did not pass with the change on
+    # needs a re-run with the suspect service left on, which is a person's call, not this script's.
+    untraced = reduced["failed_scenarios"] or reduced["red_without_scenario"]
+    criteria: dict[str, bool | None] = {
+        "video_start_unconfirmed": None if p is None else p < ADOPTION_ALPHA,
+        "channel_retries": reduced["channel_retries"] <= stock["channel_retries"],
+        "recoveries": recoveries(reduced) <= recoveries(stock),
+        "scenarios": None if untraced else True,
+    }
+    # Criteria 2 and 3 compare totals, so an over-full arm biases the verdict as much as a short one.
+    if reduced["jobs"] != ADOPTION_JOBS_PER_ARM or stock["jobs"] != ADOPTION_JOBS_PER_ARM:
+        verdict = "incomplete"
+    elif any(v is False for v in criteria.values()):
+        verdict = "reject"
+    elif any(v is None for v in criteria.values()):
+        verdict = "trace"
+    else:
+        verdict = "adopt"
+    return {
+        "since": since,
+        "alpha": ADOPTION_ALPHA,
+        "jobs_per_arm": ADOPTION_JOBS_PER_ARM,
+        "arms": {"reduced": reduced, "stock": stock},
+        "unattributed_jobs": sorted(unattributed),
+        "video_start_p": None if p is None else round(p, 4),
+        "criteria": criteria,
+        "verdict": verdict,
+    }
+
+
+_ADOPTION_FIGURES = (
+    "jobs",
+    "red_jobs",
+    "video_start_unconfirmed_jobs",
+    "channel_retries",
+    "recovery_reboots",
+    "device_replacements",
+    "lost_change_jobs",
+)
+
+_VERDICTS = {
+    "adopt": "every criterion passes: adopt the reduced list",
+    "reject": "a criterion fails: keep the stock Simulator",
+    "trace": "the numbers pass; trace each job that did not pass with the change on",
+    "incomplete": "an arm does not hold exactly the planned jobs: dispatch more, or narrow --since",
+}
+
+
+def render_adoption(result: Mapping[str, Any]) -> str:
+    """The adoption result as Markdown, ready to paste into the roadmap item's log."""
+    reduced, stock = result["arms"]["reduced"], result["arms"]["stock"]
+    mark = {True: "pass", False: "fail", None: "open"}
+    lines = [
+        f"# BE-0517 adoption: {result['verdict']}",
+        "",
+        _VERDICTS[result["verdict"]] + ".",
+        "",
+        "| figure | reduced | stock |",
+        "|---|---|---|",
+    ]
+    lines += [f"| {key} | {reduced[key]} | {stock[key]} |" for key in _ADOPTION_FIGURES]
+    criteria = result["criteria"]
+    lines += [
+        "",
+        "| criterion | result |",
+        "|---|---|",
+        f"| fewer unconfirmed recording starts (one-sided Fisher, p={result['video_start_p']}, "
+        f"alpha={result['alpha']}) | {mark[criteria['video_start_unconfirmed']]} |",
+        f"| runner-channel retries not above stock | {mark[criteria['channel_retries']]} |",
+        f"| recovery reboots and replacements not above stock | {mark[criteria['recoveries']]} |",
+        f"| no scenario traced to a turned-off service | {mark[criteria['scenarios']]} |",
+    ]
+    if reduced["failed_scenarios"] or reduced["red_without_scenario"]:
+        lines += ["", "## Did not pass with the change on (trace each)", ""]
+        lines += [f"- {name}" for name in reduced["failed_scenarios"]]
+        lines += [f"- {name}: no scenario result" for name in reduced["red_without_scenario"]]
+    if result["unattributed_jobs"]:
+        lines += ["", "## Measured jobs with no arm in their log", ""]
+        lines += [f"- {name}" for name in result["unattributed_jobs"]]
+    return "\n".join(lines) + "\n"
+
+
 # --- CLI --------------------------------------------------------------------------------------
 
 
@@ -785,7 +1010,12 @@ def _summarize_main(args: argparse.Namespace) -> int:
 def _fetch_main(args: argparse.Namespace) -> int:
     repo = args.repo or _gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
     count = fetch(
-        repo.strip(), args.workflow, args.limit, Path(args.out), with_logs=not args.no_logs
+        repo.strip(),
+        args.workflow,
+        args.limit,
+        Path(args.out),
+        with_logs=not args.no_logs,
+        event=args.event,
     )
     print(f"{count} job record(s) → {Path(args.out) / 'records.jsonl'}")
     return 0
@@ -798,6 +1028,20 @@ def _report_main(args: argparse.Namespace) -> int:
         print(json.dumps(summary, indent=2))
     else:
         print(render(summary, path if path.is_dir() else None), end="")
+    return 0
+
+
+def _adoption_main(args: argparse.Namespace) -> int:
+    # The arm filter compares `started_at` against `--since` as plain strings, so only the API's
+    # own shape sorts correctly; another shape would silently widen the window to every run.
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", args.since):
+        print(f"--since must look like 2026-12-01T00:00:00Z, not {args.since!r}", file=sys.stderr)
+        return 2
+    result = adoption(load_records(Path(args.path)), since=args.since)
+    print(
+        json.dumps(result, indent=2) if args.json else render_adoption(result),
+        end="\n" if args.json else "",
+    )
     return 0
 
 
@@ -819,11 +1063,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     f.add_argument("--limit", type=int, default=30, help="completed runs to read")
     f.add_argument("--out", default=str(Path(tempfile.gettempdir()) / "bajutsu-ci-telemetry"))
     f.add_argument("--no-logs", action="store_true", help="skip the per-job log download")
+    f.add_argument(
+        "--event", default="", help="read only runs of this trigger, e.g. workflow_dispatch"
+    )
     f.set_defaults(func=_fetch_main)
     r = sub.add_parser("report", help="aggregate fetched records")
     r.add_argument("path", help="a fetch output directory, a records.jsonl, or loose records")
     r.add_argument("--json", action="store_true")
     r.set_defaults(func=_report_main)
+    a = sub.add_parser("adoption", help="apply BE-0517's fixed adoption criteria to fetched runs")
+    a.add_argument("path", help="a fetch output directory or a records.jsonl")
+    a.add_argument(
+        "--since", required=True, help="count only jobs started at or after this UTC time"
+    )
+    a.add_argument("--json", action="store_true")
+    a.set_defaults(func=_adoption_main)
     args = parser.parse_args(argv)
     result: int = args.func(args)
     return result

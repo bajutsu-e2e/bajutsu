@@ -39,6 +39,7 @@ from bajutsu.codegen.common import (
     manual_todo,
     ms,
     network_unsupported,
+    parse_json_todo,
     permissions_setup_lines,
     render_test_file,
     sleep_comment,
@@ -362,7 +363,8 @@ def _device_control_todo(step: Step) -> str:
         return f"// TODO: manual step — {manual_todo(step.manual.label, step.manual.bypass)}"
     if (todo := device_group_todo(step)) is not None:
         return todo
-    if (todo := eval_todo(step)) is not None:
+    # Both write `vars.*` from inside the bajutsu runner (BE-0472, BE-0516).
+    if (todo := eval_todo(step) or parse_json_todo(step)) is not None:
         return todo
     if step.navigate is not None:
         # Web-only (BE-0464); an Android intent is a separate item, so there is nothing to generate.

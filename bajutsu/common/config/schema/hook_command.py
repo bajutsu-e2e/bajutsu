@@ -6,7 +6,7 @@ may not import `config`; it is re-exported here for the config side's readers.
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Self
 
 from pydantic import Field, model_validator
 
@@ -17,6 +17,7 @@ from bajutsu.common.scenario.models.hook_command import (
     HookWhen,
     invalid_hook_name,
     reject_outcome_on_before,
+    reject_run_level_exclude_only,
 )
 
 from ._model import _Model
@@ -61,19 +62,3 @@ class HookSandbox(_Model):
         if bad:
             raise ValueError(f"hooks.sandbox.ports must be in 1..65535, got {bad}")
         return self
-
-
-def reject_run_level_exclude_only(entries: list[Any], where: str) -> None:
-    """Fail a run-level entry whose `when` names `exclude` without `tags`.
-
-    Such a condition skips only when *every* scenario of the run carries an excluded tag, which is
-    not what an author who writes it means (BE-0497). The other fields need no scenario, so a
-    condition made of them alone is fine at run level (BE-0513).
-    """
-    for i, entry in enumerate(entries):
-        when = entry.when if isinstance(entry, HookCommand) else None
-        if when is not None and when.exclude and not when.tags:
-            raise ValueError(
-                f"{where}[{i}].when names `exclude` without `tags`: a run-level entry runs when any "
-                "scenario of the run matches, so `exclude` alone would almost never skip it"
-            )

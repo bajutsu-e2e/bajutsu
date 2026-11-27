@@ -437,6 +437,7 @@ def scenario_command_needs(
         tags: The run's `--tag` selection, comma separated.
         exclude: The run's `--exclude` selection, comma separated.
     """
+    from bajutsu.common.capability.command_policy import command_requirement
     from bajutsu.common.capability.route_tokens import hook_command_needs
     from bajutsu.common.scenario import select_scenarios
 
@@ -447,13 +448,22 @@ def scenario_command_needs(
     except (ValueError, yaml.YAMLError):
         return {}
     include, skip = ([t.strip() for t in raw.split(",") if t.strip()] for raw in (tags, exclude))
+    selected = [s for s in select_scenarios(scenarios, include, skip) if s.hooks is not None]
     return merge_needs(
         *(
             hook_command_needs(entries, source, f"{s.name}: hooks.{list_name}")
-            for s in select_scenarios(scenarios, include, skip)
+            for s in selected
             if s.hooks is not None
             for list_name, entries in s.hooks.lists.items()
-        )
+        ),
+        # A `hooks` component's commands live in a file the text alone cannot reach (BE-0512), so
+        # the job asks for a worker that runs this source's command lines rather than route by
+        # nothing. TODO(BE-0512): unit 5 reads the component to route by its own entries.
+        *(
+            {command_requirement(source): [f"{s.name}: hooks.use"]}
+            for s in selected
+            if s.hooks is not None and s.hooks.use
+        ),
     )
 
 
