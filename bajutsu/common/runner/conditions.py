@@ -51,11 +51,10 @@ class ConditionContext:
         """Whether *when* holds for a scenario carrying *tags* that judges the targets *names*."""
         if self.keep_all:
             return True
-        if self.env is None and when.env:
-            if not (when.reads_tags or when.reads_target):
+        if self.env is None and any(p.env for p in when.parts):
+            if (kept := when.without_env()) is None:
                 return True
-            # `model_copy` skips validation, so an emptied `env` cannot trip the empty-`when` check.
-            when = when.model_copy(update={"env": {}})
+            when = kept
         return when.holds(WhenFacts(tags=tags, targets=self.judged(names), env=self.env or {}))
 
 
@@ -169,3 +168,12 @@ def decide_cleanup(
         else:
             skipped.append(SkippedBlock("cleanup", f"{where}[{i}] (on: {rule.on})", str(rule.when)))
     return out
+
+
+def inherited_cleanup(rules: Sequence[CleanupRule], inherit_setup: bool) -> list[CleanupRule]:
+    """The target cleanup rules a scenario runs, given its `preconditions.inheritSetup`.
+
+    A scenario that skips the target's preparation skips the rules a `hooks` component added beside
+    its own preparation too, since they tear down what it made (BE-0512); every other rule runs.
+    """
+    return [r for r in rules if inherit_setup or not r.needs_preparation]

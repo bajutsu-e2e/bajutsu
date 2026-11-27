@@ -89,6 +89,7 @@ from bajutsu.common.runner.conditions import (
     condition_context,
     decide_cleanup,
     decide_setup,
+    inherited_cleanup,
 )
 from bajutsu.common.runner.hook_commands import (
     HookContext,
@@ -2107,7 +2108,9 @@ def _hooks_for(
     is appended to *skipped*.
 
     A scenario with `preconditions.inheritSetup: false` folds in no target's setup (BE-0452); the
-    targets' cleanup still runs, since cleanup runs on every path out of a scenario.
+    targets' cleanup still runs, since cleanup runs on every path out of a scenario. A rule a
+    `hooks` component added beside its own preparation is the exception: it tears down what that
+    skipped preparation would have made (BE-0512).
     """
     inherit = s.preconditions.inherit_setup
     owners = s.target_names or [eff.target]
@@ -2130,7 +2133,7 @@ def _hooks_for(
             )
             setup += [_stamped(h, name) for h in decided] if s.targets else decided
         rules = decide_cleanup(
-            target_eff.run_defaults.cleanup,
+            inherited_cleanup(target_eff.run_defaults.cleanup, inherit),
             [name],
             s.tags,
             context,

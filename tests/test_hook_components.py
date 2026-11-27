@@ -245,15 +245,6 @@ def test_a_name_a_component_brings_meets_the_direct_names(tmp_path: Path) -> Non
         load_config_file(config)
 
 
-def test_a_when_on_an_application_is_refused_until_it_has_a_meaning(tmp_path: Path) -> None:
-    _write(tmp_path / "hooks" / "x.hook.yaml", "beforeRun: [{ cmd: ./x.sh }]\n")
-    config = _config(
-        tmp_path, "    hooks:\n      use: [{ hook: ./hooks/x.hook.yaml, when: { tags: [a] } }]\n"
-    )
-    with pytest.raises(ValidationError, match="cannot set `when` yet"):
-        load_config_file(config)
-
-
 # --- layers ---
 
 

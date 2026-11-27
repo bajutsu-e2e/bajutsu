@@ -119,6 +119,10 @@ class HookWhen(_Model):
     platforms: list[HookPlatform] = Field(default_factory=list)
     routes: list[HookRoute] = Field(default_factory=list)
     env: dict[str, str | None] = Field(default_factory=dict)
+    # The `when` of the `hooks` component application that added this condition's entry (BE-0512),
+    # which must hold too. Written by the expansion, never by an author: two `tags` lists can only
+    # be read as "both", and one condition has no way to spell that.
+    also: Annotated[list[HookWhen], SkipJsonSchema()] = Field(default_factory=list, alias="_also")
 
     @field_validator("env", mode="before")
     @classmethod
@@ -143,27 +147,51 @@ class HookWhen(_Model):
         return self
 
     @property
+    def parts(self) -> tuple[HookWhen, ...]:
+        """This condition and every one it must hold with, each read on its own fields alone."""
+        return (self, *(p for a in self.also for p in a.parts))
+
+    @property
     def reads_tags(self) -> bool:
         """Whether the condition reads the scenario's tags."""
-        return bool(self.tags or self.exclude)
+        return any(p.tags or p.exclude for p in self.parts)
 
     @property
     def reads_target(self) -> bool:
         """Whether the condition reads the judged target."""
-        return bool(self.targets or self.platforms or self.routes)
+        return any(p.targets or p.platforms or p.routes for p in self.parts)
 
     @property
     def needs_run(self) -> bool:
         """Whether only the run can decide it: `env` and `routes` depend on the machine and flags."""
-        return bool(self.env or self.routes)
+        return any(p.env or p.routes for p in self.parts)
+
+    def without_env(self) -> HookWhen | None:
+        """This condition with every `env` field dropped, or None when nothing else is left.
+
+        For a stage that cannot see the environment the run will have, which keeps what the rest
+        of the condition decides.
+        """
+        # `model_copy` skips validation, so an emptied part cannot trip the empty-`when` check.
+        kept = [p.model_copy(update={"env": {}, "also": []}) for p in self.parts]
+        kept = [p for p in kept if p.reads_tags or p.reads_target]
+        if not kept:
+            return None
+        return kept[0].model_copy(update={"also": kept[1:]})
 
     def holds(self, facts: WhenFacts) -> bool:
-        """Whether this condition holds for *facts*."""
-        if self.reads_tags and not any(
+        """Whether this condition, and each one it must hold with, holds for *facts*."""
+        return all(p.holds_alone(facts) for p in self.parts)
+
+    def holds_alone(self, facts: WhenFacts) -> bool:
+        """Whether this condition's own fields hold for *facts*, leaving out the ones it holds with."""
+        if (self.tags or self.exclude) and not any(
             tags_match(tags, self.tags, self.exclude) for tags in facts.tags
         ):
             return False
-        if self.reads_target and not any(self.target_holds(t) for t in facts.targets):
+        if (self.targets or self.platforms or self.routes) and not any(
+            self.target_holds(t) for t in facts.targets
+        ):
             return False
         return all(
             name not in facts.env if wanted is None else facts.env.get(name) == wanted
@@ -180,7 +208,14 @@ class HookWhen(_Model):
 
     def matches(self, tags: Iterable[str]) -> bool:
         """Whether a scenario carrying *tags* meets the tag half of this condition."""
-        return not self.reads_tags or tags_match(tags, self.tags, self.exclude)
+        carried = tuple(tags)
+        return all(
+            not (p.tags or p.exclude) or tags_match(carried, p.tags, p.exclude) for p in self.parts
+        )
+
+    def with_application(self, application: HookWhen) -> HookWhen:
+        """This condition, required to hold together with *application*'s (BE-0512)."""
+        return self.model_copy(update={"also": [*self.also, application]})
 
     def __str__(self) -> str:
         """The condition as reports and errors word it, listing only the fields that constrain.
@@ -201,7 +236,7 @@ class HookWhen(_Model):
                 for name, wanted in self.env.items()
             )
             parts.append(f"env: {{{pairs}}}")
-        return ", ".join(parts)
+        return " and ".join([", ".join(parts), *(str(a) for a in self.also)])
 
 
 # Separates a target from a component name in the key a target's component outputs are stored and
@@ -238,6 +273,10 @@ class HookOrigin(_Model):
 
     component: str
     alias: str | None = None
+    # Whether the application also prepares, through `setup` or `beforeScenario`: its teardown then
+    # reads what that preparation made, so a scenario that skips the target's preparation
+    # (`preconditions.inheritSetup: false`) skips this teardown too.
+    prepares: bool = False
 
     @model_validator(mode="after")
     def _alias_is_a_name(self) -> Self:
@@ -333,7 +372,7 @@ def reject_run_level_exclude_only(entries: Iterable[HookCommand], where: str) ->
     condition made of them alone is fine at run level (BE-0513).
     """
     for i, entry in enumerate(entries):
-        if entry.when is not None and entry.when.exclude and not entry.when.tags:
+        if entry.when is not None and any(p.exclude and not p.tags for p in entry.when.parts):
             raise ValueError(
                 f"{where}[{i}].when names `exclude` without `tags`: a run-level entry runs when any "
                 "scenario of the run matches, so `exclude` alone would almost never skip it"
