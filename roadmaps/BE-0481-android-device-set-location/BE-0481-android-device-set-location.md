@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0481") |
-| Implementing PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418) (units 2–6) |
+| Implementing PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418) (units 2–6), [#2600](https://github.com/bajutsu-e2e/bajutsu/pull/2600) (units 1 and 7) |
 | Topic | Platform support |
 | Related | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0475](../BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location.md) |
 <!-- /BE-METADATA -->
@@ -281,7 +281,8 @@ Log:
   - The receiver also has a third error code, `3`, for a mock that the platform refuses. The
     platform signals the refusal by raising `IllegalArgumentException`. A refused
     mock then neither stops the app abnormally nor reads as a missing receiver.
-- 2026-11-27 — We closed Units 1 and 7 on the emulator evidence and set the item to Implemented.
+- 2026-11-27 — We closed Units 1 and 7 on the emulator evidence
+  ([#2600](https://github.com/bajutsu-e2e/bajutsu/pull/2600)). The item is now Implemented.
   A real device would still show two behaviors the emulator could not:
   - the routing on a device that reports neither `ro.boot.qemu` nor `ro.kernel.qemu`
   - whether a fused-provider client sees the mock through Play services

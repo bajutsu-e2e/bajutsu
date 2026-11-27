@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0481") |
-| 実装 PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)（作業単位 2〜6） |
+| 実装 PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)（作業単位 2〜6）、[#2600](https://github.com/bajutsu-e2e/bajutsu/pull/2600)（作業単位 1 と 7） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md), [BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0475](../BE-0475-ios-runner-set-location/BE-0475-ios-runner-set-location-ja.md) |
 <!-- /BE-METADATA -->
@@ -265,7 +265,7 @@ Android の showcase アプリは Compose 版と Views 版の両方で `Bajutsu.
     再設定する `revoke_mock_location` への分離。解除の broadcast が失敗しても、teardown で許可を取り消せる構成。
   - レシーバの 3 つ目の失敗コード `3` の追加。`3` は、プラットフォームが `IllegalArgumentException` で
     mock を拒んだ場合のコード。拒まれた mock によるアプリのクラッシュと、レシーバがないという誤認の両方を防止。
-- 2026-11-27 — エミュレータでの結果による作業単位 1 と 7 の完了と、状態の実装済みへの変更。
+- 2026-11-27 — エミュレータでの結果による作業単位 1 と 7 の完了と、状態の実装済みへの変更（[#2600](https://github.com/bajutsu-e2e/bajutsu/pull/2600)）。
   エミュレータでは確かめられず、実機ならわかる点が 2 つ残存。
   - `ro.boot.qemu` と `ro.kernel.qemu` のどちらも報告しない端末での経路の振り分け
   - fused provider を使うクライアントに、Play 開発者サービスを通して mock の位置が見えるか
