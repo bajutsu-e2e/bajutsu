@@ -15,7 +15,12 @@ from pydantic import ValidationError
 
 from bajutsu.common.config import HookPhases, load_config_file, resolve
 from bajutsu.common.runner import hook_commands as hc
-from bajutsu.common.runner.conditions import ConditionContext, inherited_cleanup
+from bajutsu.common.runner.conditions import (
+    ConditionContext,
+    SkippedBlock,
+    decide_cleanup,
+    inherited_cleanup,
+)
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
 from bajutsu.common.scenario import CleanupRule, Scenario, Step, load_expanded_scenarios
 from bajutsu.common.scenario.models.hook_command import HookWhen, JudgedTarget, WhenFacts
@@ -317,3 +322,21 @@ def test_a_scenario_without_the_targets_setup_skips_the_components_paired_cleanu
     # The user component prepares, so its sign-out goes with its sign-in; the sweep prepares
     # nothing, so it runs as the direct rule it replaced would.
     assert [_ids(r.steps) for r in merged.cleanup] == [["direct.cleanup"], ["sweep"]]
+
+
+def test_a_dropped_paired_rule_keeps_the_report_position_of_the_next() -> None:
+    gated = CleanupRule.model_validate(
+        {"on": "always", "when": {"tags": ["never"]}, "steps": [{"tap": {"id": "g"}}]}
+    )
+    skipped: list[SkippedBlock] = []
+    kept = decide_cleanup(
+        [_rule(True), gated],
+        ["web"],
+        [],
+        ConditionContext({"web": _WEB}, {}),
+        where="hooks.cleanup",
+        skipped=skipped,
+        inherit_setup=False,
+    )
+    assert kept == []
+    assert [b.label for b in skipped] == ["hooks.cleanup[1] (on: always)"]

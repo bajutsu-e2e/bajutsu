@@ -89,7 +89,6 @@ from bajutsu.common.runner.conditions import (
     condition_context,
     decide_cleanup,
     decide_setup,
-    inherited_cleanup,
 )
 from bajutsu.common.runner.hook_commands import (
     HookContext,
@@ -2133,12 +2132,13 @@ def _hooks_for(
             )
             setup += [_stamped(h, name) for h in decided] if s.targets else decided
         rules = decide_cleanup(
-            inherited_cleanup(target_eff.run_defaults.cleanup, inherit),
+            target_eff.run_defaults.cleanup,
             [name],
             s.tags,
             context,
             where=f"{where}.cleanup",
             skipped=skipped,
+            inherit_setup=inherit,
         )
         cleanup += (
             [

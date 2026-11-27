@@ -158,11 +158,18 @@ def decide_cleanup(
     *,
     where: str,
     skipped: list[SkippedBlock],
+    inherit_setup: bool = True,
 ) -> list[CleanupRule]:
-    """*rules* without the ones whose `when` does not hold; a kept rule keeps its `when`, inert."""
+    """*rules* without the ones whose `when` does not hold; a kept rule keeps its `when`, inert.
+
+    With *inherit_setup* false, a target's rule that `inherited_cleanup` leaves out is dropped too,
+    inside this loop so the report's position of every other rule stays the one the author sees.
+    """
     names = tuple(judge)
     out: list[CleanupRule] = []
     for i, rule in enumerate(rules):
+        if not inherit_setup and rule.needs_preparation:
+            continue
         if rule.when is None or context.holds(rule.when, names, (tuple(tags),)):
             out.append(rule)
         else:
