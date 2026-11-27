@@ -441,7 +441,7 @@ def test_fetch_joins_records_with_the_api(tmp_path: Path) -> None:
     ],
 )
 def test_job_log_retries_only_on_the_escape_refusal(
-    stderr: str, log: str | None, calls: int
+    stderr: str, log: str | None, calls: int, capsys: pytest.CaptureFixture[str]
 ) -> None:
     seen: list[list[str]] = []
 
@@ -453,6 +453,16 @@ def test_job_log_retries_only_on_the_escape_refusal(
 
     assert ct._job_log(gh, "o/r", 7) == log
     assert len(seen) == calls
+    assert ("job 7: log unreadable" in capsys.readouterr().err) == (log is None)
+
+
+def test_timed_out_reads_annotations_that_hold_escapes() -> None:
+    def gh(args: Sequence[str]) -> str:
+        if "--allow-escape-sequences" not in args:
+            raise subprocess.CalledProcessError(1, "gh", stderr="pass --allow-escape-sequences")
+        return "The job has exceeded the maximum execution time of 60 minutes.\n"
+
+    assert ct._timed_out(gh, "o/r", 7)
 
 
 def test_aggregate_and_render(tmp_path: Path) -> None:

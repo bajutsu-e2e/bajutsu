@@ -505,19 +505,25 @@ def _run_records(gh: Gh, repo: str, run_id: str, out: Path) -> dict[str, dict[st
 _ESCAPES_FLAG = "--allow-escape-sequences"
 
 
-def _job_log(gh: Gh, repo: str, job_id: Any) -> str | None:
-    path = f"repos/{repo}/actions/jobs/{job_id}/logs"
+def _gh_api(gh: Gh, args: Sequence[str]) -> str:
     try:
-        try:
-            return gh(["api", path])
-        except subprocess.CalledProcessError as exc:
-            # A newer `gh` refuses a response holding terminal escapes, which colored job logs do.
-            # Pass the flag only on that refusal: an older `gh` rejects it as unknown.
-            if _ESCAPES_FLAG not in (exc.stderr or ""):
-                raise
-            return gh(["api", _ESCAPES_FLAG, path])
+        return gh(["api", *args])
+    except subprocess.CalledProcessError as exc:
+        # A newer `gh` refuses a response holding terminal escapes, which job output does. Pass
+        # the flag only on that refusal: an older `gh` rejects it as unknown.
+        if _ESCAPES_FLAG not in (exc.stderr or ""):
+            raise
+        return gh(["api", _ESCAPES_FLAG, *args])
+
+
+def _job_log(gh: Gh, repo: str, job_id: Any) -> str | None:
+    try:
+        return _gh_api(gh, [f"repos/{repo}/actions/jobs/{job_id}/logs"])
     except subprocess.CalledProcessError:
-        return None  # logs expired or withheld: unknown, which is not the same as zero
+        # Logs expired or withheld: unknown, which is not the same as zero. Say so, or a refusal
+        # `_gh_api` fails to recognise stays invisible until the report comes out empty.
+        print(f"job {job_id}: log unreadable, signals unknown", file=sys.stderr)
+        return None
 
 
 _TIMEOUT_ANNOTATION = "exceeded the maximum execution time"
@@ -529,10 +535,11 @@ def _timed_out(gh: Gh, repo: str, job_id: Any) -> bool:
     The jobs API reports both as `cancelled`; the timeout leaves an annotation on the check run.
     """
     try:
-        messages = gh(
-            ["api", f"repos/{repo}/check-runs/{job_id}/annotations", "--jq", ".[].message"]
+        messages = _gh_api(
+            gh, [f"repos/{repo}/check-runs/{job_id}/annotations", "--jq", ".[].message"]
         )
     except subprocess.CalledProcessError:
+        print(f"job {job_id}: annotations unreadable, taken as superseded", file=sys.stderr)
         return False
     return _TIMEOUT_ANNOTATION in messages
 
