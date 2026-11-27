@@ -214,6 +214,8 @@ def _check_file(
                     f"the item's own id), got {values[tracking_field]!r}"
                 )
 
+    problems.extend(_rejection_banner_problems(text, status_raw, lang=lang))
+
     # Headings that are real headings, not lines inside a fenced code block (e.g. a skeleton).
     headings = headings_outside_code(text)
     expected_headings = HEADINGS_JA if lang == "ja" else HEADINGS_EN
@@ -221,6 +223,29 @@ def _check_file(
         problems.append(f"H2 headings must be exactly {expected_headings} in order, got {headings}")
 
     return [f"{be_id}{suffix}: {p}" for p in problems], status_raw
+
+
+def _rejection_banner_problems(text: str, status: str | None, *, lang: str) -> list[str]:
+    """Require a ``Rejected`` item to open its Introduction with the reason it was rejected.
+
+    The Status alone records *that* an item was decided against. The reason would otherwise survive
+    only in a closed PR's review thread, so the check pins it to the item's first lines.
+    """
+    heading, marker = (
+        ("## はじめに", "> **却下") if lang == "ja" else ("## Introduction", "> **Rejected")
+    )
+    lines = text.splitlines()
+    if status != ("却下" if lang == "ja" else "Rejected") or heading not in lines:
+        return []  # a missing heading is the heading check's to report
+    following = (line for line in lines[lines.index(heading) + 1 :] if line.strip())
+    first = next(following, "")
+    second = next(following, "")
+    if not first.startswith(marker) or not second.startswith(">"):
+        return [
+            f"a rejected item must open {heading.removeprefix('## ')!r} with a "
+            f"'{marker} …**' blockquote that states why it was rejected"
+        ]
+    return []
 
 
 def heading_positions(text: str) -> list[tuple[str, int]]:

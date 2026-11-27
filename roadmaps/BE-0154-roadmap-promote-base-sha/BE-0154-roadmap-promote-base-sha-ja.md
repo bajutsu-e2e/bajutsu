@@ -15,7 +15,7 @@
 
 ## はじめに
 
-> **保留。前提は [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) で失効しました。**
+> **却下。前提は [BE-0159](../BE-0159-flatten-roadmap-status-folders/BE-0159-flatten-roadmap-status-folders-ja.md) で失効しました。**
 > 本項目は `roadmap-promote.yml` を強化するものです。BE-0159 は、このワークフローを
 > `scripts/promote_roadmap_items.py` ごと削除しました。フラット構成では、昇格するものがないためです。
 > 本項目が守ろうとしていた、`contents: write` を持つ PR 依存のワークフローは、もう存在しません。
@@ -28,7 +28,8 @@
 >
 > 本項目が守ろうとしていた、PR の head にあるスクリプトを `contents: write` で実行するパターンは、
 > どこにも残っていません。BE-0159 は、危険を後から強化するのではなく、設計段階で取り除きました。
-> 本項目は保留とし、BE-0159 によって無効化されたものとして扱います。記録として残します。
+> 危険が戻り、強化の対象が再び生まれる条件もないため、本項目は保留ではなく却下とします。
+> BE-0159 が置き換えた項目として、記録のために残します。
 
 `roadmap-promote.yml` は、`contents: write` を持ちながら、PR 自身の head ref からスクリプトを
 チェックアウトして実行しています。本提案は、実行するスクリプトを信頼できるベース SHA 側へ移します。

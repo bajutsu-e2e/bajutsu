@@ -11,9 +11,19 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0457") |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0082](../BE-0082-capability-preflight-check/BE-0082-capability-preflight-check-ja.md), [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md) |
+| 無効化 | [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
+
+> **却下。[BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md) が置き換えます。**
+> 環境によって*ステップ*を飛ばすと、同じシナリオの結果が、実行した場所によって変わります。
+> 実機での実行は、検査が減ったことで合格しえます。しかも、その結果は、すべてを検査した Simulator
+> での実行の結果と見分けがつきません。BE-0467 は、代わりにすべてのステップを必須のままにします。
+> 環境ごとに異なってよいものは、ターゲット設定に宣言する設定に限り、lint と worker への振り分けの
+> 時点で検査します。ステップ単位のスキップを後から安全に足せる条件はないため、本項目は保留ではなく
+> 却下とします。最初の実装の試みである [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211) は、
+> マージせずに閉じました。以下の設計は、記録として残します。
 
 iOS Simulator 向けに書いたシナリオには、実機の iPhone で動かないステップがよく含まれます。
 `setLocation`、`push`、クリップボードの各ステップは `simctl` を使い、`simctl` は Simulator にしか届きません。
@@ -328,7 +338,7 @@ BE-0238 の実機のターゲットは、アプリの事前インストールを
 - 作業単位を 1 つも出荷しないまま却下しました。
   一部の環境で*ステップ*を飛ばすと、同じシナリオの結果が実行した場所によって変わります。実機の run が、検査が減ったために合格しうるためです。
   代わりの方針では、すべてのステップを必須のままにし、飛ばせるのは環境に固有の*設定*だけにします。その宣言はターゲット設定に書き、lint と worker への振り分けの時点で検査します。
-  この項目は、環境に固有の設定の項目（`environment-specific-settings`）に置き換えられます。
+  この項目は、[BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md) に置き換えられます。
   最初の実装の試みである [#2211](https://github.com/bajutsu-e2e/bajutsu/pull/2211) は、マージせずに閉じました。
 
 ## 参考

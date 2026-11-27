@@ -83,3 +83,40 @@ def test_placeholder_self_reference_is_exempt(tmp_path: Path) -> None:
     # until CI numbers it, so they must not trip the unresolved-reference check.
     _write_item(tmp_path, "BE-XXXX", "a-thing")
     assert unresolved_be_xxxx_references(tmp_path) == []
+
+
+def _rejected(en: str, ja: str) -> tuple[str, str]:
+    return (
+        en.replace("**Approved**", "**Rejected**"),
+        ja.replace("**承認済み**", "**却下**"),
+    )
+
+
+def test_rejected_item_without_a_reason_banner_is_caught(tmp_path: Path) -> None:
+    en, ja = _rejected(_valid_en("BE-0042", "a-thing"), _valid_ja("BE-0042", "a-thing"))
+    _write_item(tmp_path, "BE-0042", "a-thing", en=en, ja=ja)
+    problems = format_problems(tmp_path)
+    assert any(p.startswith("BE-0042: a rejected item must open") for p in problems)
+    assert any(p.startswith("BE-0042-ja: a rejected item must open") for p in problems)
+
+
+def test_rejected_banner_with_no_reason_line_is_caught(tmp_path: Path) -> None:
+    en, ja = _rejected(_valid_en("BE-0042", "a-thing"), _valid_ja("BE-0042", "a-thing"))
+    en = en.replace("## Introduction\n\nTBD", "## Introduction\n\n> **Rejected.**\n\nTBD")
+    ja = ja.replace("## はじめに\n\nTBD", "## はじめに\n\n> **却下。**\n\nTBD")
+    _write_item(tmp_path, "BE-0042", "a-thing", en=en, ja=ja)
+    assert len([p for p in format_problems(tmp_path) if "rejected item" in p]) == 2
+
+
+def test_rejected_item_with_a_reason_banner_passes(tmp_path: Path) -> None:
+    en, ja = _rejected(_valid_en("BE-0042", "a-thing"), _valid_ja("BE-0042", "a-thing"))
+    en = en.replace(
+        "## Introduction\n\nTBD",
+        "## Introduction\n\n> **Rejected — superseded.**\n> Another item covers it.\n\nTBD",
+    )
+    ja = ja.replace(
+        "## はじめに\n\nTBD",
+        "## はじめに\n\n> **却下。置き換えられました。**\n> 別の項目が扱います。\n\nTBD",
+    )
+    _write_item(tmp_path, "BE-0042", "a-thing", en=en, ja=ja)
+    assert format_problems(tmp_path) == []

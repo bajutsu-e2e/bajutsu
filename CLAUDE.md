@@ -297,6 +297,11 @@ colliding or regressing each other. Full guide: [`docs/ai-development.md`](docs/
   `Related`/`Superseded by`):
   [`roadmaps/README.md`](roadmaps/README.md) ·
   [`docs/ai-development.md`](docs/ai-development.md#roadmap-items-be-ids-strict).
+- **Record why, in the item, when its `Status` becomes `Rejected`.** In the same change, open its
+  `Introduction` with `> **Rejected — <reason>.**`, or `> **却下。<理由>。**` in the `-ja.md` file.
+  The next lines say why `Rejected` fits better than `Deferred`. When another item replaces it, link
+  that item and add a `Superseded by` row. `make check` fails a `Rejected` item that lacks the
+  blockquote. Rule: [`docs/ai-development.md`](docs/ai-development.md#roadmap-items-be-ids-strict).
 - Commit messages are imperative and scoped (`feat(run): …`, `fix(record): …`, `docs: …`).
 - **PR titles and bodies are always in English**, regardless of the session language, so the
   history stays readable for every contributor.
