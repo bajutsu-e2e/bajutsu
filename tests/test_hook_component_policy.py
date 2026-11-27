@@ -27,7 +27,8 @@ from bajutsu.common.report.rows import _name_components
 from bajutsu.common.runner import hook_commands as hc
 from bajutsu.common.runner.hook_commands import hook_refusal
 from bajutsu.common.runner.hook_session import _sandboxes
-from bajutsu.common.scenario import Step
+from bajutsu.common.runner.scenario_hooks import component_targets, sandbox_targets
+from bajutsu.common.scenario import Scenario, Step
 from bajutsu.common.scenario.hook_components import apply_hook_component
 from bajutsu.common.scenario.models.hook_command import HookCommand
 from bajutsu.common.scenario.models.hook_component import HookUse
@@ -246,3 +247,16 @@ def test_a_scenario_level_container_for_the_joined_source_needs_a_component_entr
     assert _sandboxes(phases, scenario_targets={"web"}, **kw) == {}
     started = _sandboxes(phases, scenario_targets={"web"}, component_targets={"web"}, **kw)
     assert list(started) == ["web"]
+
+
+def test_only_a_scenario_running_a_component_command_names_its_target() -> None:
+    def scenario(name: str, entry: dict[str, object]) -> Scenario:
+        return Scenario.model_validate(
+            {"name": name, "hooks": {"beforeScenario": [entry]}, "steps": [{"tap": {"id": "x"}}]}
+        )
+
+    direct = scenario("direct", {"cmd": "./a.sh"})
+    added = scenario("added", {"cmd": "./b.sh", "_origin": {"component": "/suite/u.hook.yaml"}})
+    assert sandbox_targets([direct, added], "web") == {"web"}
+    assert component_targets([direct], "web") == set()
+    assert component_targets([direct, added], "web") == {"web"}
