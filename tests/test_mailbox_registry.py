@@ -180,6 +180,10 @@ class _Pop(_Stub):
         self._record("uidl")
         return b"+OK", self.listing, 0
 
+    def top(self, number: int, lines: int) -> tuple[bytes, list[bytes], int]:
+        self._record("top", number, lines)
+        return b"+OK", _RAW.split(b"\r\n"), 0
+
     def retr(self, number: int) -> tuple[bytes, list[bytes], int]:
         self._record("retr", number)
         return b"+OK", _RAW.split(b"\r\n"), 0
@@ -312,8 +316,29 @@ def test_pop3_reads_by_unique_id_and_takes_the_date_header(log: list[tuple[Any, 
     [message] = reader.fetch({"bbb", "gone"}, 5.0)
     assert (message.id, message.subject) == ("bbb", "Code")
     assert message.received_at == "2026-01-01T00:00:00+00:00"
-    assert ("retr", 2) in log
-    assert "dele" not in _names(log)
+    # TOP, not RETR: a server sharing flags with IMAP marks a RETR message read.
+    assert ("top", 2, mb._WHOLE_MESSAGE) in log
+    assert not {"retr", "dele"} & set(_names(log))
+
+
+def test_pop3_falls_back_to_retr_once_a_server_rejects_top(log: list[tuple[Any, ...]]) -> None:
+    _Stub.fail["top"] = poplib.error_proto(
+        b"-ERR unknown command"
+    )  # poplib passes the status as bytes
+    messages = _reader(_cfg(kind="pop3")).fetch({"aaa", "bbb"}, 5.0)
+    assert sorted(m.id for m in messages) == ["aaa", "bbb"]
+    assert _names(log).count("top") == 1  # not retried for the second message
+    assert [entry for entry in log if entry[0] == "retr"] == [("retr", 1), ("retr", 2)]
+
+
+def test_pop3_does_not_fall_back_after_a_read_breaks_mid_response(
+    log: list[tuple[Any, ...]],
+) -> None:
+    # poplib raises a str error partway through a response; a RETR would read the leftover lines.
+    _Stub.fail["top"] = poplib.error_proto("line too long")
+    with pytest.raises(base.SelectorError, match="protocol error"):
+        _reader(_cfg(kind="pop3")).fetch({"aaa"}, 5.0)
+    assert "retr" not in _names(log)
 
 
 def test_each_call_opens_and_closes_its_own_connection(log: list[tuple[Any, ...]]) -> None:

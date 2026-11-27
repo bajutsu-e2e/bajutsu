@@ -1958,7 +1958,11 @@ The step reads each message by these rules.
 
 The wait is a **condition wait with a mandatory `timeout`**, with no fixed sleep. Mail present when
 the step starts never counts. A stale code from an earlier run thus cannot match. Each new message
-downloads once. Neither adapter deletes mail or marks it as read.
+downloads once. Neither adapter deletes mail. A POP3 server may share read flags with IMAP. Such a
+server marks a message read when a client fetches it with the `RETR` command. The POP3 adapter
+thus reads each message with the `TOP` command instead. When a server refuses `TOP`, the adapter
+falls back to `RETR` for the rest of that connection. Apart from that fallback, neither adapter marks
+mail as read.
 
 Among new matches, the newest wins. The step ends on the first poll that holds a match, and compares the
 matches of that poll alone. It stops when it cannot tell which of them is newest. One may lack a

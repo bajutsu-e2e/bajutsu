@@ -44,6 +44,10 @@ _DEFAULT_PORTS = {
 _MAX_SOCKET_TIMEOUT = 30.0
 # Saying goodbye must not extend a call whose budget is spent.
 _MAX_CLOSE_TIMEOUT = 5.0
+# POP3 reads a whole message with `TOP n <this many body lines>` rather than `RETR`: a server that
+# shares flags with IMAP marks a `RETR` message read, and the email step must leave mail unread
+# (BE-0514). Servers support TOP without always listing it under CAPA, so the adapter tries it.
+_WHOLE_MESSAGE = 1_000_000_000
 
 
 def register(kind: str, adapter: MailboxAdapter) -> None:
@@ -359,9 +363,29 @@ class _Pop3Mailbox:
         out: list[MailboxMessage] = []
         with self._session(deadline) as conn:
             numbers = self._numbers(conn, deadline)
+            use_top = True
             for message_id in sorted(set(ids) & numbers.keys()):
-                deadline.arm(conn)
-                raw = b"\r\n".join(conn.retr(numbers[message_id])[1])
+                number = numbers[message_id]
+                lines: list[bytes] | None = None
+                if use_top:
+                    deadline.arm(conn)
+                    try:
+                        lines = conn.top(number, _WHOLE_MESSAGE)[1]
+                    except poplib.error_proto as e:
+                        # Only a `-ERR` status (bytes) means the server lacks this optional command.
+                        # poplib's str errors ("line too long", EOF) leave the stream mid-response,
+                        # where a RETR would misread the leftover lines.
+                        if not (
+                            e.args
+                            and isinstance(e.args[0], bytes)
+                            and e.args[0].startswith(b"-ERR")
+                        ):
+                            raise
+                        use_top = False
+                if lines is None:
+                    deadline.arm(conn)
+                    lines = conn.retr(number)[1]
+                raw = b"\r\n".join(lines)
                 out.append(parse_message(raw, message_id=message_id, received=date_header(raw)))
         return out
 
