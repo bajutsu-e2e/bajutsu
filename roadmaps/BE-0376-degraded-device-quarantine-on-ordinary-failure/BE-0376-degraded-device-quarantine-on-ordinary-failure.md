@@ -11,6 +11,7 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0376") |
 | Topic | Platform support |
 | Related | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
+| Superseded by | [BE-0520](../BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
@@ -19,7 +20,8 @@
 > Every `ios-e2e.yml` job pins a concrete `--udid`, and the replacement rung requires `--udid
 > booted`. Rejected fits better than Deferred, because no planned change makes the design fire. A
 > CI benefit needs a different design that routes the request through the pool. Unit 2 below, the
-> recorded connection, moves to a separate item that records the stall signal on a red result.
+> recorded connection, moves to [BE-0520](../BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md),
+> which records the stall signal on a red result.
 
 The run pipeline can move a scenario off an iOS Simulator whose services have degraded past what an
 erase clears. It asks the next bring-up for a replacement device
@@ -268,7 +270,8 @@ Log:
 
 - 2026-11-27 — Rejected before any unit began. CI pins every run to one `--udid`. The
   quarantine never takes effect there. Locally it reaches a developer's Mac alone. The spike and
-  the device cap cost more than that reach repays. Unit 2 moves to a separate item.
+  the device cap cost more than that reach repays. Unit 2 moves to
+  [BE-0520](../BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md).
 
 ## References
 
