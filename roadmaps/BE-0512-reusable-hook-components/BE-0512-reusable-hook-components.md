@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
-| Implementing PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588) (units 1–2), [#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596) (unit 3), [#2601](https://github.com/bajutsu-e2e/bajutsu/pull/2601) (unit 4) |
+| Implementing PR | [#2588](https://github.com/bajutsu-e2e/bajutsu/pull/2588) (units 1–2), [#2596](https://github.com/bajutsu-e2e/bajutsu/pull/2596) (unit 3), [#2601](https://github.com/bajutsu-e2e/bajutsu/pull/2601) (unit 4), [#2609](https://github.com/bajutsu-e2e/bajutsu/pull/2609) (unit 5, part 1) |
 | Topic | Scenario authoring features |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md) |
 <!-- /BE-METADATA -->
@@ -403,6 +403,10 @@ Log:
   - A command entry and a cleanup rule hold the application's condition beside their own. Each run of plain `setup` steps becomes one conditional block. A block the component wrote joins the application's condition to its own.
   - Every tag part of a joined condition must match one and the same scenario, so a run-level entry does not run when no scenario carries both tags.
   - The load refuses a component's setup block that names `target` when the application's `when` reads the target, since the block's condition would judge that target instead of the target applying the component.
+- 2026-11-28 — The first part of unit 5 landed ([#2609](https://github.com/bajutsu-e2e/bajutsu/pull/2609)): reports, the command policy, and the sandbox check. Routing and delivery to workers follow in the second part.
+  - A command a component added runs under the stricter mode of two sources: the file that applies the component and the component file. A component file inside the directory of the scenario files a client wrote takes the scenario's source. The command record names the component file and, when it differs, its source.
+  - A component's command runs from the component's directory. When the worker sandboxes it and that directory lies outside the config directory the container mounts, the run stops before device work.
+  - The report names the component file beside each command and each run of steps it added.
 
 ## References
 
