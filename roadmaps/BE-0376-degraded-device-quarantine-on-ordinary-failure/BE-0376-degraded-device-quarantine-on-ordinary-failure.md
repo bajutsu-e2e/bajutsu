@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0376") |
+| Implementing PR | [#2610](https://github.com/bajutsu-e2e/bajutsu/pull/2610) |
 | Topic | Platform support |
 | Related | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
 <!-- /BE-METADATA -->
@@ -290,7 +291,7 @@ Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.
 
 Log:
 
-- 2026-11-28 (PR #PRNUM) — Shipped Units 0–4 in one change. `run_one` now reads the stall signal
+- 2026-11-28 ([PR #2610](https://github.com/bajutsu-e2e/bajutsu/pull/2610)) — Shipped Units 0–4 in one change. `run_one` now reads the stall signal
   when a scenario ends without passing. It requests a replacement behind the same gate as the
   retry rung. The request shares the per-scenario allowance and spends a new allowance of one per
   run. The new `device_suspect` field records the stall in three places: the manifest, the CTRF

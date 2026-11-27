@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0376") |
+| 実装 PR | [#2610](https://github.com/bajutsu-e2e/bajutsu/pull/2610) |
 | トピック | Platform support |
 | 関連 | [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) |
 <!-- /BE-METADATA -->
@@ -149,7 +150,7 @@ actuation レーン自身も恩恵を受けられるようにすべきでしょ�
 
 ログ：
 
-- 2026-11-28（PR #PRNUM）：Unit 0 から Unit 4 までを1つの変更で出荷しました。`run_one` は通常の失敗の経路でも録画の停滞を読み、クラッシュ再試行と同じ条件の内側で交換を要求します。要求はシナリオ単位の許容量を共有し、新しく設けた実行あたり1回の許容量を消費します。結果に加えた `device_suspect` フィールドは、manifest（`schemaVersion` 20）、CTRF の出力、HTML の Environment パネルに停滞を記録します。udid を固定したレーンでは確かめられないため、Unit 0 は生き延びるかどうかをコードとプールのテストで確定させました。
+- 2026-11-28（[PR #2610](https://github.com/bajutsu-e2e/bajutsu/pull/2610)）：Unit 0 から Unit 4 までを1つの変更で出荷しました。`run_one` は通常の失敗の経路でも録画の停滞を読み、クラッシュ再試行と同じ条件の内側で交換を要求します。要求はシナリオ単位の許容量を共有し、新しく設けた実行あたり1回の許容量を消費します。結果に加えた `device_suspect` フィールドは、manifest（`schemaVersion` 20）、CTRF の出力、HTML の Environment パネルに停滞を記録します。udid を固定したレーンでは確かめられないため、Unit 0 は生き延びるかどうかをコードとプールのテストで確定させました。
 
 ## 参考
 
