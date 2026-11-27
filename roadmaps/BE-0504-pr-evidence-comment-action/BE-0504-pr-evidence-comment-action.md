@@ -21,8 +21,9 @@ This item adds a composite GitHub Action, `post-evidence`. It posts the result o
 stopped it, and the reason. It links to the evidence that the action uploads as GitHub Actions
 artifacts. One artifact holds the whole run as a zip. The action also covers the first three failing
 scenarios with separate, non-zipped artifacts. Those hold the failing step's screenshot and the
-scenario's video, so a browser shows each directly. A rerun updates the same comment and adds no new
-one.
+scenario's video. A reader thus gets each file without a zip. The screenshot displays in the browser.
+GitHub sends a video as a download, which a browser may still play. A rerun updates the same comment
+and adds no new one.
 
 The action reads `manifest.json` from Bajutsu. When a run left no manifest, it reads
 `<sid>/result.json` instead. It reads nothing else. It installs no Bajutsu package and calls no
@@ -53,12 +54,12 @@ cannot close the gap by itself.
 GitHub offers no in-browser view of a zip's contents. The `report.html` page carries its Cascading
 Style Sheets (CSS) and JavaScript inline. It refers to its screenshots and videos by relative path.
 A page uploaded alone opens with broken images. A single image or video file has no such problem,
-because a browser displays it natively.
+because it refers to no other file.
 
 The observable difference is the pull request page. After a failing run, one comment appears. It
 states which scenarios did not pass and why. A reviewer clicks a screenshot link and sees the image.
-A video link plays the video, with no download and no unzip. The whole run stays one click away as a
-zip. A rerun edits the comment in place. The conversation holds one comment per job, never one per run. A reader still needs read access to the repository. Artifact Uniform Resource Locators (URLs)
+A video link delivers the video with no unzip, and the browser decides whether to play or save it.
+The whole run stays one click away as a zip. A rerun edits the comment in place. The conversation holds one comment per job, never one per run. A reader still needs read access to the repository. Artifact Uniform Resource Locators (URLs)
 require sign-in.
 
 ## Detailed design
@@ -180,14 +181,13 @@ link point to the shortened file. The comment is the place that says so.
 
 ### Viewing the evidence in a browser
 
-A browser natively displays a non-zipped Portable Network Graphics (PNG), MP4, or WebM file. It needs
-no JavaScript to do so. That property makes the per-file artifacts the main path for a quick look.
-GitHub's documentation does not say how every browser handles a non-zipped artifact. A browser may
-display the file or download it. For that reason the first work item is a
-spike. The spike uploads a
-screenshot and a video with `archive: false`. It records what a signed-in reader sees. If a file type
-downloads instead of displaying, the link still delivers the file. The documentation states the
-result.
+A non-zipped artifact reaches the reader as a single file, with no unzip. That property makes the
+per-file artifacts the main path for a quick look. GitHub's documentation does not say how every
+browser handles such an artifact. The first work item was thus a spike. The spike uploaded a Portable
+Network Graphics (PNG) screenshot and two videos with `archive: false`. GitHub sent the screenshot as
+`inline` and the MP4 and WebM videos as `attachment`. A video thus arrives as a download, which a
+browser may still play. The link delivers the file either way. The [Progress](#progress) log and
+`docs/reporting.md` record what a signed-in reader saw.
 
 The action does not upload `report.html` as a non-zipped artifact. Its relative image and video paths would
 break, as the Motivation describes. A reader who wants the full report downloads the whole-run
