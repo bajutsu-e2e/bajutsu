@@ -104,13 +104,30 @@ def test_a_command_reads_its_own_targets_component_outputs_alone() -> None:
 
 
 def test_an_applications_commands_also_read_its_names_locally() -> None:
-    outputs = hc.HookOutputs(values={"web:premium.user": {"id": "p"}, "user": {"id": "outer"}})
+    mine = HookOrigin(component="/c/user.hook.yaml", alias="premium")
+    outputs = hc.HookOutputs(
+        values={"web:premium.user": {"id": "p"}, "user": {"id": "outer"}},
+        origins={"web:premium.user": mine},
+    )
     # The local name wins over an outer entry of the same name, for this application's commands.
-    assert outputs.env(["web"], "premium") == {
+    assert outputs.env(["web"], mine) == {
         "BAJUTSU_HOOK__premium__user__id": "p",
         "BAJUTSU_HOOK__user__id": "p",
     }
     assert outputs.env(["web"])["BAJUTSU_HOOK__user__id"] == "outer"
+
+
+def test_another_component_under_the_same_alias_stays_apart() -> None:
+    a = HookOrigin(component="/c/a.hook.yaml", alias="x")
+    b = HookOrigin(component="/c/b.hook.yaml", alias="x")
+    outputs = hc.HookOutputs(
+        values={"x.a": {"k": "A"}, "x.b": {"k": "fromB"}, "b": {"k": "direct"}},
+        origins={"x.a": a, "x.b": b},
+    )
+    seen_by_a = outputs.env(None, a)
+    assert seen_by_a["BAJUTSU_HOOK__a__k"] == "A"
+    assert seen_by_a["BAJUTSU_HOOK__b__k"] == "direct"
+    assert outputs.env(None, b)["BAJUTSU_HOOK__b__k"] == "fromB"
 
 
 def test_an_aliased_teardown_reads_its_preparation_by_the_local_name(tmp_path: Path) -> None:

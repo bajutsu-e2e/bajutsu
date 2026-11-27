@@ -54,7 +54,12 @@ from bajutsu.common.runner.sandbox import (
     SandboxRuntime,
     grant_container_access,
 )
-from bajutsu.common.scenario.models.hook_command import SCOPE_SEP, env_name, split_hook_token
+from bajutsu.common.scenario.models.hook_command import (
+    SCOPE_SEP,
+    HookOrigin,
+    env_name,
+    split_hook_token,
+)
 
 # The process seam `HookRunner` spawns through: argv, environment, working directory, the timeout it
 # is bounded by, and the raw log file its output is appended to. Injected in tests, so every
@@ -205,25 +210,32 @@ class HookOutputs:
     values: dict[str, dict[str, str]] = field(default_factory=dict)
     # Names whose values an entry marked `mask: true`, masked in evidence like a `${secrets.*}`.
     masked: set[str] = field(default_factory=set)
+    # The application each `hooks` component output came from (BE-0512), keyed by stored name: a
+    # command reads by its local names the outputs of its own application alone.
+    origins: dict[str, HookOrigin] = field(default_factory=dict)
 
-    def env(self, targets: Iterable[str] | None = None, alias: str | None = None) -> dict[str, str]:
+    def env(
+        self, targets: Iterable[str] | None = None, origin: HookOrigin | None = None
+    ) -> dict[str, str]:
         """These outputs as the `BAJUTSU_HOOK__<name>__<key>` variables a later command reads.
 
         A target's `hooks` component writes its outputs under that target's scope (BE-0512), so a
-        command receives those of *targets* alone (every scope when None). A command that a
-        component applied under *alias* also reads its own application's outputs by their local
-        names, which win over an outer entry of the same name.
+        command receives those of *targets* alone (every scope when None). A command a component
+        applied under an alias (*origin*) also reads its own application's outputs by their local
+        names, which win over an outer entry of the same name. The application is matched by its
+        component file and alias together, so another component under the same alias stays apart.
         """
         wanted = None if targets is None else set(targets)
         out: dict[str, str] = {}
         local: dict[str, str] = {}
+        alias = origin.alias if origin is not None else None
         for stored, keys in self.values.items():
             scope, sep, qualified = stored.rpartition(SCOPE_SEP)
             if sep and wanted is not None and scope not in wanted:
                 continue
             for key, value in keys.items():
                 out[f"BAJUTSU_HOOK__{env_name(stored)}__{key}"] = value
-                if alias is not None and qualified.startswith(f"{alias}."):
+                if alias is not None and self.origins.get(stored) == origin:
                     local[f"BAJUTSU_HOOK__{qualified.removeprefix(alias + '.')}__{key}"] = value
         return {**out, **local}
 
@@ -242,7 +254,9 @@ class HookOutputs:
     def copy(self) -> HookOutputs:
         """An independent copy, so a caller that adds to it cannot write into the original."""
         return HookOutputs(
-            values={name: dict(keys) for name, keys in self.values.items()}, masked=set(self.masked)
+            values={name: dict(keys) for name, keys in self.values.items()},
+            masked=set(self.masked),
+            origins=dict(self.origins),
         )
 
 
@@ -550,6 +564,8 @@ class HookRunner:
                 # `BAJUTSU_HOOK__<name>__<key>`, and a half-finished `before` script is exactly the
                 # one whose work has to be undone.
                 result.outputs.values[stored] = values
+                if entry.origin is not None:
+                    result.outputs.origins[stored] = entry.origin
                 if entry.mask:
                     # The values themselves were registered with the writer in `_run_entry`, before
                     # this entry's own log was copied; this records which hook asked for it.
@@ -736,7 +752,7 @@ class HookRunner:
             env = {
                 **os.environ,
                 **context.env(),
-                **outputs.env(context.output_targets, _alias(entry)),
+                **outputs.env(context.output_targets, entry.origin),
                 **named.env,
             }
             if raw_out is not None:
@@ -752,7 +768,7 @@ class HookRunner:
         cwd = self._cwd(entry.cwd, cwd_base)
         # What Bajutsu itself gives the command, kept apart from the worker's own environment: the
         # container receives this set and the entry's own `env`, and nothing else.
-        bajutsu_env = {**context.env(), **outputs.env(context.output_targets, _alias(entry))}
+        bajutsu_env = {**context.env(), **outputs.env(context.output_targets, entry.origin)}
         if raw_out is not None:
             bajutsu_env["BAJUTSU_OUTPUT"] = str(raw_out)
         if action != "sandbox":
@@ -969,10 +985,6 @@ def stored_name(entry: HookCommand, context: HookContext) -> str | None:
     if entry.origin is not None and context.level is None:
         return f"{context.target}{SCOPE_SEP}{name}"
     return name
-
-
-def _alias(entry: HookCommand) -> str | None:
-    return entry.origin.alias if entry.origin is not None else None
 
 
 def run_phase(
