@@ -7,7 +7,7 @@
 |---|---|
 | 提案 | [BE-0481](BE-0481-android-device-set-location-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0481") |
 | 実装 PR | [#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)（作業単位 2〜6） |
 | トピック | プラットフォーム対応 |
@@ -41,8 +41,8 @@ adb バックエンドは、どの Android ターゲットにも `deviceControl.
 アプリ内の経路は、bajutsu がすでに持つ仕組みでこの差を埋めます。Android 10 以降、シェルのプロセスは
 クリップボードを読み書きできないため、[BE-0233](../BE-0233-adb-clipboard-fidelity/BE-0233-adb-clipboard-fidelity-ja.md)
 はクリップボードの操作を BajutsuAndroid へ移しました。bajutsu は、アプリのプロセスで動くレシーバへ順序付きの
-`am broadcast` を送ります。Android の模擬位置プロバイダも同じ形をしています。プラットフォームの API
-`LocationManager.addTestProvider` は模擬位置情報の権限を持つアプリから使え、その権限は adb の `appops` で
+`am broadcast` を送ります。Android の模擬位置プロバイダも同じ形をしています。`LocationManager.addTestProvider` は
+プラットフォームの Application Programming Interface (API) です。この API は模擬位置情報の権限を持つアプリから使え、その権限は adb の `appops` で
 与えられます。したがって、クリップボードのレシーバの隣に位置情報のレシーバを置けば、新しい通信路は要りません。
 
 この項目を実装すると、成果を実機で確かめられます。Android の実機で動くシナリオが位置を設定し、アプリが
@@ -79,16 +79,17 @@ Android のデバイス制御は、リースの最初の `setLocation` で端末
 ### BajutsuAndroid に加える位置情報のレシーバ
 
 `BajutsuAndroid/src/main/java/dev/bajutsu/android/` に、`ClipboardReceiver` と並べて `LocationReceiver` を
-加えます。レシーバは新しいアクション `dev.bajutsu.LOCATION` を待ち受け、`op` エクストラで 2 つの操作を
-扱います。
+加えます。レシーバは新しいアクション `dev.bajutsu.LOCATION` を待ち受け、`op` エクストラで `set` と `clear` の
+2 つの操作を扱います。
 
-- **`set`**：`lat` と `lon` を文字列として読みます。シェルの引数に引用符が要らないようにするためです。
-  レシーバは `gps` と `network` の各プロバイダについてテストプロバイダを追加して有効にします。
-  API 31 以降では `ProviderProperties` を渡します。ライブラリの最小 SDK は 26 なので、API 31 より前では、
-  各プロパティを個別の引数で受け取る従来のオーバーロードを使います。
-  各プロバイダには、精度、時刻、起動からの経過時間をそろえた `Location` を渡します。これらの項目を欠いた `Location` は
-  `IllegalArgumentException` を投げます。
-- **`clear`**：2 つのテストプロバイダを取り除きます。存在しないプロバイダは、取り除き済みとして扱います。
+`set` の操作では、レシーバは `lat` と `lon` を文字列として読みます。シェルの引数に引用符が要らないようにするためです。
+レシーバは `gps` と `network` の各プロバイダについてテストプロバイダを追加して有効にします。
+API 31 以降では `ProviderProperties` を渡します。ライブラリが対応する最小の Software Development Kit (SDK) は
+26 なので、API 31 より前では、各プロパティを個別の引数で受け取る従来のオーバーロードを使います。
+各プロバイダには、精度、時刻、起動からの経過時間をそろえた `Location` を渡します。これらの項目を欠いた `Location` は
+`IllegalArgumentException` を投げます。
+
+`clear` の操作では、レシーバは 2 つのテストプロバイダを取り除きます。存在しないプロバイダは、取り除き済みとして扱います。
 
 レシーバは成功すると、クリップボードのレシーバと同じく `Bajutsu.RESULT_OK` を設定します。2 種類の失敗には
 専用の結果コードを割り当て、bajutsu が原因を名指しできるようにします。
@@ -121,10 +122,10 @@ Android のデバイス制御は、リースの最初の `setLocation` で端末
 
 `_functions.py` には、クリップボード用のものと並べて 2 つのコマンド生成関数を加えます。エミュレータの判定には既存の `get_prop_cmd` を使います。
 
-- `mock_location_appop_cmd(serial, package, mode)` は `appops` で模擬位置情報の権限を切り替えます。
-  実行するのは `appops set <package> android:mock_location <mode>` で、モードは `allow` か `default` です。
-- `location_broadcast_cmd(serial, package, op, lat, lon)` は順序付きのブロードキャストを送ります。
-  `_clipboard_broadcast_cmd` に倣います。
+1 つ目の `mock_location_appop_cmd(serial, package, mode)` は、`appops` で模擬位置情報の権限を切り替えます。
+実行するのは `appops set <package> android:mock_location <mode>` で、モードは `allow` か `default` です。
+2 つ目の `location_broadcast_cmd(serial, package, op, lat, lon)` は、順序付きの
+ブロードキャストを送ります。この関数は `_clipboard_broadcast_cmd` に倣います。
 
 `parse_location_result(out)` は結果コードを読みます。成功でなければ、上の表の原因を添えて
 `DeviceError` を投げます。`env.py` の
@@ -160,9 +161,9 @@ Android のデバイス制御は、リースの最初の `setLocation` で端末
 ブロードキャストがレシーバに届くのはアプリのプロセスが生きているあいだに限られます。リースのあいだに
 模擬の位置を設定したターゲットについて、`teardown` は次の手順を踏みます。
 
-1. `clear` をブロードキャストし、テストプロバイダを取り除きます。
-2. `appops set <package> android:mock_location default` を実行し、権限を外します。
-3. 現在の `teardown` と同じく、アプリを強制停止します。
+1. `clear` のブロードキャストによるテストプロバイダの除去
+2. `appops set <package> android:mock_location default` の実行による権限の解除
+3. 現在の `teardown` と同じ、アプリの強制停止
 
 手順 1 と手順 2 の失敗は警告として記録し、実行は失敗させません。シナリオの判定はその時点で確定しており、
 手順 2 だけでもアプリはその後に位置を模擬できなくなります。Android では `teardown` がリースを返すたびに
@@ -227,38 +228,47 @@ Android の showcase アプリは Compose 版と Views 版の両方で `Bajutsu.
 > 作業分解（作業の単位ごとに 1 つ）に対応し、ログには変更内容と時期（古い順）を PR へのリンクと
 > ともに記録します。
 
-- [ ] 作業単位 1：実機でのスパイク（`appops`、再起動、権限の解除、fused への反映）
+- [x] ~~作業単位 1：実機でのスパイク（`appops`、再起動、権限の解除、fused への反映）~~
+  - エミュレータでの結果による完了。スパイクの実施先は `adb connect` で接続した API 34 のエミュレータで、
+    結果は 2026-11-11 のログに記録済み。実機の Android 端末を用意できなかったため、
+    エミュレータでの結果をスパイクの答えとして採用。
 - [x] 作業単位 2：BajutsuAndroid の `LocationReceiver` と `Bajutsu.startLocation`
 - [x] 作業単位 3：adb のコマンド生成関数、結果の解析、`Env` のメソッド
 - [x] 作業単位 4：経路の選択とリース終了時の解除
 - [x] 作業単位 5：showcase の位置表示とシナリオ
 - [x] 作業単位 6：英語と日本語のドキュメント
-- [ ] 作業単位 7：実機での検証
+- [x] ~~作業単位 7：実機での検証~~
+  - 実機では実行しないままの完了。CI のエミュレータの lane は、PR ごとに位置情報のシナリオを 2 回実行。
+    1 回目は `emulator-<port>` のシリアル、2 回目は `adb connect` による接続。この lane で確かめられる対象は、
+    両方の経路と `appops` の許可、結果コード。
 
-ログ：
+ログを古い順に記します。
 
-- 2026-11-11 — 作業単位 2〜6 をまとめて実装しました（[#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)）。作業単位 1 は実機ではなく、`adb connect` で
-  接続した API 34 のエミュレータで試したので、作業単位 7 とともに未完了のままです。エミュレータでは
-  次の 5 点を確かめました。
-  - `appops set <package> android:mock_location allow` は、マニフェストに `ACCESS_MOCK_LOCATION`
-    がなくても app-op を許可します。存在しないパッケージを渡すと 0 以外で終了します。
-  - 許可がなければレシーバは `2` を返し、許可があれば `1` を返します。
-  - mock の provider は強制停止と再起動のあとも残り、`clear` で取り除けます。
-  - エミュレータ自身の fused provider も mock の位置を報告しました。Play 開発者サービスは関わっていません。
-  - app-op を取り消しても provider は残り、shell からも取り除けません
-    （`cmd location providers remove-test-provider` は uid 2000 に対して `SecurityException` を投げます）。
-    そのため teardown は、停止しているアプリを起動してから `clear` を broadcast します。
+- 2026-11-11 — 作業単位 2〜6 の一括実装（[#2418](https://github.com/bajutsu-e2e/bajutsu/pull/2418)）。
+  作業単位 1 は実機ではなく `adb connect` で接続した API 34 のエミュレータでの試行のため、作業単位 7 とともに
+  未完了。エミュレータで確かめた点は次の 5 つ。
+  - `appops set <package> android:mock_location allow` による app-op の許可。マニフェストに
+    `ACCESS_MOCK_LOCATION` がなくても許可され、存在しないパッケージを渡すと 0 以外で終了。
+  - 許可がなければレシーバは `2` を、許可があれば `1` を返却。
+  - mock の provider は強制停止と再起動のあとも残存し、`clear` で除去可能。
+  - エミュレータ自身の fused provider による mock の位置の報告。Play 開発者サービスの関与はなし。
+  - app-op を取り消しても provider は残り、shell からも除去不可。shell の
+    `cmd location providers remove-test-provider` は、uid 2000 に対して `SecurityException` を送出。
+    そのため teardown は、停止しているアプリを起動してから `clear` を broadcast。
 
   詳細設計からは次の 4 点を変えました。
-  - 環境は、記録した位置を、自分が行うすべての起動のあとに送り直します。再起動で provider が
-    消えた場合に限りません。送り直しは冪等なので、作業単位 1 が実機で何を見つけても成り立ちます。
-  - `installApp` ステップのあとの送り直しは、`install_member` の中ではなく次の起動で行います。
-    レシーバは実行時に登録されるので、動いているプロセスが要るためです。
-  - 設計の `clear_mock_location` を、`clear_mock_location`（broadcast）と `revoke_mock_location`
-    （`appops` の再設定）の 2 つに分けました。こうすると、解除の broadcast が失敗しても teardown で
-    許可を取り消せます。
-  - レシーバは 3 つ目の失敗コード `3` も返します。プラットフォームが `IllegalArgumentException` で mock を
-    拒んだ場合のコードです。これにより、拒まれた mock でアプリがクラッシュせず、レシーバがないとも誤認されません。
+  - 環境による、記録した位置の再送。再送の時点は、再起動で provider が消えた場合に限らず、環境が行う
+    すべての起動のあと。再送は冪等なので、作業単位 1 が実機で何を見つけても成立。
+  - `installApp` ステップのあとの再送は、`install_member` の中ではなく次の起動の時点。理由は、
+    レシーバが実行時に登録され、動いているプロセスを要すること。
+  - 設計の `clear_mock_location` の 2 分割。broadcast を担う `clear_mock_location` と、`appops` を
+    再設定する `revoke_mock_location` への分離。解除の broadcast が失敗しても、teardown で許可を取り消せる構成。
+  - レシーバの 3 つ目の失敗コード `3` の追加。`3` は、プラットフォームが `IllegalArgumentException` で
+    mock を拒んだ場合のコード。拒まれた mock によるアプリのクラッシュと、レシーバがないという誤認の両方を防止。
+- 2026-11-27 — エミュレータでの結果による作業単位 1 と 7 の完了と、状態の実装済みへの変更。
+  エミュレータでは確かめられず、実機ならわかる点が 2 つ残存。
+  - `ro.boot.qemu` と `ro.kernel.qemu` のどちらも報告しない端末での経路の振り分け
+  - fused provider を使うクライアントに、Play 開発者サービスを通して mock の位置が見えるか
 
 ## 参考
 
