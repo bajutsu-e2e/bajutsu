@@ -123,6 +123,15 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
         setup = [_aliased(s, use.as_, declared) for s in setup]
         for rule in cleanup:
             rule.steps = [_aliased(s, use.as_, declared) for s in rule.steps]
+    # The report names the file beside each step it added, relative to the suite root.
+    shown = (
+        path.relative_to(root.resolve()).as_posix()
+        if path.is_relative_to(root.resolve())
+        else str(path)
+    )
+    setup = [_from_component(s, shown) for s in setup]
+    for rule in cleanup:
+        rule.steps = [_from_component(s, shown) for s in rule.steps]
     if use.when is not None:
         try:
             commands, setup, cleanup = _conditioned(use.when, commands, setup, cleanup)
@@ -132,6 +141,14 @@ def apply_hook_component(use: HookUse, *, root: Path, base: Path) -> HookApplica
         except ValueError as e:
             raise ValueError(f"{where}: {e}") from e
     return HookApplication(use=use, path=path, commands=commands, setup=setup, cleanup=cleanup)
+
+
+def _from_component(step: Step, shown: str) -> Step:
+    """*step* marked as added by the component *shown*; a block's own steps are what run."""
+    if step.when is not None and step.steps is not None:
+        children = [c.model_copy(update={"component": shown}) for c in step.steps]
+        return step.model_copy(update={"steps": children})
+    return step.model_copy(update={"component": shown})
 
 
 def _conditioned(

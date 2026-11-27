@@ -259,3 +259,38 @@ def test_an_unknown_scenario_source_is_a_usage_error(tmp_path: Path) -> None:
     extra = ["--scenario-source", "elsewhere"]
     assert _run_scenario(tmp_path, "{}", "operator", "{}", extra=extra) == 2
     assert "--scenario-source 'elsewhere'" in (tmp_path / "output.txt").read_text()
+
+
+def test_a_config_component_among_uploaded_scenarios_answers_to_their_source(
+    tmp_path: Path,
+) -> None:
+    # BE-0512: the operator's config applies a hooks component that sits among the scenario files
+    # a client wrote, so the component's command runs under the stricter `uploaded` mode.
+    _run_scenario(tmp_path, "{}", "operator", "{}")
+    component = tmp_path / "flows" / "hooks" / "seed.hook.yaml"
+    component.parent.mkdir()
+    component.write_text("beforeScenario: [{name: seed, cmd: 'false'}]\n", encoding="utf-8")
+    cfg = tmp_path / "bajutsu.config.yaml"
+    cfg.write_text(
+        cfg.read_text(encoding="utf-8")
+        + "    hooks:\n      use: [{hook: ./flows/hooks/seed.hook.yaml}]\n",
+        encoding="utf-8",
+    )
+    worker = tmp_path / "worker.yaml"
+    worker.write_text(
+        worker.read_text().replace("commandExecution: {}", "commandExecution: {uploaded: deny}")
+    )
+    argv = ["run", "--target", "site", "--scenario", str(tmp_path / "flows" / "pay.yaml")]
+    argv += ["--backend", "fake", "--config", str(cfg), "--worker-config", str(worker)]
+    argv += ["--config-source", "operator", "--scenario-source", "uploaded"]
+    result = invoke(runner, app, [*argv, "--runs-dir", str(tmp_path / "runs2")])
+    assert result.exit_code == 2, result.output
+    assert "for the hooks component file that added it, uploaded: deny" in result.output
+    [manifest] = (tmp_path / "runs2").glob("*/manifest.json")
+    [entry] = json.loads(manifest.read_text(encoding="utf-8"))["provenance"]["commandExecutions"]
+    assert entry["component"] == "flows/hooks/seed.hook.yaml"
+    assert (entry["source"], entry["componentSource"], entry["decision"]) == (
+        "operator",
+        "uploaded",
+        "refused",
+    )

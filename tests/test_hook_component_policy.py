@@ -8,6 +8,7 @@ uploaded beside its scenarios never gains the mode of the config that applies it
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -18,11 +19,18 @@ from bajutsu.common.capability.command_policy import (
     CommandPolicy,
     stricter_mode,
 )
+from bajutsu.common.capability.route_tokens import report_hook_phases
 from bajutsu.common.config import HookPhases
 from bajutsu.common.config.schema.hook_command import HookSandbox
+from bajutsu.common.report.html import html_report
+from bajutsu.common.report.rows import _name_components
+from bajutsu.common.runner import hook_commands as hc
 from bajutsu.common.runner.hook_commands import hook_refusal
 from bajutsu.common.runner.hook_session import _sandboxes
+from bajutsu.common.scenario import Step
+from bajutsu.common.scenario.hook_components import apply_hook_component
 from bajutsu.common.scenario.models.hook_command import HookCommand
+from bajutsu.common.scenario.models.hook_component import HookUse
 
 
 def _gate(tmp_path: Path, *, uploaded: str = "deny", operator: str = "allow") -> CommandGate:
@@ -156,3 +164,61 @@ def test_a_component_the_policy_sandboxes_starts_its_targets_container(tmp_path:
         with_component, gate=gate, raw_dir=tmp_path / "raw", base_dir=tmp_path, scenario_targets=()
     )
     assert list(started) == ["web"]
+
+
+# --- reports ---
+
+
+def test_a_component_entrys_record_names_its_file_in_the_report() -> None:
+    record = hc.HookRecord("beforeScenario", "user", "web", None, component="hooks/u.hook.yaml")
+    [entry] = hc.hook_record_dicts([record])
+    assert entry["component"] == "hooks/u.hook.yaml"
+    [block] = report_hook_phases([entry])
+    page = html_report("r", [], hook_phases=[block])
+    assert "from hooks/u.hook.yaml" in page
+    [plain] = hc.hook_record_dicts([hc.HookRecord("beforeScenario", "x", "web", None)])
+    assert "component" not in plain
+
+
+def test_a_component_marks_the_steps_it_adds(tmp_path: Path) -> None:
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    (hooks / "u.hook.yaml").write_text(
+        "setup:\n  - tap: { id: a }\n  - when: { tags: [x] }\n    steps: [{ tap: { id: b } }]\n"
+        "cleanup: [{ on: always, steps: [{ tap: { id: c } }] }]\n",
+        encoding="utf-8",
+    )
+    app = apply_hook_component(
+        HookUse.model_validate({"hook": "./hooks/u.hook.yaml", "when": {"tags": ["y"]}}),
+        root=tmp_path,
+        base=tmp_path,
+    )
+    plain, block = app.setup
+    assert [s.component for s in [*(plain.steps or []), *(block.steps or [])]] == [
+        "hooks/u.hook.yaml",
+        "hooks/u.hook.yaml",
+    ]
+    assert plain.component is None and block.component is None
+    [rule] = app.cleanup
+    assert [s.component for s in rule.steps] == ["hooks/u.hook.yaml"]
+    # Hidden from authors, but kept across the dump a data-driven row reloads.
+    again = Step.model_validate(rule.steps[0].model_dump(by_alias=True, exclude_unset=True))
+    assert again.component == "hooks/u.hook.yaml"
+    assert "_component" not in Step.model_json_schema().get("properties", {})
+
+
+def test_the_step_rows_label_each_run_of_component_steps_once() -> None:
+    plan: list[dict[str, Any]] = [
+        {"_component": "hooks/u.hook.yaml"},
+        {"_component": "hooks/u.hook.yaml"},
+        {},
+        {"_component": "hooks/v.hook.yaml"},
+    ]
+    rows: list[dict[str, Any]] = [{"detail": {}} for _ in plan]
+    _name_components(rows, plan)
+    assert [r["detail"].get("component") for r in rows] == [
+        "hooks/u.hook.yaml",
+        None,
+        None,
+        "hooks/v.hook.yaml",
+    ]

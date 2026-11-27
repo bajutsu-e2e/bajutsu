@@ -108,6 +108,8 @@ def report_hook_phases(records: object) -> list[dict[str, object]]:
                 "when": record.get("when") or "",
                 "reason": record.get("reason") or failure or "",
                 "ok": failure is None,
+                # The `hooks` component file that added the entry (BE-0512), or empty.
+                "component": record.get("component") or "",
             }
         )
         if failure is not None:

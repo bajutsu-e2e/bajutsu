@@ -310,6 +310,8 @@ class HookRecord:
     # The scenario whose own list declared the entry, or None for a target's (BE-0501): the report
     # draws the two levels as separate blocks.
     declared_by: str | None = None
+    # The `hooks` component file that added the entry (BE-0512), as the config's directory names it.
+    component: str | None = None
 
 
 @dataclass
@@ -526,6 +528,7 @@ class HookRunner:
                         context.target,
                         None,
                         scenario=context.scenario_index,
+                        component=self._gate_for(context, entry).component,
                         skipped=True,
                         when=str(entry.when),
                     )
@@ -547,6 +550,7 @@ class HookRunner:
                         context.target,
                         None,
                         scenario=context.scenario_index,
+                        component=self._gate_for(context, entry).component,
                         skipped=True,
                         reason=f"`on: {entry.on}` does not match the verdict {context.verdict!r}",
                     )
@@ -562,6 +566,7 @@ class HookRunner:
                         context.target,
                         None,
                         scenario=context.scenario_index,
+                        component=self._gate_for(context, entry).component,
                         skipped=True,
                         reason="teardown budget spent",
                     )
@@ -624,6 +629,7 @@ class HookRunner:
                     context.target,
                     None,
                     scenario=context.scenario_index,
+                    component=self._gate_for(context, entry).component,
                     failure=str(e),
                 ),
                 HookFailure(list_name, entry.label, str(e)),
@@ -646,6 +652,7 @@ class HookRunner:
                     context.target,
                     None,
                     scenario=context.scenario_index,
+                    component=self._gate_for(context, entry).component,
                     failure=str(e),
                 ),
                 HookFailure(list_name, entry.label, str(e)),
@@ -701,6 +708,7 @@ class HookRunner:
             context.target,
             log,
             scenario=context.scenario_index,
+            component=self._gate_for(context, entry).component,
             failure=reason,
         )
         return record, failure, values
@@ -975,6 +983,8 @@ def hook_record_dicts(records: Iterable[HookRecord]) -> list[dict[str, object]]:
             entry["scenario"] = record.scenario
         if record.declared_by is not None:
             entry["declaredBy"] = record.declared_by
+        if record.component is not None:
+            entry["component"] = record.component
         if record.log is not None:
             entry["log"] = record.log
         if record.skipped:
