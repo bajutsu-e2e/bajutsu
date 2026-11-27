@@ -708,6 +708,68 @@ The server keeps passive file types alone. The script names the dropped files on
 [Self-hosting → Importing a finished run](self-hosting.md#importing-a-finished-run) covers the
 server's checks and the credential it accepts.
 
+## Posting a run's address to a pull request
+
+`scripts/post_run_url.py` tells reviewers where an uploaded run is
+([BE-0508](../roadmaps/BE-0508-post-run-url-comment/BE-0508-post-run-url-comment.md)). It writes one
+comment on a pull request or an issue. The comment gives the verdict and the counts. It names each
+failing scenario with its first failing step and the reason, and it links the run. A rerun edits the
+same comment. The script uploads nothing, and like the upload script it uses the Python standard
+library alone.
+
+```bash
+python3 scripts/post_run_url.py runs/<runId> \
+  --url https://bajutsu.example.com/runs/<runId>/report.html \
+  --archive-url https://bajutsu.example.com/runs/<runId>/archive.zip \
+  --to owner/repo#123
+```
+
+The two addresses are the lines that the upload script prints. The first argument is a run directory,
+or a run id under `--runs-dir` (default `runs`). The script reads the run's `manifest.json`. For a run that
+left no manifest, the script reads each `<sid>/result.json` instead. Before any write, the script prints
+the target, the action, and the full text. It then asks for confirmation.
+
+| Input | Behavior |
+|---|---|
+| `--to` | Where the text goes. The forms are listed below the table. |
+| `--url` | Required. Its path must hold `/runs/<runId>/` for this run. |
+| `--archive-url` | Optional. Links the zip of the run. A query string is refused. |
+| `--marker` | The slot of the sticky comment, `local` by default. |
+| `--author` | The comment's owner, for a token that has no user. |
+| `--max-failures` | Scenarios listed in full, 10 by default. |
+| `--dry-run` | Prints the plan and the text, and writes nothing. |
+| `--yes` | Posts without asking. |
+| Exit status | 0 for a post or a finished `--dry-run`, 1 when nothing was posted, 2 for a refused argument. |
+
+`--to` takes one of three forms:
+
+- `owner/repo#NUMBER` names a pull request or an issue.
+- A pull request or issue address on `https://github.com/` names the same thread.
+- `release:owner/repo@TAG` names a release.
+
+Behavior to know:
+
+- **A release has no comments.** The script writes the same text into the release notes instead. The
+  text sits between two hidden markers that carry the `--marker` name. A rerun replaces that block and
+  keeps the rest of the notes. The script never creates a release, and a missing tag stops the post.
+- **The token stays with GitHub.** The script reads `GH_TOKEN`, then `GITHUB_TOKEN`, then
+  `gh auth token`. It sends requests to `https://api.github.com` alone. A redirect drops the token.
+  A comment needs write access to pull requests or issues. A release needs write access to contents.
+- **A bare `#123` is refused.** In a fork workflow, `origin` names the fork. A guessed repository
+  would post to the wrong thread.
+- **Both addresses refuse user information and queries.** A pasted secret would sit there. The
+  thread may be public, so the script never publishes either part. The rule covers `--url` and
+  `--archive-url`. A signed zip address with a query string is thus refused.
+- **A marker cannot start with `bajutsu_`.** That prefix marks a server API key. A marker takes
+  letters and digits, plus dots, hyphens, and underscores.
+- **Run text cannot change the comment's markup.** Each scenario name and reason sits in a code span.
+  The script cuts each such string at 500 characters. Near the size limit of GitHub, the script drops
+  whole scenario blocks. The comment then states the number it left out.
+- **The comment embeds no screenshot.** GitHub cannot fetch an image from an address behind a
+  sign-in. A reviewer opens the run on the server instead.
+- **The exit status never reflects the run's verdict.** A post of a run that did not pass still
+  exits 0.
+
 ## Posting evidence to a pull request (BE-0504)
 
 The `post-evidence` composite action posts a finished run to a pull request or an issue. It reads
