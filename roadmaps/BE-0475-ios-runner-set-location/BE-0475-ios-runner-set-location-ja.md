@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0475") |
+| 実装 PR | [#2615](https://github.com/bajutsu-e2e/bajutsu/pull/2615)（作業単位 2〜4） |
 | トピック | プラットフォーム対応 |
 | 関連 | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight-ja.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities-ja.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution-ja.md), [BE-0458](../BE-0458-real-device-host-channels/BE-0458-real-device-host-channels-ja.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control-ja.md) |
 <!-- /BE-METADATA -->
@@ -260,7 +261,7 @@ iPhone 実機と Simulator で実行します。
 
 ログは次のとおりです。
 
-2026-11-28：作業単位 2〜4 をまとめて実装しました。作業単位 1 のスパイクのうち Simulator の側を、
+2026-11-28：作業単位 2〜4 を [#2615](https://github.com/bajutsu-e2e/bajutsu/pull/2615) でまとめて実装しました。作業単位 1 のスパイクのうち Simulator の側を、
 Xcode 27.0 と iOS 27.0 の Simulator で実行し、次の 4 点を確かめました。
 
 | スパイクの結果 |

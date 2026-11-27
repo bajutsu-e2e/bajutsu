@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0475") |
+| Implementing PR | [#2615](https://github.com/bajutsu-e2e/bajutsu/pull/2615) (units 2–4) |
 | Topic | Platform support |
 | Related | [BE-0128](../BE-0128-device-step-capability-preflight/BE-0128-device-step-capability-preflight.md), [BE-0212](../BE-0212-granular-device-control-capabilities/BE-0212-granular-device-control-capabilities.md), [BE-0238](../BE-0238-ios-device-cloud-execution/BE-0238-ios-device-cloud-execution.md), [BE-0458](../BE-0458-real-device-host-channels/BE-0458-real-device-host-channels.md), [BE-0211](../BE-0211-android-device-control/BE-0211-android-device-control.md) |
 <!-- /BE-METADATA -->
@@ -240,7 +241,7 @@ An app without location access prompts for it. The existing `handleSystemAlert` 
 
 Log:
 
-- 2026-11-28 — Units 2–4 landed together. The Simulator half of the Unit 1 spike ran on an iOS 27.0
+- 2026-11-28 — Units 2–4 landed together in [#2615](https://github.com/bajutsu-e2e/bajutsu/pull/2615). The Simulator half of the Unit 1 spike ran on an iOS 27.0
   Simulator built with Xcode 27.0. It found four results:
   - Apps launched by `XCUIApplication` or `simctl launch` both received the assigned coordinate.
   - After the test process exited, a fresh app launch still read the last assigned coordinate.
