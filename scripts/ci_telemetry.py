@@ -1032,6 +1032,11 @@ def _report_main(args: argparse.Namespace) -> int:
 
 
 def _adoption_main(args: argparse.Namespace) -> int:
+    # The arm filter compares `started_at` against `--since` as plain strings, so only the API's
+    # own shape sorts correctly; another shape would silently widen the window to every run.
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", args.since):
+        print(f"--since must look like 2026-12-01T00:00:00Z, not {args.since!r}", file=sys.stderr)
+        return 2
     result = adoption(load_records(Path(args.path)), since=args.since)
     print(
         json.dumps(result, indent=2) if args.json else render_adoption(result),

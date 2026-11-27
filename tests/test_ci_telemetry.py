@@ -688,6 +688,9 @@ def test_adoption_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     # Without a start time the pilot dispatches would count, so the flag is mandatory.
     with pytest.raises(SystemExit):
         ct.main(["adoption", str(path)])
+    # Another timestamp shape would sort below every API timestamp and admit the whole history.
+    assert ct.main(["adoption", str(path), "--since", "2026-12-01 00:00:00"]) == 2
+    assert "--since must look like" in capsys.readouterr().err
 
 
 def test_fetch_can_narrow_to_one_trigger(tmp_path: Path) -> None:

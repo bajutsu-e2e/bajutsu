@@ -818,7 +818,7 @@ CoreSimulator、macOS の unified log を読みます。`collect-android-diagnos
 | stock | 同じ再起動を経て、すべてのサービスが動いている状態 |
 
 手順は 3 段階です。最初に、`main` で各群を 10 回ずつ実行します。2 つの群は同じ時間帯で交互に走らせます。
-報告はそれより古い実行を数えないので、最初の実行の時刻を控えておきます。
+最初の実行の時刻を控えておきます。報告はその時刻より古い実行を数えません。
 
 ```bash
 gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=reduced
