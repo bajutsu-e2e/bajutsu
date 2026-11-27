@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bajutsu.common.capability.command_gate import CommandGate
@@ -28,6 +28,7 @@ from bajutsu.common.runner.hook_commands import (
     HookRecord,
     HookRunner,
     _default_log,
+    component_of,
     duplicate_hook_name,
     raw_root,
     run_phase,
@@ -188,13 +189,15 @@ def start_session(
     named_commands: Mapping[str, NamedCommand] | None = None,
     base_dir: Path | None = None,
     scenario_targets: Collection[str] = (),
+    component_targets: Collection[str] = (),
     tags: Mapping[str, Sequence[Sequence[str]]] | None = None,
     conditions: ConditionContext | None = None,
 ) -> HookSession | None:
     """The hook session for this run, or None when neither a target nor a scenario declares one.
 
     *scenario_targets* names the targets whose container a scenario's own commands may run in
-    (BE-0501), which is non-empty exactly when some scenario declares a command. *conditions* are
+    (BE-0501), which is non-empty exactly when some scenario declares a command; *component_targets*
+    those among them that run a command a `hooks` component added (BE-0512). *conditions* are
     the facts a `when` reads (BE-0513); None builds them from the targets' own config and this
     process's environment, for a command with no `--backend` or `--udid` override.
 
@@ -229,7 +232,12 @@ def start_session(
         tags=tags or {},
         conditions=conditions if conditions is not None else condition_context(effs),
         sandboxes=_sandboxes(
-            phases, gate=gate, raw_dir=raw, base_dir=base_dir, scenario_targets=scenario_targets
+            phases,
+            gate=gate,
+            raw_dir=raw,
+            base_dir=base_dir,
+            scenario_targets=scenario_targets,
+            component_targets=component_targets,
         ),
     )
 
@@ -241,6 +249,7 @@ def _sandboxes(
     raw_dir: Path,
     base_dir: Path | None,
     scenario_targets: Collection[str],
+    component_targets: Collection[str] = (),
 ) -> dict[str, SandboxRuntime]:
     """One container per target whose command lines the worker's policy sandboxes (BE-0492).
 
@@ -254,8 +263,19 @@ def _sandboxes(
     from bajutsu.common.capability import command_gate as gate_module
 
     judge = gate if gate is not None else gate_module.current()
-    own = judge.policy.action("command") == "sandbox"
-    scenario = judge.for_scenario().policy.action("command") == "sandbox"
+    scenario_judge = judge.for_scenario()
+    scenario = scenario_judge.policy.action("command") == "sandbox"
+    # A scenario's own entry a component in the config's tree added runs under the stricter of the
+    # two sources (BE-0512), which may sandbox it where the scenario's source alone would not.
+    joined = replace(scenario_judge.policy, component_source=judge.policy.source)
+    component = joined.action("command") == "sandbox"
+
+    def sandboxes(phase: HookPhases) -> bool:
+        return any(
+            judge.for_entry(component_of(entry)).policy.action("command") == "sandbox"
+            for _, _, entry in phase.entries()
+        )
+
     return {
         target: SandboxRuntime(
             sandbox=phase.sandbox,
@@ -268,5 +288,9 @@ def _sandboxes(
         )
         for target, phase in phases.items()
         if phase.sandbox is not None
-        and ((own and phase.any_command) or (scenario and target in scenario_targets))
+        and (
+            sandboxes(phase)
+            or (scenario and target in scenario_targets)
+            or (component and target in component_targets)
+        )
     }

@@ -627,7 +627,17 @@ def _phase_rows(
                 act=_acted_seconds(out, anchor),
             )
         )
+    _name_components(rows, plan)
     return _fold_groups(rows)
+
+
+def _name_components(rows: list[dict[str, Any]], plan: list[dict[str, Any]]) -> None:
+    """Label each run of steps one `hooks` component added with its file, once (BE-0512)."""
+    shown = grouped_provenance([d.get("_component") for d in plan])
+    for row, component in zip(rows, shown, strict=False):
+        detail = row.get("detail")
+        if component and isinstance(detail, dict):
+            detail["component"] = component
 
 
 def _cleanup_rows(
@@ -689,6 +699,7 @@ def _cleanup_rows(
                 row["num"] = f"{on}·{out.index}"
                 stopped = not out.ok
             rows.append(row)
+        _name_components(rows[len(rows) - len(steps) :], steps)
     return _fold_groups(rows)
 
 

@@ -29,7 +29,14 @@ CONFIG_SOURCES: tuple[ConfigSource, ...] = get_args(ConfigSource)
 OPERATOR: ConfigSource = "operator"
 
 CommandMode = Literal["allow", "sandbox", "named", "deny"]
+# Listed from the most permissive to the strictest: each runs no more than the one before it.
 COMMAND_MODES: tuple[CommandMode, ...] = get_args(CommandMode)
+
+
+def stricter_mode(a: CommandMode, b: CommandMode) -> CommandMode:
+    """The stricter of *a* and *b*, the one that runs no more than the other."""
+    return max(a, b, key=COMMAND_MODES.index)
+
 
 # The routing-token prefixes this policy fills in (`command-execution:<source>`,
 # `named-execution:<source>`, `named-command:<name>`). Reserved beside the others in
@@ -176,11 +183,18 @@ class CommandPolicy:
 
     source: ConfigSource = OPERATOR
     execution: CommandExecution = field(default_factory=CommandExecution)
+    # Where the `hooks` component file that added the command came from, when that differs from
+    # *source* (BE-0512): the command then runs under the stricter of the two modes, so a file a
+    # client uploaded never gains the mode of the config that applies it.
+    component_source: ConfigSource | None = None
 
     @property
     def mode(self) -> CommandMode:
-        """The mode that applies to this run's config."""
-        return self.execution.mode_for(self.source)
+        """The mode that applies to this run's config, and to the component file if one is named."""
+        own = self.execution.mode_for(self.source)
+        if self.component_source is None:
+            return own
+        return stricter_mode(own, self.execution.mode_for(self.component_source))
 
     def action(self, kind: CommandKind) -> Action:
         """What this run does with a command of *kind*."""
@@ -188,9 +202,14 @@ class CommandPolicy:
 
     def refusal(self, field: str, cmd: str) -> str:
         """The message naming a command this policy refuses or a build it does not run."""
+        sets = f"{self.source}: {self.execution.mode_for(self.source)}"
+        if self.component_source is not None:
+            sets += (
+                f" and, for the hooks component file that added it, {self.component_source}: "
+                f"{self.execution.mode_for(self.component_source)}, the stricter of the two applying"
+            )
         return (
-            f"{field} {cmd!r} does not run: the worker's commandExecution sets "
-            f"{self.source}: {self.mode} (worker.yaml)"
+            f"{field} {cmd!r} does not run: the worker's commandExecution sets {sets} (worker.yaml)"
         )
 
 
@@ -332,8 +351,14 @@ def command_notices(records: object) -> list[str]:
         outcome = _DECISION_WORDS.get(decision, decision)
         if "exitCode" in record:
             outcome += f" (exit {record['exitCode']})"
+        where = f"from the {record.get('source')} config"
+        if record.get("component"):
+            # The mode is then the stricter of two sources (BE-0512), so name the second.
+            where += f" via the hooks component {record['component']}"
+            if record.get("componentSource"):
+                where += f" ({record['componentSource']})"
         notices.append(
-            f"{record.get('field')} {record.get('cmd')!r} from the {record.get('source')} config: "
+            f"{record.get('field')} {record.get('cmd')!r} {where}: "
             f"{outcome} under commandExecution {record.get('mode')} (BE-0492)"
         )
     return notices

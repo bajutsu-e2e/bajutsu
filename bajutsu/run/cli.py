@@ -116,7 +116,11 @@ from bajutsu.common.runner.device_provider.lease_command import declared_models
 from bajutsu.common.runner.device_provider.tagged_udid import entries_for_platform
 from bajutsu.common.runner.hook_session import HookSession, phases_of, run_tags, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
-from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
+from bajutsu.common.runner.scenario_hooks import (
+    component_targets,
+    run_hook_refusal,
+    sandbox_targets,
+)
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     ComponentResolver,
@@ -459,6 +463,19 @@ def _resolve_secrets(effs: Iterable[Effective]) -> tuple[dict[str, str], list[st
     return bindings, list(bindings.values())
 
 
+def _ref_root(eff: Effective, scenario: Sequence[str], files: Sequence[Path]) -> Path:
+    """The containment root a scenario file's refs resolve inside (BE-0174).
+
+    The single file's own directory for a lone `--scenario` override; the common parent of an
+    explicit multi-file `--scenario` list; else the configured scenarios dir for a whole-suite run.
+    """
+    if scenario and len(files) == 1:
+        return files[0].parent
+    if scenario:
+        return Path(os.path.commonpath([str(f.parent) for f in files]))
+    return Path(eff.evidence_dirs.scenarios or files[0].parent)
+
+
 def _load_scenarios(
     eff: Effective, scenario: list[str], target_name: str
 ) -> tuple[list[Scenario], str | None, str, list[Path], dict[str, ScenarioPlanSource]]:
@@ -470,15 +487,7 @@ def _load_scenarios(
     scenario's report plan source — see `_expand_file`.
     """
     files, single = _scenario_files(eff, scenario, target_name)
-    # The containment root for refs (BE-0174): the single file's own directory for a lone `--scenario`
-    # override; the common parent of an explicit multi-file `--scenario` list; else the configured
-    # scenarios dir for a whole-suite run.
-    if single:
-        root = files[0].parent
-    elif scenario:
-        root = Path(os.path.commonpath([str(f.parent) for f in files]))
-    else:
-        root = Path(eff.evidence_dirs.scenarios or files[0].parent)
+    root = _ref_root(eff, scenario, files)
     scenarios: list[Scenario] = []
     description: str | None = None
     plan_sources: dict[str, ScenarioPlanSource] = {}
@@ -2419,6 +2428,7 @@ def _hook_session_or_exit(
     secret_values: list[str],
     base_dir: Path | None,
     scenario_targets: set[str],
+    component_targets: set[str],
     tags: Mapping[str, Sequence[Sequence[str]]],
     conditions: ConditionContext,
 ) -> tuple[HookSession | None, ConditionContext]:
@@ -2452,6 +2462,7 @@ def _hook_session_or_exit(
             named_commands=worker.named_commands if worker is not None else None,
             base_dir=base_dir,
             scenario_targets=scenario_targets,
+            component_targets=component_targets,
             tags=tags,
             conditions=conditions,
         )
@@ -3645,6 +3656,9 @@ def run_body(
         config_dir=loaded.root or eff.base_dir,
         secret_values=secret_values,
         scenario_source=scenario_source,
+        # A hooks component anywhere a scenario's ref may reach came with the scenario files
+        # (BE-0512): the root their refs are confined to, never narrower.
+        client_roots=[_ref_root(eff, scenario or [], files)],
     )
     # A hook command the policy refuses — or one it sandboxes with no `hooks.sandbox` block to run
     # it in — fails the run here, before any build or device reservation, rather than after every
@@ -3772,6 +3786,7 @@ def run_body(
             secret_values=secret_values,
             base_dir=loaded.root or eff.base_dir,
             scenario_targets=sandbox_targets(scenarios, target_name),
+            component_targets=component_targets(scenarios, target_name),
             # The whole selection, a scenario the worker's capability check failed included: what a
             # run-level `when` sees depends on the files and the flags, never on the worker.
             tags=run_tags(all_scenarios, target_name),
