@@ -17,7 +17,7 @@ from bajutsu.common.capability.settings_support import route_for, route_settings
 from bajutsu.common.config import AndroidConfig, Effective, load_config, resolve
 from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.devices.facts import DeviceFacts, read_android
-from bajutsu.common.devices.runs import first_run, form_target_runs
+from bajutsu.common.devices.runs import first_run, form_target_runs, unpack_conditions
 from bajutsu.common.platform_lifecycle.environments.android import AndroidEnvironment
 from bajutsu.common.platform_lifecycle.protocols import ProvisionProfile
 from bajutsu.common.scenario.models.hook_command import HookWhen, JudgedTarget
@@ -316,3 +316,26 @@ def test_a_single_command_keeps_to_the_targets_own_kind() -> None:
     )
     assert device == _EMULATOR
     assert run.kind == "emulator"
+
+
+def test_a_driven_kind_with_no_device_of_it_names_the_kind() -> None:
+    # A phone alone, against an emulator target that pins its API level: the message must point at
+    # `runsOn.android.kind`, not say an API 34 device fails to fit API 34.
+    [run] = form_target_runs("t", "android", {"apiLevel": "34"}, [_PHONE], kind="emulator")
+    assert run.outcome == "failed"
+    assert 'runsOn.android.kind  "emulator"' in run.reason
+
+
+@pytest.mark.parametrize(
+    ("block", "counted"),
+    [
+        ({"android": {"kind": "any"}}, {"android.kind": "any"}),
+        ({"ios": {"kind": "any"}}, {"ios.kind": "any"}),
+        ({"android": {"kind": "device"}}, {}),
+    ],
+)
+def test_any_counts_as_a_condition_where_a_single_kind_does_not(
+    block: dict[str, dict[str, str]], counted: dict[str, str]
+) -> None:
+    # The Device Farm pre-flight reads this, so `any` is refused before anything is uploaded.
+    assert unpack_conditions(block) == counted

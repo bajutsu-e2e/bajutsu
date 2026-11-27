@@ -185,8 +185,9 @@ def form_target_runs(
     for kind in kinds:
         kind_coords = (("kind", kind),) if kinds_listed and kind is not None else ()
         of_kind = [d for d in devices if _matches_kind(d, kind)]
-        if kinds_listed and not of_kind:
-            # A listed kind names a run that must happen, so a pool without it fails, never skips.
+        if not of_kind and (kinds_listed or devices):
+            # A listed kind names a run that must happen, so a pool without it fails, never skips;
+            # a driven kind fails the same way, so the message names the field to change (BE-0518).
             runs.append(
                 TargetRun(
                     target=target,
@@ -663,7 +664,8 @@ def unpack_conditions(
     """A raw `runsOn` group's condition fields, keyed by their path under `runsOn` (`ios.model`).
 
     Reads each destination block (BE-0469). Device state (`locale`, `seedPhotos`) and how a target is
-    driven (a single iOS `kind`, `emulate`) are not conditions; an integer range (`apiLevel: 34`)
+    driven (a single iOS or Android `kind`, `emulate`) are not conditions; `kind: any` is one, since
+    the pool settles it. An integer range (`apiLevel: 34`)
     becomes its text, as the target's model reads it.
     """
     out: dict[str, str | list[str]] = {}
@@ -671,9 +673,15 @@ def unpack_conditions(
         if not isinstance(block, Mapping):
             continue
         for key, raw in block.items():
-            # A browser's kind counts, as `browser.engine` did; a single iOS kind is how the target
-            # is driven, and a listed one multiplies runs, so it counts (BE-0468).
-            driven = key == "kind" and destination != "browser" and not isinstance(raw, list)
+            # A browser's kind counts, as `browser.engine` did; a single iOS or Android kind is how
+            # the target is driven, while a listed one multiplies runs and `any` leaves the kind to
+            # the pool, so both count (BE-0468, BE-0518).
+            driven = (
+                key == "kind"
+                and destination != "browser"
+                and not isinstance(raw, list)
+                and raw != _ANY_KIND
+            )
             if key in ("locale", "seedPhotos", "emulate") or driven or raw is None:
                 continue
             out[f"{destination}.{key}"] = _text(raw)
