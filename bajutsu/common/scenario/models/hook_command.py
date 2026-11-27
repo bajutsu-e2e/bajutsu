@@ -180,23 +180,28 @@ class HookWhen(_Model):
         return kept[0].model_copy(update={"also": kept[1:]})
 
     def holds(self, facts: WhenFacts) -> bool:
-        """Whether this condition, and each one it must hold with, holds for *facts*."""
-        return all(p.holds_alone(facts) for p in self.parts)
+        """Whether this condition, and each one it must hold with, holds for *facts*.
 
-    def holds_alone(self, facts: WhenFacts) -> bool:
-        """Whether this condition's own fields hold for *facts*, leaving out the ones it holds with."""
-        if (self.tags or self.exclude) and not any(
-            tags_match(tags, self.tags, self.exclude) for tags in facts.tags
+        The tag halves of every part must hold for one and the same scenario: a run-level entry
+        reads many, and "both" would otherwise be met by one scenario per part.
+        """
+        parts = self.parts
+        tagged = [p for p in parts if p.tags or p.exclude]
+        if tagged and not any(
+            all(tags_match(tags, p.tags, p.exclude) for p in tagged) for tags in facts.tags
         ):
             return False
-        if (self.targets or self.platforms or self.routes) and not any(
-            self.target_holds(t) for t in facts.targets
-        ):
-            return False
-        return all(
-            name not in facts.env if wanted is None else facts.env.get(name) == wanted
-            for name, wanted in self.env.items()
-        )
+        for p in parts:
+            if (p.targets or p.platforms or p.routes) and not any(
+                p.target_holds(t) for t in facts.targets
+            ):
+                return False
+            if not all(
+                name not in facts.env if wanted is None else facts.env.get(name) == wanted
+                for name, wanted in p.env.items()
+            ):
+                return False
+        return True
 
     def target_holds(self, target: JudgedTarget) -> bool:
         """Whether *target* meets `targets`, `platforms`, and `routes` together."""

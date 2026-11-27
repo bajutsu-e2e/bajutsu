@@ -92,6 +92,14 @@ def test_a_joined_condition_holds_only_where_both_hold() -> None:
     assert str(joined) == "tags: [a] and tags: [b]"
 
 
+def test_a_run_level_joined_condition_needs_one_scenario_matching_both() -> None:
+    # A run-level entry reads one tag set per selected scenario; "both" means within one of them.
+    joined = _when(tags=["db"]).with_application(_when(tags=["smoke"], exclude=["slow"]))
+    assert not joined.holds(WhenFacts(tags=[("db",), ("smoke",)]))
+    assert not joined.holds(WhenFacts(tags=[("db", "slow"), ("smoke",)]))
+    assert joined.holds(WhenFacts(tags=[("db",), ("db", "smoke")]))
+
+
 def test_a_joined_condition_reads_what_each_part_reads() -> None:
     joined = _when(platforms=["web"]).with_application(_when(env={"CI": "1"}))
     assert joined.reads_target and not joined.reads_tags and joined.needs_run
