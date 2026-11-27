@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
-| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3) |
+| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3), [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) (unit 4, tooling) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) |
 <!-- /BE-METADATA -->
@@ -193,6 +193,16 @@ Log:
 | Route | The fallback: `launchctl disable` after the boot, then a reboot. The offline write into the private launchd store stays untried |
 | Where it runs | Its own step after `bootstatus`, the same on a reused device as on a fresh one, so the boot action is unchanged |
 | Control arm | A manual run picks `simulator-services: stock`, which reboots without turning anything off |
+
+- [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587): the tooling for unit 4 shipped. The
+  measurement itself is still to run, so unit 4 stays open. The table lists what the change added.
+
+| Point | What shipped, and why |
+|---|---|
+| Measurement runs | A manual run with `lanes: measure` runs the build, `run`, and `actuation` jobs alone, in a concurrency group of its own, so alternating arms do not cancel each other |
+| Recovery counts | The telemetry counts recovery reboots and replacement devices from each job log. The third criterion sums the two |
+| Lost change | A job counts as having lost the change when fewer services are off at its end than at its start. No log line marks an erase, so this count stands in for it |
+| Verdict | `scripts/ci_telemetry.py adoption` applies the four criteria and prints `adopt`, `reject`, `trace`, or `incomplete`. A reduced job that did not pass sends the verdict to `trace` |
 
 ## References
 
