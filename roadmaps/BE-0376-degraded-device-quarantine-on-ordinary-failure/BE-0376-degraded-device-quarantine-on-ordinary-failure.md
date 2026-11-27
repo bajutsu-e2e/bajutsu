@@ -193,6 +193,11 @@ text instead would change the verdict, and the new field keeps the verdict byte-
 field also records a stall on a run that cannot replace the device. The pinned lane that motivated
 this item is one such run.
 
+The quarantine reads the ordinary return alone. A scenario whose last attempt crashes still ends
+through the crash retry, and that path keeps BE-0354's behavior. A final crash leaves no retry to
+escalate, so no request follows it. Extending the quarantine to that ending is a separate
+question for a follow-up item, because it changes BE-0354's crash path rather than this one.
+
 ### Work breakdown (`MECE`)
 
 Mutually Exclusive, Collectively Exhaustive (`MECE`) units of work follow.

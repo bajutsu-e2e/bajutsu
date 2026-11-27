@@ -219,7 +219,7 @@ label の対応表にない言語でも、何をなぜ押したかがわかり�
 
 **`device_suspect`**：シナリオが失敗したデバイスを疑う理由と、run がそのデバイスに対して取った処置です
 （[BE-0376](../../roadmaps/BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md)）。
-現在の理由は 1 つだけで、映像の録画が開始を確認できなかったことです。
+現在の理由は 1 つだけです。シナリオがバックエンドのクラッシュではなく自身のアサーションで失敗し、映像の録画が開始を確認できなかった場合です。
 run は後続のシナリオのために置き換えのデバイスを要求したか、デバイスを使い続けたかを、理由とともに書きます。
 この値が `ok` や `failure` を変えることはありません。
 HTML レポートではシナリオの Environment パネルに表示し、CTRF の出力では `deviceSuspect` として載せます。

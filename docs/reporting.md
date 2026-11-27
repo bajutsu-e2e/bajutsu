@@ -197,8 +197,8 @@ meaning after the run that produced it exits
   lacks the list. A reader treats such a run as having ignored nothing.
 - `device_suspect`: why the scenario's device is suspect, and what the run did about it
   ([BE-0376](../roadmaps/BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md)).
-  Today one cause sets it. The scenario did not pass, and its video recording never confirmed that
-  it started. The value says whether the run asked for a replacement device. When the run kept the
+  Today one cause sets it. The scenario stopped on its own assertion, with no backend fault. Its
+  video recording also never confirmed that it started. The value says whether the run asked for a replacement device. When the run kept the
   device, the value says why. The field never changes `ok` or the scenario's reason. The HTML report
   shows the value in the scenario's Environment panel. The Common Test Report Format (CTRF) export
   carries it under the `deviceSuspect` key. The value is empty on every other scenario. Runs
