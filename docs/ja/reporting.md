@@ -794,7 +794,7 @@ https://bajutsu.example.com/runs/<runId>/archive.zip
 
 | 入力 | 挙動 |
 |---|---|
-| キー | `$BAJUTSU_SERVE_KEY` か、`--key-file` で指定したファイルから読みます。キーそのものを渡す引数はありません |
+| キー | `editor` の API キーか、OAuth を使わないサーバでは共有トークンです。`$BAJUTSU_SERVE_KEY` か、`--key-file` で指定したファイルから読みます。キーそのものを渡す引数はありません |
 | `--server` | `https://`、または loopback ホストへの `http://` を受け付けます。それ以外の `http://` は拒否します |
 | リダイレクト | 追従せず失敗にします。そのためキーは指定したホストにしか届きません |
 | `--dry-run` | 送るファイルを一覧するだけで、何も送りません |

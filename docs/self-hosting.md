@@ -1133,8 +1133,9 @@ holds no token from a CI platform. An administrator can issue it an **API key** 
 key as `Authorization: Bearer <key>` and acts as that organization. A key needs a database, so without
 one the three routes below answer `409`.
 
-**A key opens no route yet.** It reaches only the routes on an allowlist that ships empty, and each
-feature that adds a key-callable route adds it there. Any other route answers `403`.
+**A key opens one route today.** It reaches only the routes on an allowlist, and each feature that
+adds a key-callable route adds it there. The allowlist names
+[`POST /api/runs/import`](#importing-a-finished-run) alone. Any other route answers `403`.
 
 | Request | What it does |
 |---|---|
@@ -1707,12 +1708,11 @@ The route needs the `editor` role. The credential the script can send depends on
 
 | Server | Script sign-in |
 |---|---|
-| Shared token, no OAuth | Yes, with the shared token |
-| OAuth | Not yet: such a server accepts the shared token for worker routes alone |
+| Shared token, no OAuth | Yes, with the shared token, or with an `editor` API key when the server has a database |
+| OAuth | Yes, with an `editor` API key. Such a server accepts the shared token for worker routes alone |
 
-Organization-scoped API keys
-([BE-0509](../roadmaps/BE-0509-serve-org-api-keys/BE-0509-serve-org-api-keys.md)) will close that
-gap.
+An [API key](#api-keys-for-a-script) imports into the organization that it was issued for. A
+`viewer` key gets `403`.
 
 The server reserves the run id before it writes any file. The history leaves out the reservation
 until the import finishes. An import that stops midway leaves the reservation behind. A retry from

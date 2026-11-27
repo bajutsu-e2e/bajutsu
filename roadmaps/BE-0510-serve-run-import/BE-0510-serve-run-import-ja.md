@@ -7,9 +7,9 @@
 |---|---|
 | 提案 | [BE-0510](BE-0510-serve-run-import-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **実装中** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
-| 実装 PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561) |
+| 実装 PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561), [#2586](https://github.com/bajutsu-e2e/bajutsu/pull/2586) |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md), [BE-0110](../BE-0110-evidence-store-uri/BE-0110-evidence-store-uri-ja.md), [BE-0331](../BE-0331-artifact-redaction-boundary/BE-0331-artifact-redaction-boundary-ja.md) |
 <!-- /BE-METADATA -->
@@ -96,7 +96,7 @@ run を作ったマシンは、各アーティファクトを書くときに、�
 
 - [x] ルート（受信）：生の本文、上限、両方のバックエンド、エントリー一覧の検査（取り除いたエントリーの一覧を伴う拡張子の許可リスト、墓標の拒否、アーティファクトのパスの検査、`scenario.yaml` と `runId` の検査を含む）。
 - [x] ルート（保存）：衝突の検査、`list_runs` のフィルターを伴う `importing` の状態、比較して置き換える `done` への切り替え、呼び出した組織の古い確保の削除と起動時の掃除、レポートのファイルの作り直し、ローカルとホストされたストアへの配置、ロールバック、記録。
-- [ ] 認可：早い分岐より前の、editor の明示的なケースと、キーの許可リスト。
+- [x] 認可：早い分岐より前の、editor の明示的なケースと、キーの許可リスト。
 - [x] アップロード用のスクリプト：zip、環境変数かファイルから読むキー、通信の規則、URL の出力。
 - [x] テスト：上のケース、ルートレジストリ、stdlib の import ガード。
 - [x] ドキュメント：`docs/` のページと、`docs/ja/` のミラー。
@@ -115,6 +115,10 @@ run を作ったマシンは、各アーティファクトを書くときに、�
 | `--browsers` の run | `<sid>/result.json` のパスは `<engine>/` が起点のため、検査も同じ起点で解決 |
 | リダイレクト | スクリプトは追従しない。追従すると `POST` が `GET` に変わり、何も取り込まれないため |
 | 起動時の掃除 | 取り除くステージングディレクトリは、1 時間を超えたものに限定 |
+
+[#2586](https://github.com/bajutsu-e2e/bajutsu/pull/2586) で、`POST /api/runs/import` を BE-0509 のキーの許可リストに載せました。許可リストに載った最初の
+ルートです。`editor` のキーで取り込んだ run は、そのキーの組織に記録します。これで、OAuth を設定した
+サーバへもスクリプトから取り込めます。`viewer` のキーには `403` を返します。
 
 ## 参考
 
