@@ -174,6 +174,7 @@ class Run:
     manifest_ok: bool | None
     scenarios: list[Scenario] = field(default_factory=list)
     unreadable: int = 0  # `result.json` files skipped because they did not parse
+    not_applicable: int = 0  # runs no available device fell in a `runsOn` range for (BE-0452)
 
     @property
     def failed(self) -> list[Scenario]:
@@ -235,7 +236,14 @@ def read_run(path: Path) -> Run:
             raise UsageError(f"{path}/manifest.json: needs a boolean `ok` and a list `scenarios`")
         if not all(isinstance(e, dict) for e in entries):
             raise UsageError(f"{path}/manifest.json: a `scenarios` entry is not an object")
-        return Run(run_id, True, ok, [_scenario(e) for e in entries])
+        skipped = manifest.get("notApplicable")
+        return Run(
+            run_id,
+            True,
+            ok,
+            [_scenario(e) for e in entries],
+            not_applicable=len(skipped) if isinstance(skipped, list) else 0,
+        )
     # A run killed midway can leave a half-written `result.json`, so a broken one is skipped and
     # counted rather than refused; the comment says how many. Each holds the manifest's scenario
     # entry under `scenario`, beside `schemaVersion`.
@@ -336,6 +344,14 @@ def render(
             "",
             "> **The run did not complete** (no `manifest.json`). Finished scenarios are listed.",
         ]
+    if run.not_applicable:
+        head += [
+            "",
+            f"> {run.not_applicable} run(s) were not applicable and did not execute: no available"
+            " device fell in the `runsOn` range.",
+        ]
+    if run.complete and run.manifest_ok is False and not failed:
+        head += ["", "> No scenario failed, but `manifest.json` records that the run did not pass."]
     if run.unreadable:
         head.append(
             f"> {run.unreadable} `result.json` file(s) could not be read and are not counted."
@@ -524,7 +540,10 @@ def find_comment(gh: GitHub, target: Target, name: str, author: str) -> int | No
         first = (comment.get("body") or "").split("\n", 1)[0]
         user = comment.get("user")
         login = user.get("login") if isinstance(user, dict) else None
-        if login == author and is_marker_line(first, name):
+        # GitHub logins are case-insensitive; a hand-typed `--author` in another case must still
+        # match, or every rerun creates a second comment.
+        same = isinstance(login, str) and login.lower() == author.lower()
+        if same and is_marker_line(first, name):
             return _record_id(comment, "comment")
     return None
 

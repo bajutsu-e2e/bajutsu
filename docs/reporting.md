@@ -733,13 +733,13 @@ the target, the action, and the full text. It then asks for confirmation.
 |---|---|
 | `--to` | Where the text goes. The forms are listed below the table. |
 | `--url` | Required. Its path must hold `/runs/<runId>/` for this run. |
-| `--archive-url` | Optional. Adds a line that links the zip of the run. |
+| `--archive-url` | Optional. Links the zip of the run. A query string is refused. |
 | `--marker` | The slot of the sticky comment, `local` by default. |
 | `--author` | The comment's owner, for a token that has no user. |
 | `--max-failures` | Scenarios listed in full, 10 by default. |
 | `--dry-run` | Prints the plan and the text, and writes nothing. |
 | `--yes` | Posts without asking. |
-| Exit status | 0 for a post, 1 when nothing was posted, 2 for a refused argument. |
+| Exit status | 0 for a post or a finished `--dry-run`, 1 when nothing was posted, 2 for a refused argument. |
 
 `--to` takes one of three forms:
 
@@ -757,8 +757,9 @@ Behavior to know:
   A comment needs write access to pull requests or issues. A release needs write access to contents.
 - **A bare `#123` is refused.** In a fork workflow, `origin` names the fork. A guessed repository
   would post to the wrong thread.
-- **`--url` refuses user information and queries.** A pasted secret would sit there. The thread
-  may be public, so the script never publishes either part.
+- **Both addresses refuse user information and queries.** A pasted secret would sit there. The
+  thread may be public, so the script never publishes either part. The rule covers `--url` and
+  `--archive-url`. A signed zip address with a query string is thus refused.
 - **A marker cannot start with `bajutsu_`.** That prefix marks a server API key. A marker takes
   letters and digits, plus dots, hyphens, and underscores.
 - **Run text cannot change the comment's markup.** Each scenario name and reason sits in a code span.

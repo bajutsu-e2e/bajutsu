@@ -745,3 +745,21 @@ def test_a_dropped_connection_names_the_request(
     assert _main(_make_run(tmp_path, [_passing()])) == 1
     err = capsys.readouterr().err
     assert "GET /user: reset by peer" in err and "--author" not in err
+
+
+def test_the_author_match_ignores_case(tmp_path: Path, github: FakeGitHub) -> None:
+    run = _make_run(tmp_path, [_passing()])
+    assert _main(run, "--author", "ME") == 0
+    assert _main(run, "--author", "Me") == 0
+    assert len(github.comments) == 1
+
+
+def test_not_applicable_runs_are_stated(tmp_path: Path) -> None:
+    run_dir = tmp_path / RUN_ID
+    run_dir.mkdir()
+    manifest = manifest_dict(RUN_ID, [], not_applicable=[{"scenario": "s", "reason": "no device"}])
+    (run_dir / "manifest.json").write_text(json.dumps(manifest))
+    body = pru.render(pru.read_run(run_dir), URL)
+    assert "run failed: 0 passed, 0 failed" in body
+    assert "1 run(s) were not applicable" in body
+    assert "No scenario failed" in body
