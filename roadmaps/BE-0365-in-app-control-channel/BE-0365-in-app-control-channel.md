@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0365](BE-0365-in-app-control-channel.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0365") |
 | Implementing PR | [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) (unit 1), [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) (unit 2), [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) (unit 3), [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) (unit 3 follow-up), [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) (unit 4), [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) (unit 4 follow-up) |
 | Topic | Driver & backend architecture |
@@ -16,60 +16,60 @@
 
 ## Introduction
 
-Everything bajutsu can say to the app under test, it says once, at launch. `BajutsuKit` reads its launch environment in `startIfEnabled()` and never hears from bajutsu again. Its only channel back is outbound and fire-and-forget. Every in-app capability is fixed for the life of the process, and a capability that needs to change *within* a scenario cannot.
+Everything bajutsu can say to the app under test, it says once, at launch. `BajutsuKit` reads its launch environment in `startIfEnabled()` and never hears from bajutsu again. Its one channel back is outbound and fire-and-forget. Every in-app capability stays fixed for the life of the process. A capability that needs to change *within* a scenario has no way to do so.
 
-This item adds the missing direction: a command channel that bajutsu can use to reach a running app. The channel is built as a poll on the collector the app already talks to, so no port is opened inside the app under test. It carries operational commands only, never a judgement, so the deterministic verdict is untouched.
+This item adds the missing direction: a command channel that bajutsu can use to reach a running app. The channel rides a poll on the collector the app already talks to. The app under test opens no port for it. The channel carries operational commands and never a judgement. The deterministic verdict stays untouched by it.
 
 ## Motivation
 
-One shipped feature and one in-flight design are bounded by the missing direction, and both give up the same way.
+One shipped feature and one in-flight design both stop at the missing direction. Both give up the same way.
 
-**The touch visualization.** [BE-0371](../BE-0371-visualize-touches-in-app/BE-0371-visualize-touches-in-app.md) ships an in-app touch visualization behind `bajutsu run --touch-markers`. It draws a marker at each touch the app receives. The marks persist until the next gesture, so a step's screenshot carries them.
+**The touch visualization**. [BE-0371](../BE-0371-visualize-touches-in-app/BE-0371-visualize-touches-in-app.md) ships an in-app touch visualization behind the `bajutsu run --touch-markers` flag. The visualization draws a marker at each touch the app receives. The marks persist until the next gesture, and a step's screenshot carries them.
 
-That collides with a `visual` assertion, which compares a screenshot against a checked-in baseline. The markers land in the very image the comparison reads. The right behaviour would be to hide the marks for that one capture and restore them after.
+The markers collide with a `visual` assertion. That assertion compares a screenshot against a checked-in baseline. The markers land in the same image the comparison reads. The right behaviour would hide the marks for that one capture and restore them after.
 
-The launch environment is the only way in, so `--touch-markers` instead leaves the markers off for the *whole scenario* whenever that scenario's verdict compares a screenshot. That is coarser than the problem, and it costs the investigator the touch evidence for exactly the scenario they were looking at.
+The launch environment is the one way in, and `--touch-markers` takes a coarser route as a result. The flag leaves the markers off for the *whole scenario* in one case. That case is a scenario whose verdict compares a screenshot. That remedy is coarser than the problem. It also costs the investigator the touch evidence for the scenario under investigation.
 
-**Request stubbing.** Request stubbing is bounded the same way. `BajutsuNet.startIfEnabled()` loads the scenario's rules once, from the launch environment (`BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:29`). A scenario that needs one response early and a different one later cannot express it, because the rules are baked before the first step runs. The workaround is to split the scenario in two, so the app is relaunched between them. That turns a single user journey into two and loses the state the journey had built.
+**Request stubbing**. Request stubbing hits the same limit. `BajutsuNet.startIfEnabled()` loads the scenario's rules once, from the launch environment. The loader lives at `BajutsuKit/Sources/BajutsuKit/BajutsuNet.swift:29` in the package. A scenario might need one response at the start and a different one later. The scenario cannot express that need. The rules take their final form before the first step runs. The workaround splits the scenario in two, and the app relaunches between the halves. That workaround turns a single user journey into two and loses the state the journey had built.
 
-Neither limit is a gap in those features. Both are the same missing primitive. The reason it has never been built is worth stating plainly: an inbound channel means something outside the app can change the app's behaviour while it runs. That is a capability to introduce deliberately and gate hard, not a convenience to bolt on.
+Neither limit is a gap in those features. Both come from the same missing building block. The reason nobody has built it deserves a plain statement. An inbound channel lets something outside the app change the app's behaviour while it runs. We should introduce that capability on purpose and put a strong gate on it. That capability is no convenience to bolt on.
 
 ## Detailed design
 
-The design starts from a fact that makes the cheap version possible. The app and bajutsu **already have an authenticated HTTP relationship**, and only one direction of it is used. `NetworkCollector` (`bajutsu/evidence/network.py:116`) works as follows:
+The design starts from a fact that makes the cheap version possible. The app and bajutsu **already share an authenticated HTTP relationship**. The two sides use one direction of it so far. `NetworkCollector` in `bajutsu/evidence/network.py:116` works as follows:
 
 - It runs a `BaseHTTPRequestHandler` on loopback.
-- It mints a per-run token (`:207`) and rejects any POST that does not bear it. The comparison runs in constant time (`check_token`, `:167`).
-- The app receives the collector's URL and that token through `BAJUTSU_COLLECTOR` and `BAJUTSU_COLLECTOR_TOKEN`. It POSTs each exchange to the collector's root path and each transition to `/transitions` (`:305`).
+- It mints a per-run token (`:207`) and refuses any `POST` that lacks the token. The comparison runs in constant time (`check_token`, `:167`).
+- At launch, the app reads the collector's address from `BAJUTSU_COLLECTOR` in its environment. The app reads the token from `BAJUTSU_COLLECTOR_TOKEN` the same way. It sends each exchange to the root path with `POST`. It sends each transition to `/transitions` (`:305`).
 - The handler's `do_GET` exists and does nothing but answer `200` (`:315-317`).
 
-The channel needs no new server, no new port, and no new authentication scheme. It needs a queue behind that idle `GET`.
+The channel needs no new server, no new port, and no new way to authenticate. It needs a queue behind that idle `GET`.
 
 ### The shape
 
-**bajutsu enqueues, the app polls, the app acknowledges.** A command is a small JSON object naming a capability and the state it should take. The app polls the collector for pending commands and applies what it gets. It then reports completion on the outbound channel it already uses. Nothing else changes: the app opens no socket, and the token that already guards the collector guards the commands.
+**bajutsu enqueues, the app polls, the app acknowledges**. A command is a small JSON object. The object names a capability and the state the capability should take. The app polls the collector for pending commands and applies each one. The app then reports completion on the outbound channel it already uses. Nothing else changes. The app opens no socket, and the token that already guards the collector guards the commands too.
 
-The acknowledgement is not decoration. It keeps the channel on the right side of prime directive 2. A caller that issued a command and then slept for "long enough" would be exactly the fixed sleep the directive forbids. Instead, the run loop **condition-waits on the acknowledgement** and fails loudly if it does not arrive. A command either provably took effect before the next step, or the step fails saying so. That is also what makes the touch-marker case correct rather than hopeful: the screenshot is taken only after the app has confirmed the marks are hidden.
+The acknowledgement is not decoration. It keeps the channel on the right side of prime directive 2 here. Consider a caller that issued a command and then slept for "long enough". That sleep would be the fixed sleep the directive forbids. Instead, the run loop **condition-waits on the acknowledgement**. When the acknowledgement does not arrive, the step stops with a clear error. A command either took effect before the next step with proof, or the step does not pass. The same wait makes the touch-marker case correct rather than hopeful. The runner takes the screenshot after the app has confirmed it hid the marks.
 
 ### What the channel must not become
 
 Three boundaries matter more than the transport.
 
-**It carries no judgement.** A command names a capability and a state. Nothing on this channel may influence whether a step passes, and no assertion may read from it. Otherwise the app under test would participate in its own verdict, which prime directive 1 forbids in the sharper form: the `run` gate stays machine-checkable and app-independent.
+**It carries no judgement**. A command names a capability and a state. Nothing on this channel may influence whether a step passes, and no assertion may read from it. Otherwise the app under test would take part in its own verdict. Prime directive 1 forbids that outcome in its sharper form. The `run` gate stays machine-checkable and app-independent.
 
-**It is off unless asked for, and gated harder than a launch env alone.** An adopter who links `BajutsuKit` into a release build and relies on the launch-env guard would otherwise ship a binary in which an environment variable turns on remote control of the app's own behaviour. `BajutsuKit`'s README today offers a choice: gate the package out of release builds *or* rely on the `BAJUTSU_COLLECTOR` guard.
+**It stays off unless asked for, behind a stronger gate than the launch env alone**. Consider an adopter who links `BajutsuKit` into a release build and relies on the launch-env guard. Without a stronger gate, that adopter would ship a risky binary. In that binary, an environment variable turns on remote control of the app's own behaviour. Today, the `BajutsuKit` README offers a choice. Adopters either gate the package out of release builds *or* rely on the `BAJUTSU_COLLECTOR` guard.
 
-This item retires the second option, since that guard is exactly what stops being sufficient. The gating becomes load-bearing rather than one of two alternatives, and the README must say so in those terms.
+This item retires the second option, because the collector guard stops being enough on its own. The gating becomes load-bearing rather than one of two alternatives. The README must say so in those terms.
 
-**It never becomes a way to make the app easier to test.** The channel exists to control bajutsu's own in-app instrumentation (the visualization, the stub table), not to reach into the application's state. A command that seeded app data or drove app navigation would move per-app knowledge into the tool. That would break prime directive 3, whatever the transport allowed.
+**It never becomes a back door into the app's own state**. The channel exists to control bajutsu's own in-app instrumentation. Examples are the visualization and the stub table. It does not reach into the application's state. A command that seeded app data or drove app navigation would move per-app knowledge into the tool. That move would break prime directive 3, whatever the transport allowed.
 
 ### The polling cost, stated
 
-Polling buys the absence of a listener at the price of latency: a command takes effect no sooner than the next poll. For the touch-marker case, the latency is paid once per screenshot-comparing step, serialized behind the acknowledgement wait. That is acceptable for an investigation flag, and would not be for something on every step.
+Polling buys the absence of a listener at the price of latency. A command takes effect no sooner than the next poll. For the touch-marker case, each screenshot-comparing step pays that latency once. The cost sits serialized behind the acknowledgement wait. That cost suits an investigation flag. It would not suit a feature that runs on every step.
 
-The poll also runs a timer inside the app under test, so it must be off unless the channel is enabled. The implementation has to show that an idle poll does not perturb the app's own timing, which is the very thing a test is measuring.
+The poll also runs a timer inside the app under test. The timer must stay off unless someone enables the channel. The implementation has to show that an idle poll does not disturb the app's own timing. That timing is what a test measures in the first place.
 
-One coupling is worth naming before it surprises someone. The touch visualization needs no collector today: a plain recorded run with no network features at all is its normal case. Routing commands through the collector means that a scenario wanting mid-scenario control also starts a collector it would not otherwise need. The alternative is a second, purpose-built endpoint. It buys independence at the cost of a second server to secure. The *Alternatives considered* section records why this item does not take it.
+One coupling deserves a name before it surprises someone. The touch visualization needs no collector today. A plain recorded run with no network features at all is its normal case. Routing commands through the collector changes that. A scenario that wants mid-scenario control also starts a collector it would not otherwise need. The alternative is a second, purpose-built endpoint. That endpoint buys independence at the cost of a second server to secure. The *Alternatives considered* section records why this item does not take it.
 
 ### Work breakdown
 
@@ -77,21 +77,21 @@ The units below are mutually exclusive and collectively exhaustive.
 
 | Unit | Work |
 |---|---|
-| 1 | The queue: a pending-command list on `NetworkCollector`, an authenticated `GET` that drains it, and an acknowledgement endpoint matched *ahead of* `do_POST`'s catch-all, which stores every other path as a network exchange — so a completion report never enters the exchanges a `request` assertion reads. The report says whether the app *applied* the command, and carries the app's own reason when it did not, so "applied it" and "drained it and could not apply it" never reach unit 3's wait as the same message. The token check applies exactly as `do_POST` applies it today, and `clear()` drops the pending queue alongside the exchanges, so a command one scenario left undrained is never delivered to the next |
-| 2 | The app side: a poll loop and command dispatch in `BajutsuKit`, compiled out unless an explicit build setting selects it and, when compiled in, activated by its own launch-env key and inert without it — so the launch env is never the only guard. Includes the acknowledgement POST on the existing report session |
-| 3 | The wait: a condition wait on the acknowledgement in the run loop, failing loudly on timeout, and the first command — toggling BE-0371's touch visualization around a screenshot-comparing step, replacing the whole-scenario opt-out `--touch-markers` performs today. The wait reaches the app through the `Collector` protocol the pipeline already drives, so this unit also states which collectors carry a channel, and makes a command issued against one that does not fail loudly rather than be skipped |
-| 4 | The second command: a mid-scenario stub-table replacement, so a scenario can change a mocked response without being split in two |
-| 5 | Documentation in both languages: the channel, its activation key, the boundaries above, and the release-build gating the channel makes mandatory |
+| 1 | The queue. `NetworkCollector` gains a pending-command list and an authenticated `GET` that drains the list. It also gains an acknowledgement endpoint, matched *ahead of* the catch-all route in `do_POST` today. That catch-all stores every other path as a network exchange. Matching first keeps each completion report out of the exchanges that a `request` assertion reads. The report says whether the app *applied* the command. When the app did not apply it, the report carries the app's own reason. Unit 3's wait then never receives "applied it" and "drained it and could not apply it" as the same message. The drain checks the token the same way `do_POST` checks it today. `clear()` drops the pending queue alongside the exchanges. A command that one scenario left undrained never reaches the next scenario |
+| 2 | The app side. `BajutsuKit` gains a poll loop and command dispatch. The code compiles out unless an explicit build setting selects it. When compiled in, it activates on its own launch-env key and stays inert without that key. The launch env never guards the channel by itself. The unit includes the acknowledgement `POST` on the existing report connection |
+| 3 | The wait. The run loop condition-waits on the acknowledgement and stops with a clear error on timeout. The unit also ships the first command. That command toggles the BE-0371 touch visualization around a screenshot-comparing step. The toggle replaces the whole-scenario opt-out that `--touch-markers` performs today. The wait reaches the app through the `Collector` protocol that the pipeline already drives. This unit also states which collectors carry a channel. A command sent to a collector without a channel stops with a clear error rather than a silent skip |
+| 4 | The second command. A mid-scenario stub-table replacement lets a scenario change a mocked response without splitting the scenario in two |
+| 5 | Documentation in both languages. It covers the channel, its activation key, and the boundaries above. It also covers the release-build gating that the channel makes mandatory |
 
 ## Alternatives considered
 
-**Open a listener inside the app.** A small HTTP server in the app under test would take commands directly, with none of the polling latency. We set it aside on the security boundary rather than on the engineering. A listening socket inside the application under test is a materially larger surface than a poll on a loopback client. It needs its own port allocation and per-device forwarding. The failure mode of getting its authentication wrong is an app that accepts commands from anything on the device. The latency polling costs is small and bounded, while the surface a listener adds is neither.
+**Open a listener inside the app**. A small HTTP server in the app under test would take commands directly. That server would avoid the polling latency. We set the option aside on the security boundary rather than on the engineering. A listening socket inside the app under test exposes a larger surface than a loopback poll does. The socket needs its own port allocation and per-device forwarding. A mistake in its authentication yields an app that accepts commands from anything on the device. Polling costs a small, bounded latency. The surface a listener adds is neither small nor bounded.
 
-**A second, purpose-built control server, independent of the collector.** This removes the coupling named above, so a run wanting mid-scenario control would not have to start a network collector. It also doubles the number of authenticated servers to get right. The token, the loopback binding, the port-collision handling, and the constant-time comparison would all be written a second time. Reusing the collector's server is the smaller change. If the coupling proves to bite in practice, splitting the endpoint later is a contained refactor, because the app-side command dispatch does not care which server answered.
+**A second, purpose-built control server, independent of the collector**. This option removes the coupling named above. A run that wants mid-scenario control would not have to start a network collector. The option also doubles the number of authenticated servers to get right. We would write the token, the loopback binding, and the port-collision handling a second time. The constant-time comparison would need a second copy too. Reusing the collector's server is the smaller change. If the coupling proves to bite in practice, splitting the endpoint later stays a contained refactor. The app-side command dispatch does not care which server answered.
 
-**Report the marker geometry and mask those regions in the visual comparison.** The app could POST each marker's rectangle on the outbound channel it already has, and the comparison could exclude those regions, with no inbound channel at all. We rejected the approach because it blinds the comparison exactly where the gesture landed. That is usually the region the assertion exists to check, and the approach does so silently. It also puts an evidence-only feature on the verdict path, deciding what a machine-checkable assertion is allowed to see.
+**Report the marker geometry and mask those regions in the visual comparison**. The app could send each marker's rectangle with `POST` on the outbound channel it already has. The comparison could then exclude those regions, with no inbound channel at all. We rejected the approach because it hides the region where the gesture landed from the comparison. That region tends to be the one the assertion exists to check, and nothing would flag the omission. The approach also puts a feature meant for evidence on the verdict path. That feature would decide what a machine-checkable assertion gets to see.
 
-**Leave it at per-scenario granularity.** This is the status quo, and it is not nothing. The app is terminated and relaunched with each scenario's own launch environment, on the warm-runner path as much as the cold one (`_resume_warm`, [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)). A capability can already differ per scenario at no cost. The reason to go further is that the two motivating cases are both *within* one scenario. There, the journey's own state is the thing being tested, and splitting the scenario changes what is under test.
+**Leave it at per-scenario granularity**. This option is the status quo, and it has real value. The runner terminates the app and relaunches it with each scenario's own launch environment. The warm-runner path does so as much as the cold one; see `_resume_warm` and [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md) for the details. A capability can already differ per scenario at no cost. The reason to go further is that both motivating cases sit *within* one scenario. There, the journey's own state is the subject of the test. Splitting the scenario changes what the test covers.
 
 ## Progress
 
@@ -103,87 +103,98 @@ The units below are mutually exclusive and collectively exhaustive.
 - [x] Unit 2 — the app-side poll loop and command dispatch, env-gated and inert by default
 - [x] Unit 3 — the acknowledgement condition wait, and the touch-visualization toggle as the first command
 - [x] Unit 4 — mid-scenario stub-table replacement as the second command
-- [ ] Unit 5 — bilingual documentation, including the release-build gating this makes mandatory
+- [x] Unit 5 — bilingual documentation, including the release-build gating this makes mandatory
 
 Log:
 
-- [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) — unit 1: the collector's pending-command queue, the authenticated `GET /commands`
-  that drains it, and the `/commands/ack` report endpoint, matched ahead of `do_POST`'s catch-all so a
-  report never enters the exchanges a `request` assertion reads. The report's `applied` carries no
-  default, so a command the app drained but could not apply is a distinct message from one it applied.
-  `clear()` scopes the channel per scenario while the id counter survives, and an unknown `GET` path
-  now answers 404 rather than an empty 200. Rejected BE-0364 as a duplicate of this item in the same
-  change, folding its two sharper points into units 1 and 2, and retired this item's stale claim that
-  BE-0371's touch visualization was not yet on `main`.
+- [#1699](https://github.com/bajutsu-e2e/bajutsu/pull/1699) — unit 1: the collector's pending-command queue and the
+  authenticated `GET /commands` drain. It also adds the `/commands/ack` report endpoint. The collector matches
+  that endpoint ahead of the catch-all route in `do_POST` today. A report thus never enters the exchanges a
+  `request` assertion reads. The `applied` field of the report has no default value. That keeps a command
+  the app drained but could not apply distinct from one it applied. `clear()` scopes the channel per
+  scenario while the id counter survives. An unknown `GET` path now answers 404 rather than an empty 200
+  response. The same change rejected BE-0364 as a duplicate of this item. It folded the two sharper points
+  of BE-0364 into unit 1 and unit 2 of this item. It also retired this item's stale claim that the BE-0371
+  touch visualization had not yet reached `main` at the time.
 
 - [#1788](https://github.com/bajutsu-e2e/bajutsu/pull/1788) — unit 2: the app-side poll loop and command
-  dispatch in `BajutsuKit`. A compilation condition, `BAJUTSU_ENABLE_CONTROL_CHANNEL`, has to select the
-  channel before its launch-env key `BAJUTSU_CONTROL_CHANNEL` can reach it, so the launch environment
-  never guards it alone. The app reads a command's capability as the string bajutsu sent rather than as
-  an enum case: an app older than the bajutsu driving it then refuses an unsupported capability by name,
-  instead of dropping the command and leaving unit 3's wait to time out with nothing to say about why.
-  Unit 4's stub table, a sibling shape carrying no `enabled`, already survives that decoding. An empty
-  drain schedules no main-thread work, and a drain answered `401` or `404` ends the loop rather than
-  leaving a timer running in the app for the rest of the process's life. The Swift gate now builds and
-  tests both configurations, the unflagged one first, since that is what an adopter links.
+  dispatch in `BajutsuKit` itself. A compilation condition, `BAJUTSU_ENABLE_CONTROL_CHANNEL`, must select the
+  channel first. After that, the launch-env key `BAJUTSU_CONTROL_CHANNEL` can reach the channel. The launch
+  environment never guards the channel alone. The app reads a command's capability as the string bajutsu
+  sent, not as an enum case. An app older than the bajutsu driving it then refuses an unsupported
+  capability by name. The app does not drop the command and leave unit 3's wait to time out with no reason
+  given. Unit 4's stub table already survives that decoding. The table is a sibling shape that carries no
+  `enabled` field. An empty drain schedules no main-thread work. A drain answered with `401` or `404` ends the loop.
+  The loop then leaves no timer running in the app for the rest of the process's life. The Swift gate now
+  builds and tests both configurations. It runs the unflagged one first, since adopters link that
+  configuration.
 
-- [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) — unit 3: the acknowledgement condition
-  wait, `orchestrator/control_channel.py`. It sits on the existing `deadline_ticks` skeleton.
-  The touch-visualization toggle is the first command. A `visual` capture happens in two places:
-  the initial `expect` capture, and the post-alert-dismiss retry. `run_scenario` hides the markers
-  around both. A command that cannot prove it took effect becomes an ordinary scenario failure.
-  `--touch-markers` no longer skips a screenshot-comparing scenario outright. It arms the channel
-  for each scenario that can carry one — the `xcuitest` actuator with network collection on — and
-  requires both actuator selectors to answer `xcuitest`. BE-0240 chooses the actuator per scenario,
-  while the collectors the channel rides are pre-started from the run-level actuator, so a
-  multi-candidate `--backend` has to answer `xcuitest` twice over. Everywhere else — a
-  scenario that resolved to another backend, network off, or one that declined the channel by
-  pinning `BAJUTSU_CONTROL_CHANNEL` to anything but `"1"` — it falls back to the pre-BE-0365 skip,
-  except where a scenario pinned `BAJUTSU_TOUCH_MARKERS: "1"` itself: `setdefault` cannot turn
-  those markers off, so that scenario keeps drawing them, and one that pinned
-  `BAJUTSU_CONTROL_CHANNEL: "1"` alongside them on a run that cannot carry the channel fails
-  outright. A scenario with no `visual` verdict that pinned only the channel key gets no marker
-  key at all, since writing one would complete the pair the run loop reads and arm a channel it
-  never asked for. Which of the six outcomes applied is named on stderr.
+- [#1916](https://github.com/bajutsu-e2e/bajutsu/pull/1916) — unit 3: the condition wait
+  on acknowledgement in `control_channel.py`. The module lives under `orchestrator/` in the package. The wait sits on the existing
+  `deadline_ticks` skeleton. The touch-visualization toggle is the first command. A `visual` capture
+  happens in two places: the initial `expect` capture, and the post-alert-dismiss retry. `run_scenario`
+  hides the markers around both captures. A command that cannot prove it took effect turns into an
+  ordinary scenario error. `--touch-markers` no longer skips a screenshot-comparing scenario outright. The
+  flag arms the channel for each scenario that can carry one. Such a scenario uses the `xcuitest` actuator
+  with network collection on. The flag also requires both actuator selectors to answer with `xcuitest` as
+  their choice. BE-0240 chooses the actuator per scenario. The channel rides collectors that the run
+  pre-starts from the run-level actuator. A multi-candidate `--backend` thus has to answer `xcuitest`
+  twice over. Everywhere else, the flag falls back to the skip from before BE-0365. That fallback covers a
+  scenario that resolved to another backend and a run with network off. It also covers a scenario that
+  declined the channel by pinning `BAJUTSU_CONTROL_CHANNEL` to any value but `"1"` in its environment.
+  One exception applies: a scenario that pinned `BAJUTSU_TOUCH_MARKERS: "1"` itself keeps drawing the
+  markers. `setdefault` cannot turn those markers off. Such a scenario may also pin
+  `BAJUTSU_CONTROL_CHANNEL: "1"` on a run that cannot carry the channel. That scenario then fails outright.
+  A scenario with no `visual` verdict that pinned the channel key alone gets no marker key at all. Writing a
+  marker key would complete the pair the run loop reads. It would arm a channel the scenario never asked
+  for. The run names on stderr which of the six outcomes applied.
 
-- [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) — unit 3 follow-up: both
-  `_hides_touch_markers` and `_apply_touch_markers` read the launch environment the app actually
-  launches with. A target's own `launchEnv` merges *underneath* the scenario's own at launch
-  time, so a target-level `BAJUTSU_TOUCH_MARKERS`/`BAJUTSU_CONTROL_CHANNEL` pin — rather than one
-  `--touch-markers` writes per scenario — used to read as a scenario that pinned nothing, leaving
-  the app drawing markers the run loop never hid for a `visual` capture. A new
-  `target_launch_env` parameter carries the target's `launchEnv` into both functions, merged the
-  same way the launch itself merges it.
+- [#1922](https://github.com/bajutsu-e2e/bajutsu/pull/1922) — unit 3 follow-up for the launch env.
+  `_hides_touch_markers` and `_apply_touch_markers` both read the environment the app launches with. A target's own
+  `launchEnv` merges *underneath* the scenario's own at launch time. Consider a target-level
+  `BAJUTSU_TOUCH_MARKERS`/`BAJUTSU_CONTROL_CHANNEL` pin, as opposed to one that `--touch-markers` writes
+  per scenario. Before this fix, such a pin read as a scenario that pinned nothing. The app then drew
+  markers that the run loop never hid for a `visual` capture. A new `target_launch_env` parameter carries
+  the target's `launchEnv` into both functions. The functions merge it the same way the launch itself does.
 
 - [#2088](https://github.com/bajutsu-e2e/bajutsu/pull/2088) — unit 4: a `setMocks` step replaces the
-  running app's whole stub table mid-scenario. The table travels as `AppStubTableCommand`. That
-  model is a sibling of the toggle `AppCommand`, told apart by `capability`. Its wire shape matches
-  `BAJUTSU_MOCKS`. The run loop waits on the app's acknowledgement as unit 3's toggle does. A
-  refusal or a timeout fails the `setMocks` step itself. `run` writes `BAJUTSU_CONTROL_CHANNEL=1`
-  for every scenario that swaps its mocks. Where the channel cannot reach the app, `run` stops
-  before any device work. Web, Android, `fake`, and `--no-network` all stop there. So do a
-  declined channel key and a swap placed off the primary app. A target's app-wide phases refuse
-  `setMocks` at config load. BajutsuKit now locks its stub table. It refuses a delivered table
-  whole when any rule would not match as written, so a catch-all or never-matching stub never reads as
-  applied.
+  running app's whole stub table mid-scenario. The table travels as `AppStubTableCommand` over the
+  channel. That model is a sibling of the toggle `AppCommand`, told apart by the `capability` field. Its
+  wire shape matches that of `BAJUTSU_MOCKS` in full. The run loop waits on the app's acknowledgement as
+  unit 3's toggle does. A refusal or a timeout fails the `setMocks` step itself. `run` writes
+  `BAJUTSU_CONTROL_CHANNEL=1` for every scenario that swaps its mocks. Where the channel cannot reach the
+  app, `run` stops before any device work. Web, Android, `fake`, and `--no-network` all stop there. A
+  declined channel key and a swap placed off the primary app stop there too. A target's app-wide phases
+  refuse `setMocks` at config load. BajutsuKit now locks its stub table. It refuses a delivered table whole
+  when any rule would not match as written. A catch-all or never-matching stub thus never reads as applied.
 
 - [#2092](https://github.com/bajutsu-e2e/bajutsu/pull/2092) — unit 4 follow-up: BajutsuKit's
-  `replace(with:)` releases the stub-table lock with `defer`, as the `rules` getter already did, so a
-  later early return inside the critical section cannot leave the table locked. A comment in
-  `_mock_swap_problem` records why `targets[0]` is the primary: BE-0436 rejects a `primaryTarget`
-  that names any other entry.
+  `replace(with:)` releases the stub-table lock with `defer`, as the `rules` getter already did. A return
+  added later inside the critical section thus cannot leave the table locked. A comment in
+  `_mock_swap_problem` records why `targets[0]` is the primary. BE-0436 refuses a `primaryTarget` that
+  names any other entry.
+
+- PR_PLACEHOLDER — unit 5: the channel's own documentation. `docs/network.md` gains a section that
+  describes the channel in one place. The section covers how a command travels and how the app
+  acknowledges it. It also covers the two commands the channel carries and the backends that can carry
+  it. It names the two in-app gates, the three boundaries, and what polling costs. `BajutsuKit/README.md`
+  lists `BAJUTSU_CONTROL_CHANNEL` among its launch-env keys. The README describes the channel and its
+  compilation condition. It makes the release-build gate mandatory rather than one of two options. Both
+  `docs/` pages carry a mirror under `docs/ja/` as well.
 
 ## References
 
-- [`BajutsuKit/README.md`](../../BajutsuKit/README.md) — the in-app package this channel extends, and
-  the Safety guidance the channel makes mandatory rather than advisory.
-- [`docs/evidence.md`](../../docs/evidence.md) — the evidence kinds a run captures, including the
-  `--touch-markers` section whose closing paragraph states the limit this item removes.
-- [BE-0371 — Draw a marker at each touch the app receives so recordings show where a gesture landed](../BE-0371-visualize-touches-in-app/BE-0371-visualize-touches-in-app.md)
-  — the shipped visualization unit 3 toggles; its ordering dependency is therefore already settled.
-- [BE-0291 — Reuse the XCUITest runner across scenarios to amortize cold startup](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)
-  — the relaunch behaviour that gives per-scenario granularity for free, and therefore bounds what
-  this item still has to add.
-- [BE-0364 — Add a control channel so bajutsu can hide the touch visualization for a single capture](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md)
-  — the same channel proposed in parallel and rejected in favour of this item; two details it argued
-  more precisely are folded into the work breakdown above.
+- [`BajutsuKit/README.md`](../../BajutsuKit/README.md) — the in-app package this channel extends. Its
+  Safety guidance becomes mandatory under this channel rather than advisory.
+- [`docs/evidence.md`](../../docs/evidence.md) — the evidence kinds a run captures. Its `--touch-markers`
+  section closes with a paragraph that states the limit this item removes.
+- [BE-0371](../BE-0371-visualize-touches-in-app/BE-0371-visualize-touches-in-app.md) — the shipped
+  visualization that draws a marker at each touch the app receives. Unit 3 toggles that visualization,
+  which settles its ordering dependency.
+- [BE-0291](../BE-0291-xcuitest-runner-reuse-across-scenarios/BE-0291-xcuitest-runner-reuse-across-scenarios.md)
+  — reuses the XCUITest runner across scenarios to amortize cold startup. Its relaunch behaviour gives
+  per-scenario granularity for free. That behaviour bounds what this item still has to add.
+- [BE-0364](../BE-0364-in-app-control-channel/BE-0364-in-app-control-channel.md) — a parallel proposal
+  for the same channel. It aimed to hide the touch visualization for a single capture. This item superseded
+  BE-0364, which now stands rejected. The work breakdown above absorbs two details that BE-0364 argued
+  more precisely.
