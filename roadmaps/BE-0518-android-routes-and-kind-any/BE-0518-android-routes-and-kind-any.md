@@ -9,6 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0518") |
+| Implementing PR | [#2611](https://github.com/bajutsu-e2e/bajutsu/pull/2611) (units 1–2) |
 | Topic | Platform support |
 | Related | [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location.md) |
 <!-- /BE-METADATA -->
@@ -238,7 +239,7 @@ first reason still holds, and this item accepts it: the preference stays virtual
 
 Log:
 
-- 2026-11-28 — Units 1 and 2 landed together. `runsOn.android.kind` takes `emulator`, `device`, a
+- 2026-11-28 — Units 1 and 2 landed together ([#2611](https://github.com/bajutsu-e2e/bajutsu/pull/2611)). `runsOn.android.kind` takes `emulator`, `device`, a
   list, or `any`. Its default is `emulator`. Both platforms accept `any` and check it at load. An
   Android run reads whether its device is an emulator before any device work. A device of another
   kind stops the run. The `--kind` flag takes Android targets. Two routes replace the `android`

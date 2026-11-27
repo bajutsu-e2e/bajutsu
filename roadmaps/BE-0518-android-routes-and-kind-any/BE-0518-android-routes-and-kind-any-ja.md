@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0518") |
+| 実装 PR | [#2611](https://github.com/bajutsu-e2e/bajutsu/pull/2611)（単位 1〜2） |
 | トピック | Platform support |
 | 関連 | [BE-0467](../BE-0467-environment-specific-settings/BE-0467-environment-specific-settings-ja.md), [BE-0468](../BE-0468-runson-family-and-any-of/BE-0468-runson-family-and-any-of-ja.md), [BE-0481](../BE-0481-android-device-set-location/BE-0481-android-device-set-location-ja.md) |
 <!-- /BE-METADATA -->
@@ -235,7 +236,7 @@ iOS と Android の全ジョブがキューに残るためです。
 
 ログは次のとおりです。
 
-2026-11-28：単位 1 と単位 2 をまとめて実装しました。`runsOn.android.kind` には `emulator`、`device`、
+2026-11-28：単位 1 と単位 2 をまとめて実装しました（[#2611](https://github.com/bajutsu-e2e/bajutsu/pull/2611)）。`runsOn.android.kind` には `emulator`、`device`、
 リスト、`any` を書け、デフォルトは `emulator` です。`any` は両プラットフォームで使え、読み込み時に検査
 します。Android の run は、デバイスを操作する前にそのデバイスがエミュレーターかどうかを読み取り、種類が
 違えば止まります。`--kind` は Android のターゲットも受け付けます。`android` のルートは
