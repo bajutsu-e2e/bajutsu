@@ -67,9 +67,11 @@ particular risk:
   app's own window.
 - The `nativeZ` responder opens a listening socket that names every element on screen. The socket listens
   on loopback alone and requires a bearer token. Even so, iOS loopback is not isolated between apps.
-- The control channel lets a process outside the app change the app's behavior while it runs. Its
-  own compilation condition keeps it out of a build that does not ask for it. A release build that
-  links BajutsuKit still exposes every other feature through the environment.
+- The control channel lets a process outside the app change the app's behavior while it runs. The
+  launch env cannot reach this feature by itself. Its compilation condition,
+  `BAJUTSU_ENABLE_CONTROL_CHANNEL`, keeps the channel out of any build that does not ask for it.
+  In a release build that links BajutsuKit, every other feature stays reachable through the
+  environment.
 
 Configure bajutsu `redact` to mask secrets in the written evidence (`network.json`).
 

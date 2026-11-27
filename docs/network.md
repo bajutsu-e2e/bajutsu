@@ -129,8 +129,8 @@ test thus never depends on a live server and runs offline.
 
 - On iOS, BajutsuKit serves the stub inside the URL protocol, after TLS, with no proxy or CA.
 - On web, `WebNetworkCollector` fulfills the stub in-process via Playwright's `page.route`.
-- BajutsuAndroid observes but does not yet stub. Android stubbing is a follow-up to BE-0283 still
-  open.
+- BajutsuAndroid observes but does not yet stub. Android stubbing is an open follow-up to
+  BE-0283.
 
 On iOS and web, the collector still observes the stub. `network.json` lists it flagged `mocked`,
 and `request` assertions match it like any exchange.
@@ -249,8 +249,8 @@ other actuators fall short:
 - `playwright` observes the network through the driver. No app has an HTTP collector to poll.
 - `adb` starts a collector, but no Android app answers a command.
 
-A command that the channel cannot deliver is never skipped in silence. `run` refuses a scenario that
-uses `setMocks` elsewhere before the run touches a device. For a screenshot-comparing scenario,
+A command that the channel cannot deliver is never skipped in silence. In any other configuration,
+`run` refuses a `setMocks` scenario before touching a device. For a screenshot-comparing scenario,
 `--touch-markers` falls back to drawing no markers. It says so on stderr.
 
 ### The two gates inside the app

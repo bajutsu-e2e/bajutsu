@@ -65,7 +65,7 @@ This item retires the second option, because the collector guard stops being eno
 
 ### The polling cost, stated
 
-Polling buys the absence of a listener at the price of latency. A command takes effect no sooner than the next poll. For the touch-marker case, each screenshot-comparing step pays that latency once. The cost sits serialized behind the acknowledgement wait. That cost suits an investigation flag. It would not suit a feature that runs on every step.
+Polling buys the absence of a listener at the price of latency. A command takes effect no sooner than the next poll. For the touch-marker case, each screenshot-comparing step pays that latency twice. One payment hides the markers, and the other restores them. The cost sits serialized behind the acknowledgement wait. That cost suits an investigation flag. It would not suit a feature that runs on every step.
 
 The poll also runs a timer inside the app under test. The timer must stay off unless someone enables the channel. The implementation has to show that an idle poll does not disturb the app's own timing. That timing is what a test measures in the first place.
 
@@ -133,8 +133,8 @@ Log:
   on acknowledgement in `control_channel.py`. The module lives under `orchestrator/` in the package. The wait sits on the existing
   `deadline_ticks` skeleton. The touch-visualization toggle is the first command. A `visual` capture
   happens in two places: the initial `expect` capture, and the post-alert-dismiss retry. `run_scenario`
-  hides the markers around both captures. A command that cannot prove it took effect turns into an
-  ordinary scenario error. `--touch-markers` no longer skips a screenshot-comparing scenario outright. The
+  hides the markers around both captures. A command that cannot prove it took effect makes the
+  scenario not pass, as an ordinary failing step does. `--touch-markers` no longer skips a screenshot-comparing scenario outright. The
   flag arms the channel for each scenario that can carry one. Such a scenario uses the `xcuitest` actuator
   with network collection on. The flag also requires both actuator selectors to answer with `xcuitest` as
   their choice. BE-0240 chooses the actuator per scenario. The channel rides collectors that the run
