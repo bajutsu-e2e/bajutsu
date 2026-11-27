@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
-| Implementing PR | [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) |
+| Implementing PR | [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) (units 1 to 3), [#2589](https://github.com/bajutsu-e2e/bajutsu/pull/2589) (unit 4) |
 | Topic | Scenario authoring features |
 | Related | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps.md), [BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry.md) |
 <!-- /BE-METADATA -->
@@ -177,7 +177,7 @@ Log:
   BE-0515 ship no later than this item, and BE-0515 has not shipped yet.
 - Review added two stricter rules. Matches of one poll that share the newest receive time stop it. The
   reader also gained `check_same_inbox`, which stops the step when an IMAP folder is rebuilt.
-- Unit 4 ran the `email` step against a local GreenMail server, version 2.1.15. The step read over
+- [#2589](https://github.com/bajutsu-e2e/bajutsu/pull/2589): unit 4 ran the `email` step against a local GreenMail server, version 2.1.15. The step read over
   IMAP and over POP3, both with TLS. A test certificate authority signed the server certificate, and
   verification stayed on. Each step ignored the code already in the inbox. It extracted the code that
   arrived later. An untrusted certificate stopped the step, and so did a wrong password. No error

@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0514") |
-| 実装 PR | [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581) |
+| 実装 PR | [#2581](https://github.com/bajutsu-e2e/bajutsu/pull/2581)（単位 1 から 3）、[#2589](https://github.com/bajutsu-e2e/bajutsu/pull/2589)（単位 4） |
 | トピック | シナリオ記述機能 |
 | 関連 | [BE-0046](../BE-0046-otp-email-steps/BE-0046-otp-email-steps-ja.md)、[BE-0186](../BE-0186-mailbox-provider-registry/BE-0186-mailbox-provider-registry-ja.md) |
 <!-- /BE-METADATA -->
@@ -148,7 +148,7 @@ class MailboxReader(Protocol):
 
 レビューで 2 つの厳しい規則を加えました。同じ回の問い合わせで、最新の受信時刻を複数の一致が共有する場合は失敗にします。読み取りには `check_same_inbox` も加え、IMAP のフォルダーが作り直されたらステップを止めます。
 
-単位 4 では、ローカルの GreenMail サーバー（バージョン 2.1.15）で `email` ステップを動かしました。接続は TLS の IMAP と POP3 です。サーバー証明書はテスト用の認証局で署名し、証明書の検証は有効のままにしました。どちらのステップも、受信箱の既存のコードを無視し、後から届いたコードを取り出しました。信頼していない証明書を使うと、ステップは止まりました。誤ったパスワードでも同じく止まりました。エラーメッセージはパスワードを含みませんでした。
+[#2589](https://github.com/bajutsu-e2e/bajutsu/pull/2589) の単位 4 では、ローカルの GreenMail サーバー（バージョン 2.1.15）で `email` ステップを動かしました。接続は TLS の IMAP と POP3 です。サーバー証明書はテスト用の認証局で署名し、証明書の検証は有効のままにしました。どちらのステップも、受信箱の既存のコードを無視し、後から届いたコードを取り出しました。信頼していない証明書を使うと、ステップは止まりました。誤ったパスワードでも同じく止まりました。エラーメッセージはパスワードを含みませんでした。
 
 同じ確認で、POP3 の `RETR` 命令がメールを既読にすることもわかりました。GreenMail が IMAP と既読フラグを共有するためです。POP3 のアダプターは `TOP` 命令で取得するように改め、`TOP` を拒否するサーバーでは `RETR` を使います。変更後は、ステップが読んだメールに既読フラグは付きませんでした。
 
