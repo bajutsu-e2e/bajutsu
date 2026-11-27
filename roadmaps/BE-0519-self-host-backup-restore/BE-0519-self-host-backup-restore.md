@@ -1,14 +1,14 @@
-**English** · [日本語](BE-XXXX-self-host-backup-restore-ja.md)
+**English** · [日本語](BE-0519-self-host-backup-restore-ja.md)
 
-# BE-XXXX — Self-hosted backup, restore, and the single-node risk statement
+# BE-0519 — Self-hosted backup, restore, and the single-node risk statement
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-XXXX](BE-XXXX-self-host-backup-restore.md) |
+| Proposal | [BE-0519](BE-0519-self-host-backup-restore.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-XXXX") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0519") |
 | Topic | Hosting the web UI |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md), [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md), [BE-0168](../BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) |
 | Origin | [BE-0168](../BE-0168-self-host-high-availability/BE-0168-self-host-high-availability.md) |
