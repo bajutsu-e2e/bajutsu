@@ -43,6 +43,8 @@ from bajutsu.common.scenario.models.actions import (
     OpenUrl,
     Otp,
     OverrideStatusBar,
+    ParseJson,
+    ParseJsonField,
     Paste,
     Pinch,
     Push,
@@ -98,9 +100,6 @@ from bajutsu.common.scenario.models.scenario import (
     ScenarioFile,
     ScenarioHooks,
     SystemAlertRule,
-)
-from bajutsu.common.scenario.models.scenario import (
-    _check_http_extract_vars as _check_http_extract_vars,
 )
 from bajutsu.common.scenario.models.scenario import (
     _check_open_urls as _check_open_urls,
@@ -185,6 +184,8 @@ __all__ = [
     "OpenUrl",
     "Otp",
     "OverrideStatusBar",
+    "ParseJson",
+    "ParseJsonField",
     "Paste",
     "Pinch",
     "Point",

@@ -260,12 +260,13 @@ Action    ::=
   | { relaunch:    { env?: map(string,string), args?: list(string) } }
   | { setLocation: { lat: number, lon: number } }
   | { push:        { payload: map(string,any) } }          # APNs payload, e.g. {aps:{alert:"…"}}; needs an `aps` object, `aps.alert` a string or {title?: string, body?: string}, at most 4,096 bytes of default json.dumps text (BE-0498)
-  | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, timeout?: number, saveBody?: string, extractBody?: list({ var: string, path: string }) } }  # method default GET; saveBody → vars.<name>; extractBody → vars.<var> per JSON path (BE-0440); timeout repeats the request until status (BE-0515)
+  | { http:        { method?: string, url: string, headers?: map(string,string), body?: string, status?: integer, timeout?: number, saveBody?: string } }  # method default GET; saveBody → vars.<name>; timeout repeats the request until status (BE-0515)
   | { totp:        { secret: string, into?: { var: string }, name?: string, minRemaining?: integer } }  # RFC 6238 OTP → vars.<var> (secret is base32); name registers the secret for `otp` (into and/or name required); minRemaining 1–30 (needs into): wait for the next 30s window when fewer seconds are left (BE-0474)
   | { otp:         { from: string, into: { var: string }, minRemaining?: integer } }  # current code of the generator a totp step registered as `from` → vars.<var>; minRemaining as for totp
   | { email:       { match: { to?: string, subject?: string, subjectMatches?: string }, extract: { var: string, bodyMatches: string }, timeout: number } }  # poll mailbox → vars.<var>
   | { generate:    <Generate> }                            # a random or current-datetime value computed at run time → vars.<var> (BE-0377)
   | { eval:        <Eval> }                                # transform a held value through a fixed op vocabulary → vars.* (BE-0472)
+  | { parseJson:   { from: string, extract: list({ var: string, path: string }) } }  # values at JSON paths in a text → vars.<var> (BE-0516)
   | { background:       {} }                               # Home button (backgrounds via SpringBoard, no terminate)
   | { foreground:       {} }                               # bring the app to the front, no terminate; an app that is not running launches as `relaunch` would and waits until ready (iOS and Android, BE-0447); the other half of background
   | { installApp:       { from: string, keepData?: boolean } }  # install a later device-group member's build on the step's device; keepData default true (install over, data kept), false uninstalls first; launches nothing (BE-0447)

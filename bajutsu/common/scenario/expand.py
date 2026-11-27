@@ -16,7 +16,6 @@ from bajutsu.common.scenario.models import (
     Component,
     Scenario,
     Step,
-    _check_http_extract_vars,
     _check_open_urls,
     _check_target_requirements,
     _expand_target_groups,
@@ -323,12 +322,10 @@ def expand_components(
         # The assignments above are plain attribute writes, which Pydantic never re-runs a
         # `model_validator` against — so a component's own steps would otherwise splice in a
         # `target` the load-time pass never saw (BE-0428), or a target group it never expanded
-        # (BE-0437; see `models/scenario/_targets.py`), or an `extractBody` `var` collision only a
-        # `${params.*}` substitution reveals (BE-0440; see `models/scenario/_http_extract.py`), or an
-        # `openUrl` a component splices under a `web:` block (BE-0487; see `_open_urls.py`).
+        # (BE-0437; see `models/scenario/_targets.py`), or an `openUrl` a component splices under a
+        # `web:` block (BE-0487; see `_open_urls.py`).
         _expand_target_groups(scenario)
         _check_target_requirements(scenario)
-        _check_http_extract_vars(scenario)
         _check_open_urls(scenario)
 
 

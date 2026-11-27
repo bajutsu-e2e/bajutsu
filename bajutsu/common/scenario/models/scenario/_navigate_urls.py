@@ -1,9 +1,9 @@
 """Reject a literal `navigate` URL the step could never open, when the scenario loads (BE-0464).
 
-Runs from `Scenario`'s own `model_validator`, never as `Navigate` model validation, for the reason
-`_http_extract.py` gives: the run loop rebuilds each step after `${vars.*}` substitution
-(`_interp_step`), so a model-level check would turn a token that expands to `javascript:` into an
-uncaught `ValidationError` instead of a failed step. A value holding a `${...}` token is therefore
+Runs from `Scenario`'s own `model_validator`, never as `Navigate` model validation: the run loop
+rebuilds each step after `${vars.*}` substitution (`_interp_step`), so a model-level check would
+turn a token that expands to `javascript:` into an uncaught `ValidationError` instead of a failed
+step. A value holding a `${...}` token is therefore
 skipped here and checked by the runner's `navigate` handler once substituted, against the same
 `navigate_url_problem` rule.
 """

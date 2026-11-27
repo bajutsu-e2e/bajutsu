@@ -845,12 +845,13 @@ config の読み込みは、そうしたエントリと、その `steps` にあ�
 | `relaunch` | `relaunch: { env?: {...}, args?: [...] }` | アプリを terminate + 再起動し（launch env/args を再適用し、指定分で上書き）、ready まで待つ |
 | `setLocation` | `setLocation: { lat: <num>, lon: <num> }` | シミュレータの GPS 位置を上書きする（`simctl location set`） |
 | `push` | `push: { payload: {...} }` | この APNs（Apple Push Notification service）ペイロードで疑似プッシュ通知を配信する（iOS は `simctl push`、Android はアプリ内の BajutsuAndroid のプッシュレシーバ） |
-| `http` | `http: { method?, url, headers?, body?, status?, timeout?, saveBody?, extractBody?: [{ var, path }] }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し（`timeout` を指定すると一致するまで繰り返し）、ボディを `${vars.<saveBody>}` に保存する、または `path` で指定した JSON のフィールドを `${vars.<var>}` に取り出す（[後述](#httpテストデータ準備用のリクエスト)） |
+| `http` | `http: { method?, url, headers?, body?, status?, timeout?, saveBody? }` | HTTP リクエストを送る（テストデータ準備 / Webhook / API）。`status` を検証し（`timeout` を指定すると一致するまで繰り返し）、ボディを `${vars.<saveBody>}` に保存する（[後述](#httpテストデータ準備用のリクエスト)） |
 | `totp` | `totp: { secret, into?: { var }, name? }` | RFC 6238 の時刻ベースワンタイムパスワード（2FA）をローカルで生成し `${vars.<var>}` に入れる。`name` を指定すると、後続の `otp` ステップ向けにシークレットも登録する |
 | `otp` | `otp: { from, into: { var }, minRemaining? }` | `totp` ステップが `from` の名前で登録したジェネレータの現在のコードを `${vars.<var>}` に入れる（[後述](#otp-で後から新しいコードを取得する)） |
 | `email` | `email: { match: { to?, subject?, subjectMatches? }, extract: { var, bodyMatches }, timeout }` | 設定したメールボックスを一致するメッセージが届くまでポーリングし、コードを `${vars.<var>}` に取り出す |
 | `generate` | `generate: { random\|datetime: {...}, into: { var } }` | 乱数または現在日時の値を実行時に計算し、`${vars.<var>}` に保存する（[後述](#generate実行時に計算する値)） |
 | `eval` | `eval: { from, ops: [...], into: { var } \| { vars: [...] } }` | シナリオがすでに持つ値を分割、結合、絞り込みなどで変換し、`${vars.*}` に保存する（[後述](#eval変数に入った値の変換)） |
+| `parseJson` | `parseJson: { from, extract: [{ var, path }] }` | テキスト内の JSON のパスが指す値を `${vars.<var>}` にコピーする（[後述](#parsejsonjson-テキストからの値の読み出し)） |
 | `manual` | `manual: { label: "...", bypass?: "..." }` | `record` 中に記録される人による操作の引き取り（BE-0185）。決定的な実行時の等価物がないため、`run` 時に**明示的に失敗する**（合格を偽装しない） |
 | `background` | `background: {}` | アプリをバックグラウンドへ送る（Home ボタン） |
 | `foreground` | `foreground: {}` | ステップのターゲットのアプリを、終了させずに前面へ出す。動いていないアプリは、終了を除いて `relaunch` と同じように起動し、準備が整うまで待つ。iOS と Android |
@@ -1293,31 +1294,11 @@ Android では、`setLocation` はローカルのエミュレータならエミ�
 ```yaml
 - http: { method: POST, url: "https://api.test/seed", body: '{"n":1}', status: 200 }   # status が 200 以外なら失敗
 - http: { url: "https://api.test/token", saveBody: token }   # vars.token ← レスポンスボディのテキスト
-- http:
-    method: POST
-    url: "${secrets.API}/login"
-    body: '{"user": "e2e"}'
-    status: 200
-    extractBody:
-      - { var: token, path: "data.token" }        # vars.token ← ボディ全体ではなくネストしたフィールド
-      - { var: userId, path: "data.user.id" }
 - assert:
     - exists: { id: home.title }
 ```
 
-`http` はリクエストを runner から HTTP で送ります。UI ドライバは経由しません。そのため `status` の不一致はステップ失敗になり、`saveBody` はレスポンスボディのテキストを `${vars.<name>}` に保存して後続ステップで使えます。デバイスに触れない、ここで唯一のデバイス非依存アクションです。
-
-`extractBody`（BE-0440）は、同じステップで `saveBody` と併用できます。片方だけの指定、両方の指定、どちらも指定しない場合のいずれも許されます。各エントリはレスポンスボディを JSON として解析し、`path` をたどって見つけた値を `vars.<var>` に保存します。
-
-`path` はオブジェクトのキーと、`[n]`（0 始まり）の配列インデックスからなります。先頭のキーに `.` は付けません（`data.token`）。インデックスは、キーの後にも別のインデックスの後にも続けられます（`items[0].id`、`rows[0][1]`）。ボディ自体が JSON 配列なら、`path` はインデックスから始めても構いません（`[0].id`）。
-
-文字列の値はそのまま保存します。それ以外の JSON の値（数値、真偽値、null、オブジェクト、配列）は、キャプチャしたイベントボディのフィールドと同じ形式で保存します。具体的には、コンパクトな JSON テキスト（`42`、`true`、`null`、`{"id":42}`）です。後続の `${vars.*}` 比較が、API の返した形をそのまま読めるようにするためです。
-
-レスポンスボディが JSON として解析できない場合は、JSON パーサーのメッセージのままステップが失敗します。`path` が解決できない場合は、`var` と `path` を含むエラーで失敗します。キーが見つからない場合、インデックスが範囲外の場合が、これにあたります。オブジェクト以外にキーを適用する場合、配列以外にインデックスを適用する場合も同様です。不正な `path`（負のインデックス、数値でないインデックス、空のセグメント、末尾のドット）も同じく失敗します。
-
-`path` と `var` はそれ自体に `${vars.*}` / `${secrets.*}` 置換を使えます（`path: "items[${vars.i}].id"`）。ただし `path` に差し込む値は、1 つのパスセグメントだけを供給しなければなりません。空の値や、`.`、`[`、`]` を含む値はステップを失敗させます。レスポンスボディ由来のフィールド名で、たどり先を別のフィールドへすり替えることを防ぐためです。
-
-`extractBody` の 2 つのエントリが同じ `var` を持つ場合、または `var` が `saveBody` と一致する場合は、シナリオの読み込みでエラーになります。置換によって初めて衝突が判明する場合は、実行時のステップ失敗になります。どちらの場合も、書き込む順序によって片方が黙って上書きされることはありません。
+`http` はリクエストを runner から HTTP で送ります。UI ドライバは経由しません。そのため `status` の不一致はステップ失敗になり、`saveBody` はレスポンスボディのテキストを `${vars.<name>}` に保存して後続ステップで使えます。デバイスに触れない、ここで唯一のデバイス非依存アクションです。JSON のレスポンスから個々の値を読むには、続けて [`parseJson`](#parsejsonjson-テキストからの値の読み出し) ステップを書きます。
 
 #### `timeout` でステータスを待つ
 
@@ -1331,7 +1312,7 @@ Android では、`setLocation` はローカルのエミュレータならエミ�
     saveBody: response
 ```
 
-ステップは、レスポンスのステータスが `status` と一致するまで、約 1 秒ごとにリクエストを繰り返します。`saveBody` と `extractBody` が読むのは、一致したレスポンスのボディだけです。
+ステップは、レスポンスのステータスが `status` と一致するまで、約 1 秒ごとにリクエストを繰り返します。`saveBody` が保存するのは、一致したレスポンスのボディだけです。
 
 | 状況 | ステップの動き |
 |---|---|
@@ -1344,6 +1325,45 @@ Android では、`setLocation` はローカルのエミュレータならエミ�
 | 実行のキャンセル | 待機を抜ける |
 
 成功の条件はステータスだけです。そのため、データができる前から空のボディと 200 を返すサービスには、この待機を使えません。`email` と違い、新しいデータかどうかも区別しません。古い値を読まないように、実行ごとに固有のものを問い合わせます。たとえば `generate` ステップでアドレスを組み立てます。
+
+### `parseJson`（JSON テキストからの値の読み出し）
+
+```yaml
+- http:
+    method: POST
+    url: "${secrets.API}/login"
+    body: '{"user": "e2e"}'
+    status: 200
+    saveBody: login
+- parseJson:
+    from: "${vars.login}"
+    extract:
+      - { var: token, path: "data.token" }        # vars.token ← ネストしたフィールド
+      - { var: userId, path: "data.user.id" }
+```
+
+`parseJson` は、`from` のテキストを JavaScript Object Notation（JSON）として読みます（[BE-0516](../../roadmaps/BE-0516-parse-json-step/BE-0516-parse-json-step-ja.md)）。`from` には通常の `${...}` 置換を使えるので、シナリオが持つどの値も読めます。`extract` の各エントリについて `path` をたどり、見つけた値を `vars.<var>` に保存します。
+
+`path` はオブジェクトのキーと、`[n]`（0 始まり）の配列インデックスからなります。先頭のキーに `.` は付けません（`data.token`）。インデックスは、キーの後にも別のインデックスの後にも続けられます（`items[0].id`、`rows[0][1]`）。テキスト自体が JSON 配列なら、`path` はインデックスから始めても構いません（`[0].id`）。
+
+文字列の値はそのまま保存します。それ以外の JSON の値（数値、真偽値、null、オブジェクト、配列）は、コンパクトな JSON テキスト（`42`、`true`、`null`、`{"id":42}`）として保存します。
+
+すべてのエントリはまとめて解決します。そのため、1 つのエントリが失敗すると、どの変数も変わりません。次の場合はステップが失敗します。
+
+- テキストが JSON でないか、1,048,576 文字を超えています。
+- `path` が不正です（負のインデックス、数値でないインデックス、空のセグメント、末尾のドット）。
+- `path` が解決できません。キーがない場合、インデックスが範囲外の場合、オブジェクト以外にキーを適用した場合、配列以外にインデックスを適用した場合です。
+- 値のない `${...}` トークンがあります。
+
+失敗メッセージは、エントリと、作成者が書いたままの `path` を示します。テキストや置換後の値はシークレットの可能性があるため、引用しません。
+
+`path` と `var` には `${vars.*}` / `${secrets.*}` 置換を使えます（`path: "items[${vars.i}].id"`）。ただし `path` に差し込む値は、1 つのパスセグメントだけを供給する必要があります。空の値や、`.`、`[`、`]` を含む値はステップを失敗させます。レスポンスボディ由来のフィールド名で、たどり先が別のフィールドへすり替わることを防ぐためです。
+
+2 つのエントリが同じ `var` を持つと、シナリオの読み込みでエラーになります。置換して初めて衝突がわかる場合は、実行時のステップ失敗になります。
+
+`from`、`var`、`path` のいずれかが `${secrets.*}` を読むと、取り出した値はシークレットになります。以前の `eval` や `parseJson` がシークレットとした変数を読む場合も同じです。実行は、[`eval`](#eval変数に入った値の変換) と同じように、シークレットになった値を以後のすべての証跡でマスクします。取り出した値は、実行の記録に載りません。どの codegen ターゲットも、`parseJson` をラベル付きの `// TODO` として出力します。
+
+以前の `http` ステップにあった `extractBody` オプションは削除しました。`extractBody` を使うシナリオは読み込みに失敗し、メッセージが `saveBody` と `parseJson` の組み合わせを案内します。
 
 ### `totp`（二要素認証のワンタイムパスワード）
 

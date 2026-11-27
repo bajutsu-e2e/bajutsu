@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0516](BE-0516-parse-json-step.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0516") |
+| Implementing PR | [#2582](https://github.com/bajutsu-e2e/bajutsu/pull/2582) |
 | Topic | Scenario authoring features |
 | Related | [BE-0440](../BE-0440-http-step-field-extraction/BE-0440-http-step-field-extraction.md), [BE-0472](../BE-0472-eval-step-value-operations/BE-0472-eval-step-value-operations.md) |
 <!-- /BE-METADATA -->
@@ -103,9 +104,16 @@ that points to `saveBody` plus `parseJson`:
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] `parseJson` step
-- [ ] Removal of `extractBody`
-- [ ] Documents in both languages
+- [x] `parseJson` step
+- [x] Removal of `extractBody`
+- [x] Documents in both languages
+
+Log:
+
+- [#2582](https://github.com/bajutsu-e2e/bajutsu/pull/2582): Added the `parseJson` step and removed `extractBody` from `http`. Two choices go beyond the design.
+  The extracted values are not recorded on the step's manifest entry, since they are often read from
+  a response that nothing masks. The offline readers of an earlier run drop a stored `extractBody`,
+  so that the run's report still renders.
 
 ## References
 

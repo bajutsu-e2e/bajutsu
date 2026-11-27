@@ -14,6 +14,7 @@ from bajutsu.common.drivers import base
 from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRunnerCrashError
 from bajutsu.common.drivers.xcuitest_live import WebDriverError
 from bajutsu.common.orchestrator.actions import _action_of, _do_action
+from bajutsu.common.orchestrator.actions.handlers.parse_json import target_names
 from bajutsu.common.orchestrator.types import SelectionState
 from bajutsu.common.run_meta.id import new_run_id
 from bajutsu.common.scenario import Selector as SelectorModel
@@ -259,6 +260,10 @@ class ReplSession:
             # name; report the same way an unhandled kind below does, rather than let its own
             # bare `AssertionError` escape.
             return ["step kind 'use' needs `run`/a scenario — it expands away before dispatch"]
+        # Read before the step runs, which may overwrite a variable a `parseJson` `var` token names.
+        parse_json_names = (
+            target_names(step.parse_json, self._bindings) if step.parse_json is not None else []
+        )
         try:
             _do_action(self._driver, step, bindings=self._bindings, selection=self._selection)
         except AssertionError as e:
@@ -286,6 +291,12 @@ class ReplSession:
                 f"vars.{n} = {self._bindings[f'vars.{n}']!r}" for n in step.eval_.into.names
             )
             return [f"ran step: eval ({shown})"]
+        if kind == "parse_json":
+            # One entry per variable written, like `eval`'s above.
+            shown = ", ".join(
+                f"vars.{n} = {self._bindings[f'vars.{n}']!r}" for n in parse_json_names
+            )
+            return [f"ran step: parseJson ({shown})"]
         return [f"ran step: {_yaml_key(kind)}"]
 
     def _back(self, rest: str) -> list[str]:

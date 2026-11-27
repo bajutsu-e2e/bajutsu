@@ -214,6 +214,18 @@ def _upgrade_preconditions(raw: dict[str, Any]) -> None:
         raw["preconditions"] = pre
 
 
+def _drop_extract_body(node: Any) -> None:
+    """Remove the `extractBody` BE-0516 retired from every stored `http` step, at any depth."""
+    if isinstance(node, list):
+        for item in node:
+            _drop_extract_body(item)
+    elif isinstance(node, dict):
+        if isinstance(http := node.get("http"), dict) and "url" in http:
+            http.pop("extractBody", None)
+        for value in node.values():
+            _drop_extract_body(value)
+
+
 def _upgrade_scenario(raw: Any) -> None:
     """Rewrite one stored scenario's pre-BE-0452 spellings in place, so an earlier run still loads.
 
@@ -224,11 +236,14 @@ def _upgrade_scenario(raw: Any) -> None:
     `systemAlertHandling` / `iosTipKitHandling` move into the `subject` and `device` groups and the
     scenario's own `interrupts` (BE-0473).
     The `app` group becomes `subject` (BE-0470). A `preconditions.runsOn` keeps its device state
-    under `device.ios` and drops its conditions (BE-0469).
+    under `device.ios` and drops its conditions (BE-0469). An `http` step drops `extractBody`
+    (BE-0516): the offline readers re-run nothing, and rewriting it into a `parseJson` step would
+    shift the step numbers the run's results are keyed by.
     """
     if not isinstance(raw, dict):
         return
     _upgrade_preconditions(raw)
+    _drop_extract_body(raw)
     for old, new in _PHASE_RENAMES.items():
         if old in raw and new not in raw:
             raw[new] = raw.pop(old)
