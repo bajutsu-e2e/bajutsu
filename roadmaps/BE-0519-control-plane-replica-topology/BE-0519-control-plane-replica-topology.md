@@ -1,14 +1,14 @@
-**English** · [日本語](BE-0518-control-plane-replica-topology-ja.md)
+**English** · [日本語](BE-0519-control-plane-replica-topology-ja.md)
 
-# BE-0518 — Control-plane replicas behind a load balancer
+# BE-0519 — Control-plane replicas behind a load balancer
 
 <!-- BE-METADATA -->
 | Field | Value |
 |---|---|
-| Proposal | [BE-0518](BE-0518-control-plane-replica-topology.md) |
+| Proposal | [BE-0519](BE-0519-control-plane-replica-topology.md) |
 | Author | [@akira-matsuda](https://github.com/akira-matsuda) |
 | Status | **Approved** |
-| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0518") |
+| Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0519") |
 | Topic | Hosting the web UI |
 | Related | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) |
 | Origin | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out.md) |
@@ -80,17 +80,20 @@ Some state stays per replica by design, and none of it needs affinity:
    history through the other.
 2. **Load-balancer policy.** Front the replicas with Caddy or HAProxy using
    **least-connections** rather than round-robin. Event streams stay open for a long time.
-   Round-robin would pile load onto the replica holding the most open streams. Transport Layer
-   Security (TLS) ends at the load balancer or at the existing `caddy` profile. Today the stack's
-   `Caddyfile` proxies to the one `bajutsu:8765` upstream.
-3. **Live logs across replicas.** Add a Redis service to the compose stack. Set
-   `BAJUTSU_REDIS_URL` on every app replica. Confirm that a viewer on one replica sees the lines a
-   worker posts to the other.
+   Round-robin would pile load onto the replica holding the most open streams. Today the stack's
+   `Caddyfile` proxies to the one `bajutsu:8765` upstream. Under replicas, that `Caddyfile` lists
+   the replica set in place of that upstream. Caddy then acts as the load balancer and ends
+   Transport Layer Security (TLS).
+3. **Live logs across replicas.** Add a Redis service to the compose stack. Install the `redis`
+   package in the control-plane image as well. None of the four extras the image installs today
+   ships that package. A replica without the package raises an error on the first live log line. Set `BAJUTSU_REDIS_URL` on every app replica. Confirm that a
+   viewer on one replica sees the lines a worker posts to the other.
 4. **Compose wiring for N replicas.** Give `deploy/self-host/` a scale factor and a
-   load-balancer config. Today the app service publishes port 8765 on the machine. The replicas
-   instead expose that port to the load balancer alone. Postgres and MinIO stay shared and
-   unchanged. Document the operator steps in `deploy/self-host/README.md` and the self-hosting
-   guide.
+   load-balancer config. Today the app service publishes its port on the machine. Under replicas,
+   the load balancer publishes that port instead. Each replica serves the load balancer
+   alone. The recommended tailnet front needs no new command. Its `tailscale serve` call now
+   reaches the load balancer. Postgres and MinIO stay shared and unchanged.
+   Document the operator steps in `deploy/self-host/README.md` and the self-hosting guide.
 
 **Verification.** This tier is deployment and operations work. The `make check` gate runs no Docker
 and no multi-container topology, so it cannot exercise this tier. We check it by hand on a
@@ -102,8 +105,8 @@ deployment:
 - Watch a run on one replica while the worker posts to the other, and confirm the lines arrive.
 - Stop one replica, and confirm the UI stays reachable.
 
-A small statelessness helper in `bajutsu/serve/` keeps unit coverage. The topology itself has no
-gate contract.
+This tier adds no code under `bajutsu/serve/`, so it brings no new unit tests. The topology itself
+has no gate contract.
 
 ## Alternatives considered
 

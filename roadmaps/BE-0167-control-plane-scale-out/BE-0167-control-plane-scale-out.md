@@ -11,18 +11,18 @@
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0167") |
 | Topic | Hosting the web UI |
 | Related | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model.md) |
-| Superseded by | [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology.md) |
+| Superseded by | [BE-0519](../BE-0519-control-plane-replica-topology/BE-0519-control-plane-replica-topology.md) |
 | Origin | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting.md) |
 <!-- /BE-METADATA -->
 
 ## Introduction
 
-> **Rejected — the premise of this item no longer holds, and [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology.md) replaces it.**
+> **Rejected — the premise of this item no longer holds, and [BE-0519](../BE-0519-control-plane-replica-topology/BE-0519-control-plane-replica-topology.md) replaces it.**
 > This item assumed that a worker posts its result once the job ends. Under that premise, no log
 > stream crosses replicas. [BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md) changed that behavior. A worker now posts log lines while the job
 > runs. Replicas thus need a shared Redis bus for live logs, which this design leaves out. Other
 > items have also delivered most of the application-side work this item planned. The remaining work
-> is a different, smaller scope, and BE-0518 states that scope from the current code. `Rejected`
+> is a different, smaller scope, and BE-0519 states that scope from the current code. `Rejected`
 > fits better than `Deferred`, because no later date makes this design correct again.
 
 The self-hosted control plane
@@ -102,7 +102,7 @@ session state) keeps unit coverage. The topology itself has no gate contract.
 - [ ] Compose wiring for N app replicas behind the load balancer, documented.
 
 2026-11-27: Rejected before any PR landed. The item assumed no log stream crosses replicas, and
-[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md) made workers stream live log lines. [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology.md) carries the remaining work from the current code.
+[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs.md) made workers stream live log lines. [BE-0519](../BE-0519-control-plane-replica-topology/BE-0519-control-plane-replica-topology.md) carries the remaining work from the current code.
 
 ## References
 

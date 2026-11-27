@@ -1,14 +1,14 @@
-[English](BE-0518-control-plane-replica-topology.md) · **日本語**
+[English](BE-0519-control-plane-replica-topology.md) · **日本語**
 
-# BE-0518 — ロードバランサ配下で動く制御プレーンのレプリカ
+# BE-0519 — ロードバランサ配下で動く制御プレーンのレプリカ
 
 <!-- BE-METADATA -->
 | 項目 | 値 |
 |---|---|
-| 提案 | [BE-0518](BE-0518-control-plane-replica-topology-ja.md) |
+| 提案 | [BE-0519](BE-0519-control-plane-replica-topology-ja.md) |
 | 提案者 | [@akira-matsuda](https://github.com/akira-matsuda) |
 | 状態 | **承認済み** |
-| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0518") |
+| トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0519") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md) |
 | 由来 | [BE-0167](../BE-0167-control-plane-scale-out/BE-0167-control-plane-scale-out-ja.md) |
@@ -81,16 +81,21 @@ Redis のサービスがありません。
 
 **2. ロードバランサの方針。** レプリカの前段には Caddy か HAProxy を置き、ラウンドロビンではなく
 **最小接続数**を使います。イベントストリームは長く開いたままです。ラウンドロビンでは、開いたストリームを
-多く抱えたレプリカへ負荷が偏ります。Transport Layer Security（TLS）は、ロードバランサか既存の `caddy`
-プロファイルで終端します。現在のスタックの `Caddyfile` は、1つの `bajutsu:8765` へ転送しています。
+多く抱えたレプリカへ負荷が偏ります。現在のスタックの `Caddyfile` は、1つの `bajutsu:8765` へ転送しています。
+レプリカ構成では、この `Caddyfile` に転送先としてレプリカの一覧を書きます。Caddy がロードバランサになり、
+Transport Layer Security（TLS）もそこで終端します。
 
-**3. レプリカをまたぐ実行中のログ。** compose スタックに Redis のサービスを足し、すべてのアプリレプリカに
-`BAJUTSU_REDIS_URL` を設定します。一方のレプリカの閲覧者に、ワーカーが他方へ送った行が届くことを確かめます。
+**3. レプリカをまたぐ実行中のログ。** compose スタックに Redis のサービスを足します。
+制御プレーンのイメージには `redis` パッケージも入れます。`deploy/self-host/Dockerfile` が入れるのは現在
+`.[server,worker,db,oauth]` で、このパッケージを含む extra はありません。パッケージがないまま `BAJUTSU_REDIS_URL`
+を設定すると、最初のログ行でライブのバスがエラーになります。すべてのアプリレプリカに `BAJUTSU_REDIS_URL`
+を設定し、一方のレプリカの閲覧者に、ワーカーが他方へ送った行が届くことを確かめます。
 
 **4. N レプリカのための compose 配線。** `deploy/self-host/` に、スケール係数とロードバランサの設定を加えます。
-現在のアプリサービスは、ポート 8765 をマシンへ直接公開しています。レプリカでは、このポートをロードバランサにだけ
-公開します。Postgres と MinIO は共有のまま変えません。運用者の手順は、`deploy/self-host/README.md` と
-セルフホストのガイドに書きます。
+現在のアプリサービスは、ポート 8765 をマシンへ直接公開しています。レプリカ構成では、ロードバランサが代わりに
+ポート 8765 を公開し、各レプリカは自分のポートをロードバランサにだけ公開します。推奨のテールネット限定の前段
+`tailscale serve --bg 8765` は、コマンドを変えずにロードバランサへ届きます。Postgres と MinIO は共有のまま
+変えません。運用者の手順は、`deploy/self-host/README.md` とセルフホストのガイドに書きます。
 
 **検証。** このティアはデプロイと運用の作業です。`make check` のゲートは Docker も複数コンテナの構成も
 動かさないので、このティアを検証できません。デプロイ上で、次の表の手順を手作業で確かめます。
@@ -103,8 +108,8 @@ Redis のサービスがありません。
 | 他方へログが送られる実行を一方で見る | ログ行が届くこと |
 | レプリカを1つ止める | UI が使い続けられること |
 
-`bajutsu/serve/` に入るステートレス性の小さな補助には、ユニットテストを付けます。構成そのものには、ゲートの契約が
-ありません。
+このティアは `bajutsu/serve/` にコードを追加しないので、新しいユニットテストもありません。構成そのものには、
+ゲートの契約がありません。
 
 ## 検討した代替案
 

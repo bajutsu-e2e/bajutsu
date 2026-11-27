@@ -11,18 +11,18 @@
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0167") |
 | トピック | Web UI のホスティング |
 | 関連 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md), [BE-0106](../BE-0106-post-completion-worker-model/BE-0106-post-completion-worker-model-ja.md) |
-| 無効化 | [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology-ja.md) |
+| 無効化 | [BE-0519](../BE-0519-control-plane-replica-topology/BE-0519-control-plane-replica-topology-ja.md) |
 | 由来 | [BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md) |
 <!-- /BE-METADATA -->
 
 ## はじめに
 
-> **却下。この項目の前提はもう成り立たず、[BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology-ja.md) が置き換えます。**
+> **却下。この項目の前提はもう成り立たず、[BE-0519](../BE-0519-control-plane-replica-topology/BE-0519-control-plane-replica-topology-ja.md) が置き換えます。**
 > この項目は、ワーカーがジョブの終了後に結果を送ると想定していました。その前提では、ログのストリームは
 > レプリカをまたぎません。[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md) がこの動作を変えました。現在のワーカーは、ジョブの実行中にログ行を送ります。
 > そのため、レプリカには実行中のログを運ぶ共有の Redis のバスが要ります。この設計には、そのバスがありません。
 > この項目が計画したアプリ側の作業も、大半はほかの項目ですでに入っています。残る作業は範囲が異なり、より小さく、
-> BE-0518 が現在のコードに基づいてその範囲を定めます。待っても設計が成り立つ時期は来ないので、`Deferred`
+> BE-0519 が現在のコードに基づいてその範囲を定めます。待っても設計が成り立つ時期は来ないので、`Deferred`
 > ではなく `Rejected` を選びます。
 
 セルフホストの制御プレーン（[BE-0016](../BE-0016-web-ui-self-hosting/BE-0016-web-ui-self-hosting-ja.md)）は、
@@ -96,7 +96,7 @@ Mac プールを増やしても、制御プレーンは1つのコンテナのま
 - [ ] ロードバランサ配下で N 個のアプリレプリカを動かす compose 配線と、その文書化。
 
 2026-11-27：PR が入る前に却下しました。この項目はレプリカをまたぐログのストリームがないと想定していましたが、
-[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md) でワーカーが実行中のログ行を送るようになりました。残る作業は [BE-0518](../BE-0518-control-plane-replica-topology/BE-0518-control-plane-replica-topology-ja.md) が現在のコードに基づいて引き継ぎます。
+[BE-0449](../BE-0449-server-runs-no-jobs/BE-0449-server-runs-no-jobs-ja.md) でワーカーが実行中のログ行を送るようになりました。残る作業は [BE-0519](../BE-0519-control-plane-replica-topology/BE-0519-control-plane-replica-topology-ja.md) が現在のコードに基づいて引き継ぎます。
 
 ## 参考
 
