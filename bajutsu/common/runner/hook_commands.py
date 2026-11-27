@@ -40,6 +40,7 @@ from bajutsu.common.capability import command_gate
 from bajutsu.common.capability.command_gate import CommandGate, CommandRefused
 from bajutsu.common.capability.command_policy import (
     CommandKind,
+    CommandPolicy,
     NamedCommandError,
     ResolvedNamedCommand,
     resolve_named_command,
@@ -1123,13 +1124,22 @@ def hook_refusal(
                     return str(e)
             if action == "sandbox" and phase.sandbox is None:
                 return (
-                    f"{field_name} cannot run: the worker's commandExecution sandboxes the commands "
-                    f"of this {gate.policy.source} config, and target {target!r} declares no "
-                    "`hooks.sandbox` block to run them in (BE-0491)"
+                    f"{field_name} cannot run: the worker's commandExecution sandboxes it "
+                    f"({_modes(judge.policy)}), and target {target!r} declares no "
+                    "`hooks.sandbox` block to run it in (BE-0491)"
                 )
             if action == "sandbox" and (why := _outside_bundle(entry, gate.config_dir)) is not None:
                 return f"{field_name} cannot run in the sandbox: {why}"
     return None
+
+
+def _modes(policy: CommandPolicy) -> str:
+    """The source and mode that decided a command, both sources for a component's command."""
+    modes = f"{policy.source}: {policy.execution.mode_for(policy.source)}"
+    if policy.component_source is not None:
+        cs = policy.component_source
+        modes += f", and {cs}: {policy.execution.mode_for(cs)} for its hooks component file"
+    return modes
 
 
 def component_of(entry: HookCommand) -> str | None:

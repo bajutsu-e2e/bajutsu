@@ -189,13 +189,15 @@ def start_session(
     named_commands: Mapping[str, NamedCommand] | None = None,
     base_dir: Path | None = None,
     scenario_targets: Collection[str] = (),
+    component_targets: Collection[str] = (),
     tags: Mapping[str, Sequence[Sequence[str]]] | None = None,
     conditions: ConditionContext | None = None,
 ) -> HookSession | None:
     """The hook session for this run, or None when neither a target nor a scenario declares one.
 
     *scenario_targets* names the targets whose container a scenario's own commands may run in
-    (BE-0501), which is non-empty exactly when some scenario declares a command. *conditions* are
+    (BE-0501), which is non-empty exactly when some scenario declares a command; *component_targets*
+    those among them that run a command a `hooks` component added (BE-0512). *conditions* are
     the facts a `when` reads (BE-0513); None builds them from the targets' own config and this
     process's environment, for a command with no `--backend` or `--udid` override.
 
@@ -230,7 +232,12 @@ def start_session(
         tags=tags or {},
         conditions=conditions if conditions is not None else condition_context(effs),
         sandboxes=_sandboxes(
-            phases, gate=gate, raw_dir=raw, base_dir=base_dir, scenario_targets=scenario_targets
+            phases,
+            gate=gate,
+            raw_dir=raw,
+            base_dir=base_dir,
+            scenario_targets=scenario_targets,
+            component_targets=component_targets,
         ),
     )
 
@@ -242,6 +249,7 @@ def _sandboxes(
     raw_dir: Path,
     base_dir: Path | None,
     scenario_targets: Collection[str],
+    component_targets: Collection[str] = (),
 ) -> dict[str, SandboxRuntime]:
     """One container per target whose command lines the worker's policy sandboxes (BE-0492).
 
@@ -256,10 +264,11 @@ def _sandboxes(
 
     judge = gate if gate is not None else gate_module.current()
     scenario_judge = judge.for_scenario()
+    scenario = scenario_judge.policy.action("command") == "sandbox"
     # A scenario's own entry a component in the config's tree added runs under the stricter of the
     # two sources (BE-0512), which may sandbox it where the scenario's source alone would not.
     joined = replace(scenario_judge.policy, component_source=judge.policy.source)
-    scenario = "sandbox" in (scenario_judge.policy.action("command"), joined.action("command"))
+    component = joined.action("command") == "sandbox"
 
     def sandboxes(phase: HookPhases) -> bool:
         return any(
@@ -279,5 +288,9 @@ def _sandboxes(
         )
         for target, phase in phases.items()
         if phase.sandbox is not None
-        and (sandboxes(phase) or (scenario and target in scenario_targets))
+        and (
+            sandboxes(phase)
+            or (scenario and target in scenario_targets)
+            or (component and target in component_targets)
+        )
     }

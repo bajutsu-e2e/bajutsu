@@ -44,6 +44,19 @@ def sandbox_targets(scenarios: Iterable[Scenario], primary: str) -> set[str]:
     return {driven_targets(s, primary)[0] for s in scenarios if own_phases(s) is not None}
 
 
+def component_targets(scenarios: Iterable[Scenario], primary: str) -> set[str]:
+    """The targets of `sandbox_targets` whose container runs a command a `hooks` component added.
+
+    Such a command answers to the stricter of the scenario's source and the component file's
+    (BE-0512), so its container may be needed where the scenario's own source sandboxes nothing.
+    """
+    return {
+        driven_targets(s, primary)[0]
+        for s in scenarios
+        if (own := own_phases(s)) is not None and any(e.origin for _, _, e in own.entries())
+    }
+
+
 def nested(phases: Mapping[str, HookPhases], own: HookPhases | None) -> dict[str, HookPhases]:
     """The targets' *phases* with the scenario's own level innermost."""
     return {**phases, SCENARIO_LEVEL: own} if own is not None else dict(phases)

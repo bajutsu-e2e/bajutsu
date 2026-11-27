@@ -116,7 +116,11 @@ from bajutsu.common.runner.device_provider.lease_command import declared_models
 from bajutsu.common.runner.device_provider.tagged_udid import entries_for_platform
 from bajutsu.common.runner.hook_session import HookSession, phases_of, run_tags, start_session
 from bajutsu.common.runner.pipeline import with_lifecycle_phases
-from bajutsu.common.runner.scenario_hooks import run_hook_refusal, sandbox_targets
+from bajutsu.common.runner.scenario_hooks import (
+    component_targets,
+    run_hook_refusal,
+    sandbox_targets,
+)
 from bajutsu.common.runner.types import AlertGuardFor, LeaseFn, TargetPool
 from bajutsu.common.scenario import (
     ComponentResolver,
@@ -2419,6 +2423,7 @@ def _hook_session_or_exit(
     secret_values: list[str],
     base_dir: Path | None,
     scenario_targets: set[str],
+    component_targets: set[str],
     tags: Mapping[str, Sequence[Sequence[str]]],
     conditions: ConditionContext,
 ) -> tuple[HookSession | None, ConditionContext]:
@@ -2452,6 +2457,7 @@ def _hook_session_or_exit(
             named_commands=worker.named_commands if worker is not None else None,
             base_dir=base_dir,
             scenario_targets=scenario_targets,
+            component_targets=component_targets,
             tags=tags,
             conditions=conditions,
         )
@@ -3774,6 +3780,7 @@ def run_body(
             secret_values=secret_values,
             base_dir=loaded.root or eff.base_dir,
             scenario_targets=sandbox_targets(scenarios, target_name),
+            component_targets=component_targets(scenarios, target_name),
             # The whole selection, a scenario the worker's capability check failed included: what a
             # run-level `when` sees depends on the files and the flags, never on the worker.
             tags=run_tags(all_scenarios, target_name),

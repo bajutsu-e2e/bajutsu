@@ -222,3 +222,27 @@ def test_the_step_rows_label_each_run_of_component_steps_once() -> None:
         None,
         "hooks/v.hook.yaml",
     ]
+
+
+def test_a_missing_sandbox_block_names_the_component_source_that_sandboxed_it(
+    tmp_path: Path,
+) -> None:
+    component = tmp_path / "scenarios" / "hooks" / "u.hook.yaml"
+    phases = {"web": HookPhases(before_scenario=[_entry(component)])}
+    why = hook_refusal(phases, _gate(tmp_path, uploaded="sandbox"))
+    assert why is not None
+    assert "operator: allow, and uploaded: sandbox for its hooks component file" in why
+
+
+def test_a_scenario_level_container_for_the_joined_source_needs_a_component_entry(
+    tmp_path: Path,
+) -> None:
+    # The config's source sandboxes and the scenario's does not: only a scenario whose own entries
+    # a component added needs its target's container.
+    sandbox = HookSandbox.model_validate({"dockerImage": "alpine"})
+    phases = {"web": HookPhases(sandbox=sandbox)}
+    gate = _gate(tmp_path, uploaded="allow", operator="sandbox")
+    kw: dict[str, Any] = {"gate": gate, "raw_dir": tmp_path / "raw", "base_dir": tmp_path}
+    assert _sandboxes(phases, scenario_targets={"web"}, **kw) == {}
+    started = _sandboxes(phases, scenario_targets={"web"}, component_targets={"web"}, **kw)
+    assert list(started) == ["web"]
