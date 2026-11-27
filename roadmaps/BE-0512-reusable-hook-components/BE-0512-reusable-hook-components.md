@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0512](BE-0512-reusable-hook-components.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0512") |
 | Topic | Scenario authoring features |
 | Related | [BE-0030](../BE-0030-parameterized-shared-steps/BE-0030-parameterized-shared-steps.md), [BE-0392](../BE-0392-scenario-before-after-hooks/BE-0392-scenario-before-after-hooks.md), [BE-0452](../BE-0452-target-config-restructure/BE-0452-target-config-restructure.md), [BE-0471](../BE-0471-target-templates/BE-0471-target-templates.md), [BE-0491](../BE-0491-target-command-hooks/BE-0491-target-command-hooks.md), [BE-0497](../BE-0497-tag-conditional-hooks/BE-0497-tag-conditional-hooks.md), [BE-0501](../BE-0501-scenario-command-hooks/BE-0501-scenario-command-hooks.md) |
@@ -379,8 +379,8 @@ Content that a client uploads thus never gains the mode of the config.
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Component file and `use` list
-- [ ] Expansion for targets and scenarios
+- [x] Component file and `use` list
+- [x] Expansion for targets and scenarios
 - [ ] Name scopes and aliases
 - [ ] Application-level `when` and `inheritSetup: false`
 - [ ] Reports, command policy, and delivery to workers

@@ -137,6 +137,7 @@ from bajutsu.common.scenario import (
     system_alert_entries,
     tip_kit_entry,
 )
+from bajutsu.common.scenario.hook_components import expand_scenario_hook_uses
 from bajutsu.common.scenario.system_alerts import (
     UncoveredSystemAlertLocale,
     alert_surfaces,
@@ -358,6 +359,7 @@ def _expand_file(
     base_dir = path.parent
 
     try:
+        expand_scenario_hook_uses(scenarios, root=root, base=base_dir)
         expand_components(
             scenarios,
             ComponentResolver(scenario_file.components, root=root, base=base_dir, source=path),

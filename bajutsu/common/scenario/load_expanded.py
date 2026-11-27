@@ -190,6 +190,10 @@ def load_expanded_scenarios(
         except yaml.YAMLError as e:
             raise ValueError(f"invalid YAML in {path}: {' '.join(str(e).split())}") from e
     scenarios = scenario_file.scenarios
+    # Imported here: the expander reads its component files through this module's helpers.
+    from bajutsu.common.scenario.hook_components import expand_scenario_hook_uses
+
+    expand_scenario_hook_uses(scenarios, root=root, base=base)
     expand_components(
         scenarios, ComponentResolver(scenario_file.components, root=root, base=base, source=path)
     )

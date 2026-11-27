@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 # The lists that union rather than replace: replacing `evidence.secrets` would let a target that adds
@@ -25,6 +26,9 @@ _NO_NULL: frozenset[tuple[str, ...]] = _UNION_LISTS | {
 
 # The list whose entries come in three forms (BE-0473), merged form by form by `_merge_interrupts`.
 _INTERRUPTS: tuple[str, ...] = ("hooks", "interrupts")
+
+# The `hooks` components each layer applies (BE-0512), joined by `_merge_uses`.
+_USES: tuple[str, ...] = ("hooks", "use")
 
 # `ai` keeps its field-by-field merge in `resolve`, and `platforms` is not a target key.
 _NOT_MERGED = frozenset({"ai", "platforms"})
@@ -63,13 +67,44 @@ def _merge_interrupts(base: list[Any], over: list[Any]) -> list[Any]:
     return [*screens, *alerts, *over_alerts, *tip_kit]
 
 
+def _use_identity(entry: Any) -> object:
+    # The component file and the alias; every layer's `hook` is relative to the config file's
+    # directory by now (a template file's is rebased), so a normalized path compares across layers.
+    # An entry of no readable shape keeps an identity of its own and reaches the model's error.
+    if isinstance(entry, dict) and isinstance(hook := entry.get("hook"), str):
+        return os.path.normpath(hook), entry.get("as")
+    return id(entry)
+
+
+def _merge_uses(base: list[Any], over: list[Any]) -> list[Any]:
+    """*over*'s `hooks.use` joined onto *base*'s (BE-0512).
+
+    A replaced list would drop a component that `defaults` or a template applies without a word, so
+    the lists join in layer order. An entry naming the same component and alias as one of *base*'s
+    replaces it in place, which lets a later layer change an application's values. Only *base* is
+    matched, so two such entries in one layer both stay and reach the model's "applied twice" error.
+    A `null` still clears the whole list (`merge_layer`): the one deliberate way to drop what an
+    earlier layer applies.
+    """
+    out = list(base)
+    for entry in over:
+        key = _use_identity(entry)
+        at = next((i for i in range(len(base)) if _use_identity(out[i]) == key), None)
+        if at is None:
+            out.append(entry)
+        else:
+            out[at] = entry
+    return out
+
+
 def merge_layer(
     base: dict[str, Any], over: dict[str, Any], path: tuple[str, ...] = ()
 ) -> dict[str, Any]:
     """*over* laid on *base*: dictionaries merge key by key, *over* wins, and None clears a key.
 
     Lists replace, except the ones `_UNION_LISTS` names, which keep both sides in order without a
-    repeat, and `hooks.interrupts`, which merges form by form (`_merge_interrupts`). Neither argument
+    repeat, `hooks.interrupts`, which merges form by form (`_merge_interrupts`), and `hooks.use`,
+    which joins (`_merge_uses`). Neither argument
     is changed.
 
     Raises:
@@ -92,6 +127,8 @@ def merge_layer(
             out[key] = list(dict.fromkeys([*current, *value]))
         elif here == _INTERRUPTS and isinstance(current, list) and isinstance(value, list):
             out[key] = _merge_interrupts(current, value)
+        elif here == _USES and isinstance(current, list) and isinstance(value, list):
+            out[key] = _merge_uses(current, value)
         else:
             out[key] = value
     return out

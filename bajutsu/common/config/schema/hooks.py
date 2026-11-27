@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Self
+from typing import Self
 
 from pydantic import Field, ValidationInfo, model_validator
 
@@ -16,6 +15,8 @@ from bajutsu.common.scenario import (
     check_interrupt_entries,
     screen_entries,
 )
+from bajutsu.common.scenario.models.hook_component import HookUse
+from bajutsu.common.scenario.step_walk import nested_steps, reject_scenario_only
 
 from ._model import _Model
 from .hook_command import (
@@ -27,29 +28,6 @@ from .hook_command import (
 
 # The four external-command lists (BE-0491), in the order one run meets them.
 COMMAND_LISTS: tuple[str, ...] = ("beforeRun", "beforeScenario", "afterScenario", "afterRun")
-
-# Where a step nests further steps, as (model attribute path, YAML key path). `_nested_steps` walks
-# the models by the first and a template file's `use` rewrite (BE-0471) walks raw YAML by the second,
-# so a container added here reaches both. A target group (BE-0437) is never flattened in a config, so
-# its own `steps` count too.
-STEP_CONTAINERS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
-    (("steps",), ("steps",)),
-    (("if_", "then"), ("if", "then")),
-    (("if_", "else_"), ("if", "else")),
-    (("for_each", "steps"), ("forEach", "steps")),
-    (("web", "steps"), ("web", "steps")),
-    (("app", "steps"), ("app", "steps")),
-)
-
-
-def _nested_steps(steps: list[Step]) -> Iterator[Step]:
-    for step in steps:
-        yield step
-        for attrs, _ in STEP_CONTAINERS:
-            nested: Any = step
-            for attr in attrs:
-                nested = getattr(nested, attr, None)
-            yield from _nested_steps(nested or [])
 
 
 class Hooks(_Model):
@@ -77,6 +55,9 @@ class Hooks(_Model):
     after_run: list[HookCommand] = Field(default_factory=list, alias="afterRun")
     before_scenario: list[HookCommand] = Field(default_factory=list, alias="beforeScenario")
     after_scenario: list[HookCommand] = Field(default_factory=list, alias="afterScenario")
+    # `hooks` components the target applies (BE-0512), expanded into the lists above and `setup` /
+    # `cleanup` when the config loads, which then empties this list.
+    use: list[HookUse] = Field(default_factory=list)
     # How the container those commands run in is built, for a worker whose policy sandboxes them.
     sandbox: HookSandbox | None = None
 
@@ -89,6 +70,36 @@ class Hooks(_Model):
             "afterScenario": self.after_scenario,
             "afterRun": self.after_run,
         }
+
+    @model_validator(mode="after")
+    def _expand_uses(self, info: ValidationInfo) -> Self:
+        # Ahead of `_check_command_lists`, so a name a component brings meets the same uniqueness
+        # rule as a direct entry's. The list empties once expanded, so a config dumped and loaded
+        # again never applies a component twice.
+        if not self.use:
+            return self
+        config_path, root = _paths(info, "hooks apply a hooks component (`use`)")
+        # Imported here for the reason `_resolve_components` gives.
+        from bajutsu.common.scenario.hook_components import (
+            apply_hook_component,
+            reject_repeated,
+            wrap_cleanup,
+            wrap_commands,
+            wrap_setup,
+        )
+
+        applications = [
+            apply_hook_component(u, root=root, base=config_path.parent) for u in self.use
+        ]
+        reject_repeated(applications, "hooks.use")
+        self.before_run = wrap_commands(applications, "beforeRun", self.before_run)
+        self.before_scenario = wrap_commands(applications, "beforeScenario", self.before_scenario)
+        self.after_scenario = wrap_commands(applications, "afterScenario", self.after_scenario)
+        self.after_run = wrap_commands(applications, "afterRun", self.after_run)
+        self.setup = wrap_setup(applications, self.setup)
+        self.cleanup = wrap_cleanup(applications, self.cleanup)
+        self.use = []
+        return self
 
     @model_validator(mode="after")
     def _check_command_lists(self) -> Self:
@@ -120,9 +131,9 @@ class Hooks(_Model):
 
     def _all_steps(self) -> list[Step]:
         return [
-            *_nested_steps(self.setup),
-            *(s for rule in self.cleanup for s in _nested_steps(rule.steps)),
-            *(s for entry in self.screens for s in _nested_steps(entry.steps)),
+            *nested_steps(self.setup),
+            *(s for rule in self.cleanup for s in nested_steps(rule.steps)),
+            *(s for entry in self.screens for s in nested_steps(entry.steps)),
         ]
 
     @model_validator(mode="after")
@@ -130,18 +141,10 @@ class Hooks(_Model):
         # `group:` folds steps under a report heading of one scenario, and `setMocks` arms the
         # control channel `run` sets up per scenario (BE-0365 unit 4); neither has a meaning for every
         # scenario of a target, so both fail here rather than reach the step loop unarmed.
-        self._reject_scenario_only(self._all_steps(), "")
+        reject_scenario_only(self._all_steps(), "hooks")
         if not any(s.use is not None for s in self._all_steps()):
             return self
-        context = info.context if isinstance(info.context, dict) else {}
-        config_path = context.get("config_path")
-        if not isinstance(config_path, Path):
-            raise ValueError(  # noqa: TRY004 - Pydantic turns only ValueError into a field error
-                "hooks call a component (`use`), which resolves against the config file's "
-                "directory, but this config was loaded without its path"
-            )
-        suite_root = context.get("suite_root")
-        root = suite_root if isinstance(suite_root, Path) else config_path.parent
+        config_path, root = _paths(info, "hooks call a component (`use`)")
         # Imported here: the resolver reaches the scenario loader, which this schema module keeps
         # off its import path at load.
         from bajutsu.common.scenario import ComponentResolver, expand_steps
@@ -155,20 +158,8 @@ class Hooks(_Model):
                 entry.steps = expand_steps(entry.steps, resolver)
         except OSError as e:
             raise ValueError(f"hooks: cannot read a component: {e}") from e
-        self._reject_scenario_only(self._all_steps(), " (through a component)")
+        reject_scenario_only(self._all_steps(), "hooks", " (through a component)")
         return self
-
-    @staticmethod
-    def _reject_scenario_only(steps: list[Step], how: str) -> None:
-        if any(s.group is not None or s.report_group is not None for s in steps):
-            raise ValueError(
-                f"hooks cannot use a group (`group`){how}: a group belongs to one scenario's report"
-            )
-        if any(s.set_mocks is not None for s in steps):
-            raise ValueError(
-                f"hooks cannot use setMocks{how}: a stub table belongs to one scenario, so "
-                "replace it from that scenario's own steps"
-            )
 
     @model_validator(mode="after")
     def _no_target_in_interrupts(self) -> Self:
@@ -184,9 +175,26 @@ class Hooks(_Model):
                     "hooks.interrupts entries cannot set `target`: the entry already belongs to "
                     "the target this block configures"
                 )
-            if any(s.target is not None for s in _nested_steps(entry.steps)):
+            if any(s.target is not None for s in nested_steps(entry.steps)):
                 raise ValueError(
                     "a step under hooks.interrupts cannot set `target`: recovery steps run on the "
                     "target this block configures"
                 )
         return self
+
+
+def _paths(info: ValidationInfo, what: str) -> tuple[Path, Path]:
+    """The config file and the suite root its references must stay inside, from the load context.
+
+    Raises:
+        ValueError: The config was loaded without its path, so *what* has nothing to resolve against.
+    """
+    context = info.context if isinstance(info.context, dict) else {}
+    config_path = context.get("config_path")
+    if not isinstance(config_path, Path):
+        raise ValueError(  # noqa: TRY004 - Pydantic turns only ValueError into a field error
+            f"{what}, which resolves against the config file's directory, but this config was "
+            "loaded without its path"
+        )
+    suite_root = context.get("suite_root")
+    return config_path, suite_root if isinstance(suite_root, Path) else config_path.parent
