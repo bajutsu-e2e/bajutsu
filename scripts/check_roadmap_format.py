@@ -234,16 +234,17 @@ def _rejection_banner_problems(text: str, status: str | None, *, lang: str) -> l
     heading, marker = (
         ("## はじめに", "> **却下") if lang == "ja" else ("## Introduction", "> **Rejected")
     )
-    lines = text.splitlines()
-    if status != ("却下" if lang == "ja" else "Rejected") or heading not in lines:
+    name = heading.removeprefix("## ")
+    start = next((i for n, i in heading_positions(text) if n == name), None)
+    if status != ("却下" if lang == "ja" else "Rejected") or start is None:
         return []  # a missing heading is the heading check's to report
-    following = (line for line in lines[lines.index(heading) + 1 :] if line.strip())
+    following = (line for line in text.splitlines()[start + 1 :] if line.strip())
     first = next(following, "")
     second = next(following, "")
-    if not first.startswith(marker) or not second.startswith(">"):
+    if not first.startswith(marker) or not second.startswith(">") or not second[1:].strip():
         return [
-            f"a rejected item must open {heading.removeprefix('## ')!r} with a "
-            f"'{marker} …**' blockquote that states why it was rejected"
+            f"a rejected item must open {name!r} with a '{marker} …**' line, and continue the "
+            "blockquote on the next line with the reason it was rejected"
         ]
     return []
 

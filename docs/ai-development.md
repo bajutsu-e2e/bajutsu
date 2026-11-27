@@ -1150,14 +1150,14 @@ disagree, because the directory does not depend on `Status` at all.
 The change that sets `Status` to `Rejected` edits the `Introduction` too. A bold blockquote line,
 `> **Rejected — <one-line reason>**`, opens it and states the reason in brief.
 
-The lines after it say why the maintainers decided against the item. They also say why the item
-suits this status better than a deferral. When another item replaces it, the blockquote links there.
-The metadata then gains a `Superseded by` row. The `-ja.md` mirror opens with a matching
-`> **却下 …**` line.
+The blockquote continues on the next line, never ending at the bold one. Those lines say why the
+maintainers decided against the item. They also say why the item suits this status better than a
+deferral. When another item replaces it, the blockquote links there. The metadata then gains a
+`Superseded by` row. The `-ja.md` mirror opens with a matching `> **却下 …**` line.
 
 A closed PR's review thread is no place for the reason, since a reader of the item never sees it.
-The format check in `make check` fails a `Rejected` item that lacks the blockquote. Review still
-judges whether the reason holds up.
+The format check in `make check` fails a `Rejected` item without the bold line or the reason after
+it. Review still judges whether the reason holds up.
 
 Every item, in every bucket, is browsable, grouped by Topic with live progress bars, on the
 [roadmap dashboard](https://bajutsu-e2e.github.io/bajutsu/api/roadmap.html). The page is generated

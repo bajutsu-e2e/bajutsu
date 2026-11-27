@@ -108,6 +108,28 @@ def test_rejected_banner_with_no_reason_line_is_caught(tmp_path: Path) -> None:
     assert len([p for p in format_problems(tmp_path) if "rejected item" in p]) == 2
 
 
+def test_rejected_banner_with_an_empty_continuation_is_caught(tmp_path: Path) -> None:
+    en, ja = _rejected(_valid_en("BE-0042", "a-thing"), _valid_ja("BE-0042", "a-thing"))
+    en = en.replace("## Introduction\n\nTBD", "## Introduction\n\n> **Rejected.**\n>\n\nTBD")
+    ja = ja.replace("## はじめに\n\nTBD", "## はじめに\n\n> **却下。**\n>\n\nTBD")
+    _write_item(tmp_path, "BE-0042", "a-thing", en=en, ja=ja)
+    assert len([p for p in format_problems(tmp_path) if "rejected item" in p]) == 2
+
+
+def test_rejected_banner_after_a_fenced_heading_is_found(tmp_path: Path) -> None:
+    en, ja = _rejected(_valid_en("BE-0042", "a-thing"), _valid_ja("BE-0042", "a-thing"))
+    banner = "> **Rejected — superseded.**\n> Another item covers it."
+    en = en.replace(
+        "## Introduction\n\nTBD",
+        f"## Introduction\n\n{banner}\n\n```\n## Introduction\n```",
+    )
+    ja = ja.replace(
+        "## はじめに\n\nTBD", "## はじめに\n\n> **却下。置き換えです。**\n> 別の項目です。"
+    )
+    _write_item(tmp_path, "BE-0042", "a-thing", en=en, ja=ja)
+    assert format_problems(tmp_path) == []
+
+
 def test_rejected_item_with_a_reason_banner_passes(tmp_path: Path) -> None:
     en, ja = _rejected(_valid_en("BE-0042", "a-thing"), _valid_ja("BE-0042", "a-thing"))
     en = en.replace(
