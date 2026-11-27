@@ -532,6 +532,9 @@ there.
     Simulator. The list groups the labels by category, with the reason each category can stay off.
     Each job logs the count of disabled services and of Simulator processes at its start and end. A
     manual run can pick `simulator-services: stock`, which reboots without turning anything off.
+    A manual run can also pick `lanes: measure`, which runs the build, `run`, and `actuation` jobs
+    alone. Each such run gets its own concurrency group, so two runs in flight do not cancel each
+    other.
 - **Before anything ran**, also from `start`: one bounded `ps aux` plus `vm_stat` land in
   `runs/diagnostics/ps-baseline.txt`. The stall captures snapshot `ps` at a stall, which answers what
   was resident when it broke and cannot answer whether that differed from normal — the first
@@ -689,12 +692,14 @@ needs access to the repository.
 
 1. Fetch the recent runs of one workflow. The command reads the last 30 completed runs and downloads
    their telemetry artifacts. It joins each record with facts from the API. Those facts are the job's
-   conclusion, its queue time, and each step's duration. The command also counts four warnings in
+   conclusion, its queue time, and each step's duration. The command also counts six warnings in
    each job log:
 
    - channel retries
    - channel crashes
    - unconfirmed recording starts
+   - Simulator reboots that recovered a runner start
+   - replaced Simulators
    - network errors
 
    ```bash
@@ -735,6 +740,66 @@ low. A cause that shows up as often on green jobs explains nothing about the red
 that jumps on one runner image or hardware model points at the machine, not the code. A red job left
 with no label goes to [`investigate-ci-failure`](../.apm/skills/investigate-ci-failure/SKILL.md).
 That skill reads the job's full `runs/` artifact.
+
+### Deciding whether to keep the reduced Simulator services
+
+The `run` and `actuation` jobs turn off Simulator services that no scenario needs
+([BE-0517](../roadmaps/BE-0517-ios-ci-simulator-service-reduction/BE-0517-ios-ci-simulator-service-reduction.md)).
+The roadmap item fixes four criteria for keeping the change, before any measured run. The
+`adoption` subcommand applies those criteria to two arms of manual runs:
+
+- **reduced**: the Simulator with the listed services turned off
+- **stock**: the same reboot with every service left on
+
+1. Start ten runs of each arm on `main`. Alternate the arms within the same hours. Note the time of
+   the first run, since the report counts nothing older.
+
+   ```bash
+   gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=reduced
+   ```
+
+   ```bash
+   gh workflow run ios-e2e.yml --ref main -f lanes=measure -f simulator-services=stock
+   ```
+
+2. Fetch the runs once all twenty have completed. The `--event` flag keeps pull-request runs of the
+   same workflow out of the list.
+
+   ```bash
+   python3 scripts/ci_telemetry.py fetch --workflow ios-e2e.yml --event workflow_dispatch --limit 30 --out tmp/be-0517
+   ```
+
+3. Apply the criteria.
+
+   ```bash
+   python3 scripts/ci_telemetry.py adoption tmp/be-0517 --since 2026-12-01T00:00:00Z
+   ```
+
+   The first line names the verdict. The table below it gives each arm's counts and each
+   criterion's result.
+
+The subcommand assigns a job to an arm by the mode its own log printed. A job counts when it meets
+three conditions:
+
+- The job is `run` or `actuation`, from a manual run on `main`.
+- It started at or after the `--since` time.
+- The fetch read its log.
+
+The verdict takes one of four values.
+
+| Verdict | Meaning |
+|---|---|
+| `adopt` | Every criterion passes |
+| `reject` | At least one criterion does not pass |
+| `trace` | The counts pass, but a job did not pass with the change on |
+| `incomplete` | An arm holds other than exactly twenty jobs |
+
+A `trace` verdict needs a person. Run each listed scenario again with the suspect service left
+on. A pass then counts against the change.
+
+The report also lists each `run` or `actuation` job whose log names no arm. The fetch could not
+read its log, or the job stopped before the reduce step printed the arm. Such a job counts in
+neither arm, and an arm may then fall short of twenty.
 
 ## Running bajutsu in your app's CI
 

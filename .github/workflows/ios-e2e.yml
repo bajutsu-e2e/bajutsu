@@ -91,6 +91,14 @@ on:
         type: choice
         options: [reduced, stock]
         default: reduced
+      # `measure` runs only the jobs the measurement compares (build, run, actuation), so twenty
+      # dispatches do not pay for every other macOS lane, and gives each dispatch its own concurrency
+      # group so alternating arms in the same hours do not cancel each other.
+      lanes:
+        description: Jobs to run; 'measure' keeps build, run and actuation (BE-0517)
+        type: choice
+        options: [all, measure]
+        default: all
   # Trigger on every PR so the `e2e` gate job always reports a status (required checks
   # that never run stay pending and block merges). The metered macOS jobs themselves are
   # path-gated by the `changes` job below — docs-only PRs skip them and the gate passes.
@@ -104,7 +112,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-e2e-${{ github.ref }}
+  group: ios-e2e-${{ github.ref }}${{ inputs.lanes == 'measure' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 # Capture the XCUITest runner subprocess's stdout/stderr (folded together) on every on-device job.
@@ -779,6 +787,7 @@ jobs:
     needs: [changes, build]
     # BE-0322: runs on a shared-code change, or when golden.yaml changed.
     if: >-
+      inputs.lanes != 'measure' &&
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'golden'))
@@ -845,7 +854,7 @@ jobs:
     # raw `bajutsu run` rather than the `bajutsu-e2e` action's `scenarios:` input (the run is expected
     # to fail, so the action's own exit-code check cannot decide it), and the BE-0322 map is derived
     # from those inputs — so there is no `affected` entry for it to narrow on.
-    if: needs.changes.outputs.relevant == 'true'
+    if: inputs.lanes != 'measure' && needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # One cold lease plus a single short scenario, and the `.ips` sweep is bounded to a few seconds;
     # 60 caps the metered macOS job (10x billing) against a hang, like every other job on this lane.
@@ -983,6 +992,7 @@ jobs:
     # scenarios (components.yaml + the four coverage scenarios) are declared in demos/showcase/Makefile's
     # `ui-test` / `ui-test-coverage` targets, which scripts/e2e_changes.py folds into `affected`.
     if: >-
+      inputs.lanes != 'measure' &&
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'codegen'))
@@ -1058,6 +1068,7 @@ jobs:
     # BE-0322: runs on a shared-code change, or when smoke.yaml changed (declared here and by `run`,
     # so a smoke.yaml edit fires both).
     if: >-
+      inputs.lanes != 'measure' &&
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'bundled-runner'))
@@ -1121,7 +1132,7 @@ jobs:
   conformance:
     name: conformance (xcuitest)
     needs: [changes, build]
-    if: needs.changes.outputs.relevant == 'true'
+    if: inputs.lanes != 'measure' && needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Cap the metered macOS job (10x billing): a hung Simulator/runner would otherwise run to the
     # 6h default. Two backends end-to-end is ~12min, so 60 catches a real hang with headroom.
@@ -1231,7 +1242,7 @@ jobs:
   fault-injection:
     name: fault-injection (xcuitest)
     needs: [changes, build]
-    if: needs.changes.outputs.relevant == 'true'
+    if: inputs.lanes != 'measure' && needs.changes.outputs.relevant == 'true'
     runs-on: macos-latest
     # Two frozen cases spend the channel's own budgets (a read's 15s socket window, three of them before
     # a crash is declared) and the killed case polls out the 60s recovery window, so the cases total
@@ -1331,6 +1342,7 @@ jobs:
     # (visual/visual_ios.yaml) is declared in demos/showcase/Makefile's `e2e-visual` target, which
     # scripts/e2e_changes.py folds into `affected`.
     if: >-
+      inputs.lanes != 'measure' &&
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'visual'))
@@ -1455,6 +1467,7 @@ jobs:
     # declared in demos/showcase/Makefile's `e2e-network` target, which scripts/e2e_changes.py folds
     # into `affected`.
     if: >-
+      inputs.lanes != 'measure' &&
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'network'))
@@ -1560,6 +1573,7 @@ jobs:
     # declared in demos/showcase/Makefile's `e2e-device-group` target, which scripts/e2e_changes.py
     # folds into `affected`.
     if: >-
+      inputs.lanes != 'measure' &&
       needs.changes.outputs.relevant == 'true' &&
       (needs.changes.outputs.shared == 'true' ||
       contains(fromJSON(needs.changes.outputs.affected), 'device-group'))
