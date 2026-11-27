@@ -217,10 +217,10 @@ label の対応表にない言語でも、何をなぜ押したかがわかり�
 何も無視しなかったシナリオや、起動前に preflight で拒否されたシナリオでは空です。
 `schemaVersion` 17 より前に記録された run には存在せず、その場合は無視した設定なしとして読みます。
 
-**`device_suspect`**：シナリオが失敗したデバイスを疑う理由と、run がそのデバイスに対して取った処置です
-（[BE-0376](../../roadmaps/BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md)）。
-現在の理由は 1 つだけです。シナリオがバックエンドのクラッシュではなく自身のアサーションで失敗し、映像の録画が開始を確認できなかった場合です。
-run は後続のシナリオのために置き換えのデバイスを要求したか、デバイスを使い続けたかを、理由とともに書きます。
+**`device_suspect`**：成功しなかったシナリオのデバイスを疑う理由です
+（[BE-0520](../../roadmaps/BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result-ja.md)）。
+現在の理由は 1 つだけで、デバイスの映像の録画が開始を確認できなかった場合です。
+シナリオが失敗で終わる 2 つの道（自身のアサーションと、諦めた再起動の再試行）の両方で確かめます。
 この値が `ok` や `failure` を変えることはありません。
 HTML レポートではシナリオの Environment パネルに表示し、CTRF の出力では `deviceSuspect` として載せます。
 ほかのシナリオでは空です。

@@ -39,13 +39,11 @@ from ._functions import _default_run_crash_recovery_budget as _default_run_crash
 from ._functions import _logger as _logger
 from ._functions import guarded_teardown, is_host_fault, recovers_by_respawn
 from .crash_recovery_budget import CrashRecoveryBudget
-from .device_quarantine import DeviceQuarantine
 from .retry_decision import RetryDecision
 from .run_crash_recovery_budget import RunCrashRecoveryBudget
 
 __all__ = [
     "CrashRecoveryBudget",
-    "DeviceQuarantine",
     "RetryDecision",
     "RunCrashRecoveryBudget",
     "guarded_teardown",

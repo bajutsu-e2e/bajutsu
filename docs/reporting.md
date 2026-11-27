@@ -195,15 +195,14 @@ meaning after the run that produced it exits
   It never changes `ok`. The list is empty on a scenario that ignored nothing. The list is also empty when
   the preflight refused the scenario before any launch. Every run recorded before `schemaVersion` 17
   lacks the list. A reader treats such a run as having ignored nothing.
-- `device_suspect`: why the scenario's device is suspect, and what the run did about it
-  ([BE-0376](../roadmaps/BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md)).
-  Today one cause sets it. The scenario stopped on its own assertion, with no backend fault. Its
-  video recording also never confirmed that it started. The value says whether the run asked for a replacement device. When the run kept the
-  device, the value says why. The field never changes `ok` or the scenario's reason. The HTML report
-  shows the value in the scenario's Environment panel. The Common Test Report Format (CTRF) export
-  carries it under the `deviceSuspect` key. The value is empty on every other scenario. Runs
-  recorded before `schemaVersion` 20 lack the field. A reader treats such a run as having no
-  suspect device.
+- `device_suspect`: why the device of a scenario that did not pass is suspect
+  ([BE-0520](../roadmaps/BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md)).
+  Today one cause sets it: the device's video recording never confirmed that it started. The run
+  checks both ways a scenario ends red, its own assertion and a respawn retry that gave up. The field
+  never changes `ok` or the scenario's reason. The HTML report shows the value in the scenario's
+  Environment panel. The Common Test Report Format (CTRF) export carries it under the
+  `deviceSuspect` key. The value is empty on every other scenario. Runs recorded before
+  `schemaVersion` 20 lack the field. A reader treats such a run as having no suspect device.
 - `network.json`'s `startedAt`: each observed exchange's absolute start. The run writes one such
   file per scenario, and the manifest above does not show it. The value stands on the same footing as `steps[].started_at`.
   Both derive through the same scenario anchor, so a viewer subtracts `video_anchor_s` from both.

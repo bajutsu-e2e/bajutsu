@@ -333,7 +333,7 @@ def test_html_environment_no_sim_with_ignored_settings_omits_muted_message() -> 
 
 
 def test_html_environment_names_a_suspect_device() -> None:
-    # BE-0376: why the device is suspect sits beside the device it names, not in the failure.
+    # BE-0520: the stalled-video note sits beside the device it names, not in the failure.
     r = _passing()
     r.device_suspect = "the video recording never confirmed it started"
     out = html_report("run1", [r])

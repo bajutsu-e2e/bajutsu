@@ -192,7 +192,7 @@ def _environment_panel(r: RunResult) -> dict[str, Any]:
         "sim": sim,
         "skips": skips,
         "ignored": ignored,
-        # Why the device is suspect (BE-0376), beside the device it names rather than in the
+        # Why the device is suspect (BE-0520), beside the device it names rather than in the
         # failure, which stays exactly what the scenario's own assertion said.
         "suspect": r.device_suspect,
     }
