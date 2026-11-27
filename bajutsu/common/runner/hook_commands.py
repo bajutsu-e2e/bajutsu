@@ -714,8 +714,10 @@ class HookRunner:
         return record, failure, values
 
     def _gate_for(self, context: HookContext, entry: HookCommand) -> CommandGate:
-        """The gate that judges *entry*: a scenario's own by the scenario's source (BE-0501), and
-        one a `hooks` component added by the stricter of that and the component file's (BE-0512).
+        """The gate that judges *entry*, by its level's source and its component file's.
+
+        A scenario's own entry answers to the scenario's source (BE-0501), and one a `hooks`
+        component added to the stricter of that and the component file's (BE-0512).
         """
         gate = self._gate if context.level is None else self._gate.for_scenario()
         return gate.for_entry(component_of(entry))
