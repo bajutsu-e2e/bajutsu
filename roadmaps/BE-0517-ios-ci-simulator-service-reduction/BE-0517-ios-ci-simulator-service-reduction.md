@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
-| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3), [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) (unit 4, tooling) |
+| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3), [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) (unit 4, tooling), [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594) (unit 4, log fetch fix) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) |
 <!-- /BE-METADATA -->
@@ -203,6 +203,9 @@ Log:
 | Recovery counts | The telemetry counts recovery reboots and replacement devices from each job log. The third criterion sums the two |
 | Lost change | A job counts as having lost the change when fewer services are off at its end than at its start. No log line marks an erase, so this count stands in for it |
 | Verdict | `scripts/ci_telemetry.py adoption` applies the four criteria and prints `adopt`, `reject`, `trace`, or `incomplete`. A reduced job that did not pass sends the verdict to `trace` |
+
+- [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594): fixed the log fetch behind unit 4. A newer `gh` refused job logs that hold terminal escape
+  sequences, so every log read as unreadable and the verdict could only be `incomplete`.
 
 ## References
 
