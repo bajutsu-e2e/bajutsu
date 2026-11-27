@@ -122,7 +122,8 @@ The preference works inside one device pool. The server does not rank one worker
 A stale declaration under `runsOn.ignoredSettings` stops the run. A declaration is stale when every
 kind of the target supports or satisfies the setting. The check reads the target's whole kind set, not the
 kind of one run. It replaces today's check of a single route, for lists too. Take a
-target with `kind: [simulator, device]` that ignores `erase`. Its Simulator run then passes.
+target with `kind: [simulator, device]` that ignores `erase`. Its Simulator run then raises no stale
+declaration error. The device kind does not support `erase`.
 
 On a route that supports the setting, Bajutsu applies it. Evidence kinds never narrow the
 candidates. The report's skipped captures still list evidence that the chosen route cannot record.
@@ -135,12 +136,14 @@ environments does not read as a flaky scenario.
 ### Dispatch
 
 Each job for an iOS or Android target requires a token that names its route, `route:<route>`. A
-scenario with no capability and no setting needs the token too. A `kind: any` job holds one choice for each pair of scenario and target.
-One of that pair's candidate routes meets the choice. The job needs every choice. A list-kind job needs the tokens of every listed route, since
-one worker runs the whole list.
+scenario with no capability and no setting needs the token too. A `kind: any` job carries one
+token group for each pair of scenario and target. A worker meets a group when it holds every
+token of one candidate route of that pair. The job needs every group met. A list-kind job needs the
+tokens of every listed route, since one worker runs the whole list.
 
 A worker must meet the tokens of one route together. A job cannot take a capability from one route and a setting
-from the other. The existing any-of group works on single tokens, so `can_serve` needs a group of token sets.
+from the other. The existing any-of group works on single tokens. A token group instead
+chooses between whole token sets, and `can_serve` must read it.
 An iOS set also holds the tokens that follow its kind today. A fan-out job adds the `kind:` token of
 the route. A target with `runsOn.ios.family` adds family tokens. The
 `ios-device` set takes `device:<family>`. The `ios-simulator` set takes `iphone` or `ipad`. A target with no family adds none.
@@ -195,7 +198,9 @@ device. The Simulator route does not change. An Appium grid worker advertises
 1. Config: `kind` on Android, `any` on both platforms, load checks, and `--kind`.
 2. Routes: split the table and the tokens, and mark Android real devices as physical.
 3. Candidate selection: compute candidates, prefer virtual devices, and record the route.
-4. Dispatch: route tokens, the group of token sets, fan-out jobs, and retired queued jobs.
+4. Dispatch: route tokens, token groups, fan-out jobs, and retired queued jobs. This unit lands
+   with unit 5 or after it. Otherwise the server asks for a token that no worker advertises. Every
+   iOS and Android job would then queue.
 5. Workers: `androidKinds`, the adb read, and the iOS `devicectl` gate.
 6. Documents and demos: update both languages and the showcase configs.
 
