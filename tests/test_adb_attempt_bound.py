@@ -14,7 +14,7 @@ from test_adb import FIXTURE, _by_id, _Clock, _moved
 
 import bajutsu.common.drivers.adb.adb_driver as adb_driver_impl
 from bajutsu.common.backend_cli.adb_resident import narrowed_root
-from bajutsu.common.drivers.adb import AdbDriver, HierarchyRead
+from bajutsu.common.drivers.adb import AdbDriver, AdbResidentError, HierarchyRead
 
 _READ_COST_S = 0.4  # a quiet emulator's resident read
 _SPEEDS = [1, 10]  # the second is the loaded host: every read and sleep takes ten times longer
@@ -157,3 +157,65 @@ def test_a_screen_resting_by_the_fourth_poll_settles_at_any_speed(
 def test_read_lag_stays_a_span_of_seconds(clock: _Clock) -> None:
     # The `scroll` loop and the `extract` poll take it as seconds on every backend.
     assert _driver(_Channel([_read()], clock)).read_lag() == AdbDriver._READ_LAG_S
+
+
+def test_the_dump_fallback_forgets_an_earlier_unsettled_answer(clock: _Clock) -> None:
+    def fetch(_since: float | None) -> HierarchyRead:
+        if driver._device_settled is False:
+            raise AdbResidentError("gone")
+        return _read(settled=False)
+
+    driver = AdbDriver(
+        "U", run=lambda _args: FIXTURE, fetch_hierarchy=fetch, fetch_clock=lambda: 1000.0
+    )
+    driver.query()  # unsettled, then the channel dies and the re-read lands on the dump
+    assert driver._device_settled is None
+
+
+@pytest.mark.parametrize("speed", _SPEEDS)
+def test_a_screen_the_device_never_settles_ends_the_poll_unproved(
+    clock: _Clock, speed: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    channel = _Channel([_read(settled=False)], clock, speed)
+    driver = _driver(channel)
+    with caplog.at_level(logging.WARNING, logger="bajutsu.adb.resident"):
+        driver._settle()
+    assert driver._settled_key is None
+    # The frames never moved, so the warning must not blame a changing layout.
+    assert "the frames agreed but the device could not settle" in caplog.text
+    assert channel.count >= 1 + driver._MIN_DEVICE_WAITS
+    if speed > 1:  # past the ceiling the floor alone sets the count: no nested re-reads
+        assert channel.count == 1 + driver._MIN_DEVICE_WAITS
+
+
+def test_the_barrier_does_not_nest_the_unsettled_rereads(
+    clock: _Clock, caplog: pytest.LogCaptureFixture
+) -> None:
+    channel = _Channel([_read(mark=1000.0, settled=False)], clock)
+    driver = _driver(channel)
+    driver.query()
+    driver.swipe((10, 300), (10, 100))
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="bajutsu.adb.resident"):
+        driver._await_catchup()
+    assert "reads; resolving from the latest one" not in caplog.text
+
+
+def test_a_settled_gesture_reply_clears_an_earlier_unsettled_answer(clock: _Clock) -> None:
+    channel = _Channel([_read(settled=False)], clock)
+    driver = _driver(channel)
+    driver.query()
+    root, _, _ = narrowed_root(FIXTURE)
+    driver._seed_from_act(HierarchyRead(FIXTURE, 2000.0, root=root, settled=True), 1000.0)
+    before = channel.count
+    driver.query()
+    assert channel.count == before
+
+
+def test_a_quiet_host_keeps_polling_past_the_floor_until_the_ceiling(clock: _Clock) -> None:
+    moving = [_read(100 + 10 * i) for i in range(9)]
+    channel = _Channel([*moving, _read(180)], clock)
+    driver = _driver(channel)
+    tree = driver._settle()
+    assert _by_id(tree, _Y)["frame"][1] == 180.0
+    assert driver._settled_key is not None

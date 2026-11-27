@@ -156,7 +156,8 @@ expired barrier costs four waits of up to 3,500 milliseconds, so 14 seconds. The
 its first read plus four more, so 17.5 seconds. The recovery pays both three times, so about 95
 seconds for a step whose recovery runs to its end. The same path costs about 75 seconds today.
 `smoke (adb)` allows 40 minutes for a run that passes in 25 to 29, and `pool (adb)` allows 60
-minutes. A minute and a half on a rare step thus stays well inside both.
+minutes. A minute and a half on a rare step thus stays well inside both. A screen whose nodes never
+stop moving costs more: each bare read there takes up to four requests.
 
 Unit 6 keeps `read_lag()` seconds-valued for its two orchestrator consumers. Those consumers are the
 `scroll` loop and the `extract` poll. Both loops still bound a read count by the driver's clock.
@@ -275,6 +276,7 @@ Log:
 - 2026-11-27 — Implemented units 1–4 and 6–8.
   A bare read of an unsettled tree reads again up to three more times, then takes the latest one.
   Narrowed the equivalence claim to a tree that catches up within four reads.
+  The settle verdict compares node identity and bounds, and the comparison keeps the heads-up banner.
 
 ## References
 

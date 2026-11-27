@@ -19,6 +19,7 @@ import androidx.test.uiautomator.Configurator
 import androidx.test.uiautomator.UiDevice
 import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -32,6 +33,7 @@ import kotlin.concurrent.withLock
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserException
 
 /**
  * The resident UI Automator server (BE-0245).
@@ -1053,15 +1055,16 @@ class ResidentServerTest {
      */
     private fun matchingBounds(xml: ByteArray, want: List<String>): List<Rect> {
         val found = mutableListOf<Rect>()
-        forEachAppNode(xml) { parser, _ ->
+        forEachNode(xml) { parser, _, decor ->
+            if (decor) return@forEachNode
             val have = IDENTITY_FIELDS.map { parser.getAttributeValue(null, it.second) ?: "" }
             if (have == want) parseBounds(parser.getAttributeValue(null, "bounds"))?.let(found::add)
         }
         return found
     }
 
-    /** Call `visit` on each `<node>` of `xml` outside SystemUI's windows, with its depth. */
-    private fun forEachAppNode(xml: ByteArray, visit: (XmlPullParser, Int) -> Unit) {
+    /** Call `visit` on each `<node>` of `xml`, with its depth and whether SystemUI's windows hold it. */
+    private fun forEachNode(xml: ByteArray, visit: (XmlPullParser, Int, Boolean) -> Unit) {
         val parser = Xml.newPullParser()
         parser.setInput(xml.inputStream(), "UTF-8")
         var nodeDepth = 0
@@ -1075,7 +1078,7 @@ class ResidentServerTest {
                         val pkg = parser.getAttributeValue(null, "package")
                         if (pkg != null && pkg in SYSTEM_DECOR_PACKAGES) decorNodeDepth = nodeDepth
                     }
-                    if (decorNodeDepth == null) visit(parser, nodeDepth)
+                    visit(parser, nodeDepth, decorNodeDepth != null)
                 }
                 XmlPullParser.END_TAG -> {
                     if (parser.name != "node") continue
@@ -1242,15 +1245,18 @@ class ResidentServerTest {
      * as both callers already do. `waitForIdle` alone is the mechanism this timing class distrusts (it
      * can look idle between two node republishes), which is why the barrier is two agreeing reads, not
      * one idle. Bounded and condition-driven (settle, not a fixed sleep — Bajutsu determinism); a read
-     * that never settles (an animation) costs at most [SETTLE_DUMPS] reads and returns the last one,
-     * flagged as unclosed so the host can tell it from a settled tree (BE-0505).
+     * that never settles (an animation) costs at most [SETTLE_DUMPS] reads and returns the last one.
+     * `closed` is whether the pair in hand agreed per `sameAs`, or failing that per `steady`, so the
+     * host can tell a tree still moving from a settled one (BE-0505).
      */
     private fun <T> settled(
         budget: WaitBudget,
         label: String,
         read: () -> T,
         sameAs: (T, T) -> Boolean,
+        steady: (T, T) -> Boolean = sameAs,
     ): Settle<T> {
+        var held = false
         budget.capDumpWaits()
         var previous = read()
         budget.lap("dump")
@@ -1259,7 +1265,7 @@ class ResidentServerTest {
             // wait reads again, and its timeout is what a late answer would otherwise lose to.
             if (budget.spent()) {
                 Log.d(TAG, "$label stopped settling when its wait budget ran out")
-                return Settle(previous, closed = false)
+                return Settle(previous, closed = held)
             }
             budget.awaitIdle()
             // Drop the platform's node cache before the re-read (BE-0490), so the pair that closes the
@@ -1274,35 +1280,82 @@ class ResidentServerTest {
             val current = read()
             budget.lap("dump")
             if (sameAs(current, previous)) return Settle(current, closed = true)
+            held = steady(current, previous)
             previous = current
         }
         Log.d(TAG, "$label did not settle after $SETTLE_DUMPS dumps")
-        return Settle(previous, closed = false)
+        return Settle(previous, closed = held)
     }
 
     /**
-     * Dump the hierarchy once it has stopped tearing, comparing every node outside SystemUI's windows.
-     * [respondSource] answers an arbitrary host-side selector, so it cannot narrow the comparison to
-     * one target the way [settledActBounds] does; it drops only the decor, whose clock and icons
-     * change on a quiet app screen (BE-0505). The returned body still carries every window, because
-     * the host reads the heads-up notification off that decor.
+     * Dump the hierarchy once it has stopped tearing. [respondSource] answers an arbitrary host-side
+     * selector, so it cannot narrow the comparison to one target the way [settledActBounds] does; it
+     * drops only SystemUI's decor, whose clock and icons change on a quiet app screen (BE-0505). The
+     * heads-up banner's place stays in, because the host reads the banner off that decor to decide
+     * whether a touch would land on it. The returned body still carries every window.
+     *
+     * The dumps repeat until the compared nodes agree on every attribute. The verdict the host gets
+     * is looser: a pair agreeing on which nodes exist and where counts as closed, so a screen whose
+     * text never stops changing (a running timer) is not reported as torn.
      */
-    private fun settledDump(device: UiDevice, budget: WaitBudget): Settle<ByteArray> =
-        settled(budget, "hierarchy", { dumpHierarchy(device) }) { a, b ->
-            a.contentEquals(b) || appNodes(a) == appNodes(b)
-        }
+    private fun settledDump(device: UiDevice, budget: WaitBudget): Settle<ByteArray> {
+        var seen: Dump? = null
+        val settled = settled(
+            budget,
+            "hierarchy",
+            {
+                val xml = dumpHierarchy(device)
+                // A byte-identical dump can only describe the same nodes, so a quiet screen is parsed once.
+                seen?.takeIf { it.xml.contentEquals(xml) } ?: Dump(xml, describe(xml)).also { seen = it }
+            },
+            sameAs = { a, b -> a === b || (a.nodes != null && a.nodes.full == b.nodes?.full) },
+            steady = { a, b -> a.nodes != null && a.nodes.places == b.nodes?.places },
+        )
+        return Settle(settled.value.xml, settled.closed)
+    }
 
-    /** Every node outside SystemUI's windows, as its depth and attributes, in document order. */
-    private fun appNodes(xml: ByteArray): List<String> {
-        val found = mutableListOf<String>()
-        forEachAppNode(xml) { parser, depth ->
-            found.add(
-                (0 until parser.attributeCount).joinToString("\u0000", prefix = "$depth\u0000") {
-                    "${parser.getAttributeName(it)}=${parser.getAttributeValue(it)}"
-                },
-            )
+    /** One dump and what [settledDump] compares of it; `nodes` is null when it would not parse. */
+    private class Dump(val xml: ByteArray, val nodes: Nodes?)
+
+    /** The compared nodes: `full` with every attribute, `places` with identity and bounds alone. */
+    private class Nodes(val full: List<String>, val places: List<String>)
+
+    /**
+     * Describe every node outside SystemUI's windows, plus the heads-up banner's two nodes inside them.
+     *
+     * A dump that will not parse describes nothing and so agrees with no other: the reply still goes
+     * out, unsettled, and the host's own parse handles the body as it always has.
+     */
+    private fun describe(xml: ByteArray): Nodes? {
+        val full = mutableListOf<String>()
+        val places = mutableListOf<String>()
+        try {
+            forEachNode(xml) { parser, depth, decor ->
+                val id = parser.getAttributeValue(null, "resource-id")
+                if (decor && id !in HEADS_UP_IDS) return@forEachNode
+                val place = "$depth\u0000" + PLACE_ATTRIBUTES.joinToString("\u0000") {
+                    parser.getAttributeValue(null, it) ?: ""
+                }
+                places.add(place)
+                // The banner's own text and state are the notification's business, not the app tree's.
+                full.add(
+                    if (decor) {
+                        place
+                    } else {
+                        (0 until parser.attributeCount).joinToString("\u0000", prefix = "$depth\u0000") {
+                            "${parser.getAttributeName(it)}=${parser.getAttributeValue(it)}"
+                        }
+                    },
+                )
+            }
+        } catch (e: XmlPullParserException) {
+            Log.w(TAG, "a dump would not parse; the settle cannot compare it", e)
+            return null
+        } catch (e: IOException) {
+            Log.w(TAG, "a dump would not parse; the settle cannot compare it", e)
+            return null
         }
-        return found
+        return Nodes(full, places)
     }
 
     /**
@@ -1330,7 +1383,7 @@ class ResidentServerTest {
                 seenXml = xml
             }
             seenBounds
-        }) { a, b -> a == b }.value
+        }, sameAs = { a, b -> a == b }).value
     }
 
     /**
@@ -1616,6 +1669,16 @@ class ResidentServerTest {
         // package name) — matchingBounds below must drop them too, or a count taken over the full dump
         // disagrees with one taken over the host's narrowed copy.
         val SYSTEM_DECOR_PACKAGES = setOf("com.android.systemui")
+
+        // The two SystemUI nodes the host reads a heads-up notification from, kept in step with
+        // `bajutsu/common/drivers/adb/_functions.py` (`_HEADS_UP_STATUS_BAR`, `_NOTIFICATION_ROW`).
+        val HEADS_UP_IDS = setOf(
+            "com.android.systemui:id/heads_up_status_bar_view",
+            "com.android.systemui:id/expandableNotificationRow",
+        )
+
+        // What says which node this is and where: the settle verdict compares these alone (BE-0505).
+        val PLACE_ATTRIBUTES = listOf("package", "class", "resource-id", "content-desc", "bounds")
 
         // The wheel `/setPickerValue` drives, and the child that shows its selected row (BE-0480).
         // Kept in step with the host's `_NUMBER_PICKER_CLASS` (`bajutsu/common/drivers/adb/_functions.py`).

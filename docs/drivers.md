@@ -789,8 +789,11 @@ The settle ends unclosed when it reaches its dump cap or its wait budget.
 
 - The resident server stamps the `X-Bajutsu-Settled` header, `true` or `false`.
   Both `GET /source` and a confirmed `POST /act` carry it.
-- The settle behind that header leaves SystemUI out of its comparison.
+- The settle behind that header leaves SystemUI out of its comparison, except the heads-up banner's place.
   The status bar's clock thus cannot hold it open. The body still carries the SystemUI nodes.
+- Settled means that two dumps agree on which nodes exist and where.
+  Text that never stops changing, such as a running timer, does not make a tree unsettled.
+- On a screen whose nodes never stop moving, each bare read costs up to four server requests.
 - A bare read (`wait`, `assert`) of an unsettled tree reads again, up to three more times.
   It then takes the latest tree and logs a warning.
 - The settle poll never takes an unsettled read as proof of rest.

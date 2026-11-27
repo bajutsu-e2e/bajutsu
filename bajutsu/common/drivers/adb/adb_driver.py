@@ -663,11 +663,11 @@ class AdbDriver(CoordinateTreeDriver):
         next gesture counts peers against, the raw-dump record the `rawTree` capture reads, and the
         stable-key bookkeeping `_record_tree` keeps.
 
-        What it deliberately does *not* set is `_settled_key`. The device's own settle is bounded by
-        a read count (`SETTLE_DUMPS`), and on expiry it returns the last, still-tearing dump with
-        nothing on the wire to say so — so treating it as proof of rest would let `_settle` take its
-        fast path and perform no confirming read at all, on a screen that may still be animating.
-        That is the same trap `_advance_catchup` refuses when a barrier closes on a device mark, and
+        What it deliberately does *not* set is `_settled_key`. Even a tree the device reports settled
+        proves only that two of its dumps agreed, which a fling can do between two publishes — so
+        treating it as proof of rest would let `_settle` take its fast path and perform no confirming
+        read at all, on a screen that may still be animating. (A tree the device says it could not
+        settle is not adopted at all.) That is the same trap `_advance_catchup` refuses when a barrier closes on a device mark, and
         the one `_SETTLE_DEADLINE_S` is wall-clock rather than count-based to avoid. The round trip
         is still saved: `_settle`'s poll consumes the seed as its first read instead of skipping the
         poll.
@@ -1173,13 +1173,15 @@ class AdbDriver(CoordinateTreeDriver):
         # comment warns against. `t0` stays for the elapsed figure the log reports.
         deadline = time.monotonic() + self._SETTLE_DEADLINE_S
         reads = 1
+        agreed = False  # whether the last two reads' frames agreed, whatever the device said
         while time.monotonic() < deadline or reads - 1 < self._MIN_DEVICE_WAITS:
             time.sleep(self._SETTLE_POLL_S)
             tree = self._read_once()
             reads += 1
             new_key = self._last_stable_key
             # A tree the device could not settle proves nothing, even when its frames agree.
-            if new_key == key and self._device_settled is not False:
+            agreed = new_key == key
+            if agreed and self._device_settled is not False:
                 # Proved, not merely observed: this is the first time two consecutive reads have
                 # actually agreed, so — unlike `_last_stable_key` — trusting a future match against
                 # this key on the fast path above is sound.
@@ -1193,8 +1195,10 @@ class AdbDriver(CoordinateTreeDriver):
         # bare match against whatever it lands on next as already proved either.
         self._settled_key = None
         logger.warning(
-            "settle: the tree was still changing after %d reads in %.1fs; resolving from the "
-            "latest one",
+            "settle: %s after %d reads in %.1fs; resolving from the latest one",
+            "the frames agreed but the device could not settle the tree"
+            if agreed
+            else "the tree was still changing",
             reads,
             # Measured, not the budget constant: the first read happens before the deadline starts,
             # so on the ~2.4s dump path the constant would undercount the real wait by that much.
