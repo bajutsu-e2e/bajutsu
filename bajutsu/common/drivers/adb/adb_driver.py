@@ -299,8 +299,9 @@ class AdbDriver(CoordinateTreeDriver):
 
     name = "adb"
 
-    # Settle is bounded by wall-clock, not a fixed read count (BE-0245): a count-based cap ties the
-    # settle window to how long each read happens to take, so a fast channel's reads could span only a
+    # Settle's wall-clock bound is never replaced by a read count (BE-0245), only paired with a floor
+    # of completed reads (BE-0505): a count-based cap alone ties the settle window to how long each
+    # read happens to take, so a fast channel's reads could span only a
     # fraction of a second — short enough that a still-moving tree passes as settled and a tap fires on
     # a stale coordinate. Bounding by elapsed time instead keeps the window spanning a real animation
     # whatever the read costs: the loop polls until two consecutive reads share a frame projection, or
@@ -621,6 +622,11 @@ class AdbDriver(CoordinateTreeDriver):
         it can miss an element that is on screen (BE-0505). Each re-read is itself a condition wait on
         the device's settle. A screen that never settles costs `_UNSETTLED_REREADS` extra reads, then
         the latest tree is returned with a warning.
+
+        Deliberately bounded by a count alone (BE-0505): a clock ceiling would give a slow host fewer
+        re-reads, and each read is already bounded by the channel's socket timeout. The cost falls on
+        the caller's own timeout: a `wait` evaluates only the tree each call returns, so an element
+        that shows up and leaves between two of those on a never-settling screen goes unseen.
         """
         tree = self._read_once()
         for _ in range(self._UNSETTLED_REREADS):
@@ -1029,8 +1035,10 @@ class AdbDriver(CoordinateTreeDriver):
         count" applied to the catch-up itself. A tear outlasting the dwell would still get through;
         the dwell is sized above the widest one observed, not proven impossible.
 
-        A degenerate read is ignored outright: its projection differs from every real one, so crediting
-        it would spend the barrier on a tree the read path is itself still retrying.
+        The barrier test ignores a degenerate read: its projection differs from every real one, so
+        crediting it would close the barrier on a tree the read path is itself still retrying. It
+        still counts toward `_MIN_DEVICE_WAITS`, which measures requests the device answered;
+        excluding it would leave `_await_catchup` no exit on a screen that stays degenerate.
         """
         catchup = self._catchup
         if catchup is None:
