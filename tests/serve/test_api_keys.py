@@ -1,8 +1,9 @@
 """Tests for organization-scoped API keys (BE-0509).
 
 A script sends a key as a bearer token and acts as that organization, on the routes an allowlist
-names and no others. The allowlist ships empty, so these tests add routes to it to reach the far
-side of the gate. Both serve backends are exercised, since both must reach the same verdict.
+names and no others. The allowlist opens the run import alone (BE-0510), so most of these tests
+add routes to it to reach the far side of the gate. Both serve backends are exercised, since both
+must reach the same verdict.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from _run_import import RUN_ID, minimal_files, zip_files
 from _shared import _serve
 from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.orm import Session
@@ -84,8 +86,10 @@ def backend(request: pytest.FixtureRequest) -> Iterator[Callable[[ServeState], _
     """A factory turning a state into one `call(method, path, ...)` against the chosen backend."""
     cleanups: list[Callable[[], None]] = []
 
-    def headers_for(bearer: str | None, session: str | None) -> dict[str, str]:
-        headers = {}
+    def headers_for(
+        bearer: str | None, session: str | None, *, raw: bool = False
+    ) -> dict[str, str]:
+        headers = {"Content-Type": "application/zip"} if raw else {}
         if bearer is not None:
             headers["Authorization"] = f"Bearer {bearer}"
         if session is not None:
@@ -103,12 +107,15 @@ def backend(request: pytest.FixtureRequest) -> Iterator[Callable[[ServeState], _
             bearer: str | None = None,
             session: str | None = None,
             body: dict[str, Any] | None = None,
+            raw: bytes | None = None,
         ) -> _Reply:
-            data = json.dumps(body).encode() if body is not None else None
+            data = (
+                raw if raw is not None else json.dumps(body).encode() if body is not None else None
+            )
             req = urllib.request.Request(
                 f"http://127.0.0.1:{port}{path}",
                 data=data,
-                headers=headers_for(bearer, session),
+                headers=headers_for(bearer, session, raw=raw is not None),
                 method=method,
             )
             try:
@@ -133,8 +140,13 @@ def backend(request: pytest.FixtureRequest) -> Iterator[Callable[[ServeState], _
             bearer: str | None = None,
             session: str | None = None,
             body: dict[str, Any] | None = None,
+            raw: bytes | None = None,
         ) -> _Reply:
-            response = client.request(method, path, json=body, headers=headers_for(bearer, session))
+            headers = headers_for(bearer, session, raw=raw is not None)
+            if raw is not None:
+                response = client.request(method, path, content=raw, headers=headers)
+            else:
+                response = client.request(method, path, json=body, headers=headers)
             return _Reply(response.status_code, response.json() if response.content else {})
 
         return call
@@ -345,15 +357,47 @@ def test_a_key_reaches_an_allowlisted_route_in_its_own_org(
     assert call("GET", "/api/config", bearer=key).status == 403
 
 
-def test_the_allowlist_ships_empty_so_a_key_opens_nothing(
+def test_the_allowlist_opens_the_run_import_alone(
     tmp_path: Path, backend: Callable[[ServeState], _Call]
 ) -> None:
     state = _state(tmp_path)
     _key_id, key = _issue(state)
-    assert frozenset() == gate._API_KEY_PATHS
+    assert frozenset({("POST", "/api/runs/import")}) == gate._API_KEY_PATHS
     call = backend(state)
     assert call("GET", "/api/runs", bearer=key).status == 403
     assert call("POST", "/api/run", bearer=key, body={}).status == 403
+
+
+def _run_zip(tmp_path: Path) -> bytes:
+    return zip_files(tmp_path / "run.zip", minimal_files()).read_bytes()
+
+
+def test_an_editor_key_imports_a_run_into_its_own_organization(
+    tmp_path: Path, backend: Callable[[ServeState], _Call]
+) -> None:
+    # BE-0510: the script's path on a server with OAuth, where the shared token reaches workers
+    # alone.
+    state = _state(tmp_path)
+    # `globex`, not the issuing admin's `acme`: the run must follow the key, not whoever issued it.
+    _key_id, key = _issue(state, org="globex", role="editor")
+    reply = backend(state)("POST", "/api/runs/import", bearer=key, raw=_run_zip(tmp_path))
+    assert reply.status == 200, reply.body
+    assert reply.body["url"] == f"/runs/{RUN_ID}/report.html"
+    row = _repository(state).get_run(RUN_ID)
+    assert row is not None
+    assert (row.org_id, row.status) == ("globex", "done")
+    imported = next(row for row in _audit_rows(state) if row.action == "run.import")
+    assert (imported.org_id, imported.target) == ("globex", RUN_ID)
+
+
+def test_a_viewer_key_cannot_import_a_run(
+    tmp_path: Path, backend: Callable[[ServeState], _Call]
+) -> None:
+    state = _state(tmp_path)
+    _key_id, key = _issue(state, role="viewer")
+    reply = backend(state)("POST", "/api/runs/import", bearer=key, raw=_run_zip(tmp_path))
+    assert reply.status == 403
+    assert _repository(state).get_run(RUN_ID) is None
 
 
 def test_a_key_is_not_a_login_even_with_oauth_off(

@@ -64,8 +64,13 @@ _MACHINE_PATHS = frozenset(
 
 
 # Every endpoint an organization-scoped API key may reach (BE-0509), as `(method, path)` pairs.
-# Empty on purpose: each item that adds a key-callable route adds that route here.
-_API_KEY_PATHS: frozenset[tuple[str, str]] = frozenset()
+# Each item that adds a key-callable route adds that route here, so a new route stays closed.
+_API_KEY_PATHS: frozenset[tuple[str, str]] = frozenset(
+    {
+        # A script hands a finished local run to serve (BE-0510). `required_role` asks `editor`.
+        ("POST", "/api/runs/import"),
+    }
+)
 
 
 def _is_machine_job_route(path: str) -> bool:

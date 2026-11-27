@@ -7,7 +7,7 @@
 |---|---|
 | Proposal | [BE-0510](BE-0510-serve-run-import.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **In progress** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0510") |
 | Implementing PR | [#2561](https://github.com/bajutsu-e2e/bajutsu/pull/2561) |
 | Topic | Hosting the web UI |
@@ -205,7 +205,7 @@ and its mirror gain a section on the upload script.
 
 - [x] The route, receiving: the raw body, the cap, both backends, and the entry-list checks, including the extension allowlist with its dropped-entry list, the tombstone refusal, the artifact-path checks, and the `scenario.yaml` and `runId` checks.
 - [x] The route, storing: the collision checks, the `importing` status with the `list_runs` filter, the compare-and-set flip, the stale purge of the caller's organization and the start-up sweep, the regeneration of the report files, the placement on a local and a hosted store, the rollback, and the recording.
-- [ ] Authorization: the explicit editor case before the early branch, and the key allowlist.
+- [x] Authorization: the explicit editor case before the early branch, and the key allowlist.
 - [x] The upload script: the zip, the key from the environment or a file, the transport rules, and the URL output.
 - [x] Tests: the cases above, the route registry, and the stdlib import guard.
 - [x] Documentation: the `docs/` pages and their `docs/ja/` mirrors.
