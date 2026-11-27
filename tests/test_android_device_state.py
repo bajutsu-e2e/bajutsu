@@ -40,7 +40,7 @@ def _recorder(
 def _eff() -> Effective:
     return Effective(
         target="showcase-compose",
-        platform_config=AndroidConfig(package=_PKG),
+        platform_config=AndroidConfig(package=_PKG, device_kind="device"),
         backend=["android"],
         locale="en_US",
         launch_env={},
@@ -425,7 +425,9 @@ def _android_eff(locale: str | None, api_level: str | None) -> Effective:
 
     conditions: dict[str, str | list[str]] = {"apiLevel": api_level} if api_level else {}
     return replace(
-        _eff(), platform_config=AndroidConfig(package=_PKG, locale=locale), conditions=conditions
+        _eff(),
+        platform_config=AndroidConfig(package=_PKG, locale=locale, device_kind="device"),
+        conditions=conditions,
     )
 
 
@@ -718,7 +720,10 @@ def test_install_without_data_pins_the_start_locale_again(tmp_path: object) -> N
     from dataclasses import replace
 
     eff = replace(
-        eff, platform_config=AndroidConfig(package=_PKG, locale="fr_FR", app_path=str(apk))
+        eff,
+        platform_config=AndroidConfig(
+            package=_PKG, locale="fr_FR", app_path=str(apk), device_kind="device"
+        ),
     )
     env.start(eff, ResolvedPreconditions(locale="ja_JP", reinstall="overwrite"))
     calls.clear()

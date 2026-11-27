@@ -313,12 +313,17 @@ def _eff(
     package: str = "com.bajutsu.showcase.android.compose",
     app_path: str | None = None,
     grant_permissions: list[str] | None = None,
+    device_kind: str = "device",
 ) -> Effective:
     # The Android platform sub-config (BE-0126) carries package / app_path / grant_permissions.
     return Effective(
         target="showcase-compose",
         platform_config=AndroidConfig(
-            package=package, app_path=app_path, grant_permissions=grant_permissions or []
+            package=package,
+            app_path=app_path,
+            grant_permissions=grant_permissions or [],
+            # Most tests drive a bare serial, which reads as a physical device (BE-0518).
+            device_kind=device_kind,
         ),
         backend=["android"],
         locale="en_US",
@@ -353,7 +358,7 @@ def test_android_environment_start_runs_the_adb_sequence() -> None:
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run(calls))
     pre = ResolvedPreconditions(deeplink="showcasecompose://permissions")
-    driver = env.start(_eff(), pre)
+    driver = env.start(_eff(device_kind="emulator"), pre)
 
     assert driver.name == "adb"
     joined = [" ".join(c) for c in calls]
@@ -408,7 +413,7 @@ def test_android_environment_starts_screenrecord_before_launching_the_app(tmp_pa
         return _Proc()
 
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
-    env.start(_eff(), ResolvedPreconditions(), record_video_dir=tmp_path)
+    env.start(_eff(device_kind="emulator"), ResolvedPreconditions(), record_video_dir=tmp_path)
 
     assert events == ["record", "launch"]  # recording began before the app launched
     started = env.prestarted_intervals()
@@ -456,7 +461,7 @@ def test_android_environment_stops_the_prestarted_video_when_launch_fails(tmp_pa
 
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=run, spawn=spawn)
     with pytest.raises(adb.DeviceError):
-        env.start(_eff(), ResolvedPreconditions(), record_video_dir=tmp_path)
+        env.start(_eff(device_kind="emulator"), ResolvedPreconditions(), record_video_dir=tmp_path)
 
     assert stopped  # the screenrecord was stopped, not left running
     assert env.prestarted_intervals() == []
@@ -973,7 +978,7 @@ def test_start_raises_clean_device_error_when_adb_is_missing() -> None:
 
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=no_adb)
     with pytest.raises(adb.DeviceError, match="adb"):
-        env.start(_eff(), ResolvedPreconditions())
+        env.start(_eff(device_kind="emulator"), ResolvedPreconditions())
 
 
 def test_await_boot_gives_up_at_the_deadline_rather_than_spinning(

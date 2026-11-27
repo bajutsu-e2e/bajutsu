@@ -141,7 +141,7 @@ When a change makes a backend declare a new capability, the test fails until the
 The same holds the other way. A new capability token needs a new row before the test passes.
 
 The test checks the rows after the `settings-table` marker the same way. Their source is the
-`ios-simulator` and `android` routes of the support table. A cell reads ✅ when the route supports
+`ios-simulator` and `android-emulator` routes of the support table. A cell reads ✅ when the route supports
 the setting or already satisfies it. A new setting key needs a new row. A route that starts to apply
 a setting needs its cell turned to ✅.
 

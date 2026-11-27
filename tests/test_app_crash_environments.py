@@ -630,7 +630,7 @@ def test_start_stamps_the_launch_marker_before_launching_the_app() -> None:
 
     calls: list[list[str]] = []
     env = AndroidEnvironment("adb", "emulator-5554", adb_run=_resolve_activity_run(calls))
-    env.start(_eff(), ResolvedPreconditions())
+    env.start(_eff(device_kind="emulator"), ResolvedPreconditions())
 
     joined = [" ".join(c) for c in calls]
     date_index = next(

@@ -157,7 +157,7 @@ def test_android_reads_the_api_level_and_the_avd_name_from_either_property() -> 
     assert facts == [
         DeviceFacts("emulator-5554", "android", "Pixel_8", "34", avd="Pixel_8"),
         DeviceFacts("emulator-5556", "android", "Pixel_4", "30", avd="Pixel_4"),
-        DeviceFacts("R5CT", "android", "SM-S911B", "33"),
+        DeviceFacts("R5CT", "android", "SM-S911B", "33", physical=True),
     ]
     assert facts[0].describe == 'API level 34 "Pixel_8" (emulator-5554)'
 

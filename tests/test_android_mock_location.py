@@ -31,10 +31,12 @@ _DEVICE = "R58N1234ABC"
 _EMULATOR = "emulator-5554"
 
 
-def _eff(package: str = _PKG, app_path: str | None = None) -> Effective:
+def _eff(
+    package: str = _PKG, app_path: str | None = None, device_kind: str = "device"
+) -> Effective:
     return Effective(
         target=package,
-        platform_config=AndroidConfig(package=package, app_path=app_path),
+        platform_config=AndroidConfig(package=package, app_path=app_path, device_kind=device_kind),
         backend=["android"],
         locale="en_US",
         launch_env={},
@@ -162,7 +164,8 @@ def test_the_record_is_written_before_a_broadcast_that_fails() -> None:
 
 def _started(run: _Adb, serial: str = _DEVICE) -> AndroidEnvironment:
     env = AndroidEnvironment("adb", serial, adb_run=run)
-    env.start(_eff(), ResolvedPreconditions())
+    kind = "emulator" if serial.startswith("emulator-") else "device"
+    env.start(_eff(device_kind=kind), ResolvedPreconditions())
     run.calls.clear()
     return env
 

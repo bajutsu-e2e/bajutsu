@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Collection, Iterator, Mapping
 from typing import Any
 
-from bajutsu.common.scenario.models.hook_command import PLATFORM_ROUTES, HookWhen
+from bajutsu.common.scenario.models.hook_command import PLATFORM_ROUTES, HookWhen, route_names
 
 from .hooks import COMMAND_LISTS, Hooks
 
@@ -51,7 +51,7 @@ def _never_holds(when: Mapping[str, Any], owner: str, platform: Any) -> str | No
         isinstance(routes, list)
         and routes
         and reachable is not None
-        and not set(routes) & set(reachable)
+        and not route_names(r for r in routes if isinstance(r, str)) & set(reachable)
     ):
         on = ", ".join(reachable) or "none"
         return f"`routes` names no route a {platform} target runs on (its routes: {on})"

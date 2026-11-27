@@ -54,14 +54,28 @@ HookPlatform = Literal["ios", "android", "web", "fake"]
 # The destinations a `when.routes` entry may name, the route names BE-0467 already gives each
 # environment. Spelled here because the scenario models may not import `capability`, whose
 # `settings_support.Route` lists the same names; a test keeps the two in step.
-HookRoute = Literal["ios-simulator", "ios-device", "ios-live", "android", "web"]
+HookRoute = Literal[
+    "ios-simulator", "ios-device", "ios-live", "android-emulator", "android-device", "web"
+]
 HOOK_ROUTES: tuple[str, ...] = get_args(HookRoute)
+
+# A name `when.routes` keeps accepting for the routes that replaced it: `android` was one route until
+# BE-0518 split it, so a condition written before the split still means every Android device.
+HOOK_ROUTE_ALIASES: dict[str, tuple[HookRoute, ...]] = {
+    "android": ("android-emulator", "android-device"),
+}
+
+
+def route_names(routes: Iterable[str]) -> set[str]:
+    """The route names *routes* stands for, with each alias spelled out as the routes it covers."""
+    return {r for name in routes for r in HOOK_ROUTE_ALIASES.get(name, (name,))}
+
 
 # The routes each platform can run on, which the load check on a target's own condition reads to
 # refuse a `routes` that names none of its owner's. `fake` has no route at all.
 PLATFORM_ROUTES: dict[HookPlatform, tuple[HookRoute, ...]] = {
     "ios": ("ios-simulator", "ios-device", "ios-live"),
-    "android": ("android",),
+    "android": ("android-emulator", "android-device"),
     "web": ("web",),
     "fake": (),
 }
@@ -117,7 +131,7 @@ class HookWhen(_Model):
     exclude: list[str] = Field(default_factory=list)
     targets: list[str] = Field(default_factory=list)
     platforms: list[HookPlatform] = Field(default_factory=list)
-    routes: list[HookRoute] = Field(default_factory=list)
+    routes: list[HookRoute | Literal["android"]] = Field(default_factory=list)
     env: dict[str, str | None] = Field(default_factory=dict)
 
     @field_validator("env", mode="before")
@@ -175,7 +189,7 @@ class HookWhen(_Model):
         return (
             (not self.targets or target.name in self.targets)
             and (not self.platforms or target.platform in self.platforms)
-            and (not self.routes or target.route in self.routes)
+            and (not self.routes or target.route in route_names(self.routes))
         )
 
     def matches(self, tags: Iterable[str]) -> bool:

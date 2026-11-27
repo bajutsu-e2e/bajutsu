@@ -142,8 +142,8 @@ def test_each_scenario_of_the_file_lists_the_targets_runs(tmp_path: Path) -> Non
 def test_android_lists_by_avd_and_api_level() -> None:
     eff = _eff('{ android: { avd: ["P34", "P35"], apiLevel: "34" } }', "android", "{ id: com.x }")
     lines = runs_summary(eff, "adb", "emulator-5554", "", _reader(_ANDROID_POOL))
-    assert lines[2] == '    ✓ P34 / API 34: API level 34 "Pixel" (emulator-5554)'
-    assert lines[3].startswith('    ✘ P35: fails: runsOn.android.avd  "P35"')
+    assert lines[2] == '    ✓ P34 / API 34 [kind: emulator]: API level 34 "Pixel" (emulator-5554)'
+    assert lines[3].startswith('    ✘ P35 [kind: emulator]: fails: runsOn.android.avd  "P35"')
 
 
 def test_without_a_condition_or_under_fake_nothing_is_listed() -> None:
@@ -308,8 +308,8 @@ def test_the_command_prints_the_runs_section(
     assert result.exit_code == 0, result.output
     assert (
         "runs:\n  target 't':\n"
-        '    ✓ API 34: API level 34 "Pixel" (emulator-5554)\n'
-        '    ✓ API 35: API level 35 "Pixel" (emulator-5556)\n'
+        '    ✓ API 34 [kind: emulator]: API level 34 "Pixel" (emulator-5554)\n'
+        '    ✓ API 35 [kind: emulator]: API level 35 "Pixel" (emulator-5556)\n'
     ) in result.output
 
 

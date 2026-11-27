@@ -428,7 +428,8 @@ def _resolve_config_and_engines(
     config_source = loaded.source
     # --headed/--no-headed overrides the target's `driver.headless` (web only; iOS ignores it).
     eff = _with_headed(eff, headed)
-    # --kind narrows the target's `runsOn.ios.kind` to the kinds it names (iOS only; BE-0468).
+    # --kind narrows the target's `runsOn.<platform>.kind` to the kinds it names (iOS and Android;
+    # BE-0468, BE-0518).
     eff = _resolve_kind(eff, kind)
     # --browsers is the multi-engine spelling of the same axis: a comma list fans the run out across
     # engines into a matrix. One engine collapses to the single-engine path (set as --browser would);
@@ -641,17 +642,18 @@ def _reject_two_grid_targets(
 
 
 def _reject_kind_across_targets(target_effs: Mapping[str, Effective], *, kind: str) -> None:
-    """Refuse `--kind` when the run declares more than one iOS target (BE-0468).
+    """Refuse `--kind` when the run declares more than one iOS or Android target (BE-0468, BE-0518).
 
-    The flag narrows the command's own target, so with a second iOS target it would leave that
+    The flag narrows the command's own target, so with a second such target it would leave that
     target's kinds as they are without a word; which target it means has no answer, as for the web
     flags (`_reject_web_flags_across_targets`).
     """
-    ios = sorted(name for name, eff in target_effs.items() if eff.platform == "ios")
-    if kind and len(ios) > 1:
+    kinded = sorted(n for n, eff in target_effs.items() if eff.platform in ("ios", "android"))
+    if kind and len(kinded) > 1:
         typer.echo(
-            f"--kind applies to a run's single iOS target, but this run declares {len(ios)}: "
-            f"{', '.join(ios)} — set each target's own runsOn.ios.kind instead"
+            f"--kind applies to a run's single iOS or Android target, but this run declares "
+            f"{len(kinded)}: {', '.join(kinded)} — set each target's own runsOn.<platform>.kind "
+            "instead"
         )
         raise typer.Exit(2)
 
@@ -3410,9 +3412,10 @@ def run_body(
     kind: str = typer.Option(
         "",
         "--kind",
-        help="iOS: run only these of the target's runsOn.ios.kind — simulator / device, or a comma "
-        "list; one run per named kind. A kind the target does not declare exits 2 (default: every "
-        "listed kind)",
+        help="iOS and Android: run only these of the target's runsOn.<platform>.kind — simulator / "
+        "device on iOS, emulator / device on Android, or a comma list; one run per named kind. A "
+        "target whose kind is any takes one kind. A kind the target does not declare exits 2 "
+        "(default: every listed kind)",
     ),
     rebuild: bool = typer.Option(
         False,

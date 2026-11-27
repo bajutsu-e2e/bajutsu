@@ -574,7 +574,7 @@ runs/<runId>/
 
 ### 環境ごとの設定と、デバイスを使う前のチェック（BE-0467）
 
-`subject.reinstall: erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android`、`web` の 5 つです。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `runsOn.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
+`subject.reinstall: erase` や `runsOn.ios.seedPhotos` のような設定は、最初のステップより前にデバイスへ届きます。どのルートでも適用できるわけではありません（`simctl erase` は Simulator にしか届きません）。ルートは `ios-simulator`、`ios-device`、`ios-live`、`android-emulator`、`android-device`、`web` の 6 つです。Android のターゲットのルートは `runsOn.android.kind` で決まります（BE-0518）。ルートごとの対応表が、各設定を `supported`、`satisfied`、`unsupported` のいずれかに分けます（`common/capability/settings_support.py`）。`unsupported` の設定は、ターゲットが `runsOn.ignoredSettings` に理由付きで無視を宣言しない限り、デバイスを使う前にシナリオを失敗させます。ステップは決して skip しません。
 
 同じ対応表と BE-0082 の要件表を、次の 3 か所が読みます。3 か所の判定が食い違うことはありません。
 

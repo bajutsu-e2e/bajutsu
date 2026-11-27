@@ -38,8 +38,11 @@ _logger = logging.getLogger(__name__)
 SettingSupport = Literal["supported", "satisfied", "unsupported"]
 
 # The environment routes a target resolves to: the columns of BE-0467's table. The three iOS routes
-# are separate because they support different settings.
-Route = Literal["ios-simulator", "ios-device", "ios-live", "android", "web"]
+# are separate because they support different settings; the two Android routes start with the same
+# column, so a later difference costs one cell rather than a new route (BE-0518).
+Route = Literal[
+    "ios-simulator", "ios-device", "ios-live", "android-emulator", "android-device", "web"
+]
 
 _PERMISSION_PREFIX = "permissions."
 
@@ -68,6 +71,16 @@ _U: SettingSupport = "unsupported"
 # library, locale, launch arguments, or deeplink. `settings_in_effect` never puts those keys in effect on those routes, because the loader and the platform-keyed
 # preconditions keep the fields off them (BE-0452); the rows read `unsupported` so a later change
 # that does reach one fails loudly instead of applying nothing.
+# adb installs, clears, and launches the same way on an emulator and on a phone (BE-0518).
+_ANDROID_ROW: dict[str, SettingSupport] = {
+    "erase": _S,
+    "install": _S,
+    "seedPhotos": _S,
+    "locale": _S,
+    "launchEnv": _S,
+    "launchArgs": _U,
+    "deeplink": _S,
+}
 _ROWS: dict[Route, dict[str, SettingSupport]] = {
     "ios-simulator": {
         "erase": _S,
@@ -100,15 +113,8 @@ _ROWS: dict[Route, dict[str, SettingSupport]] = {
         "deeplink": _U,
     },
     # The locale is the app's own per-app language (`cmd locale`, BE-0478).
-    "android": {
-        "erase": _S,
-        "install": _S,
-        "seedPhotos": _S,
-        "locale": _S,
-        "launchEnv": _S,
-        "launchArgs": _U,
-        "deeplink": _S,
-    },
+    "android-emulator": _ANDROID_ROW,
+    "android-device": _ANDROID_ROW,
     # Every web run starts a fresh browser context, so `reinstall: erase` already holds.
     "web": {
         "erase": _SAT,
@@ -130,7 +136,11 @@ def route_for(actuator: str | None, eff: Effective, udid_spec: str = "booted") -
     backend has no route: it applies nothing, so it has nothing to refuse.
     """
     if actuator == "adb":
-        return "android"
+        from bajutsu.common.config import AndroidConfig
+
+        cfg = eff.platform_config
+        kind = cfg.device_kind if isinstance(cfg, AndroidConfig) else "emulator"
+        return "android-device" if kind == "device" else "android-emulator"
     if actuator == "playwright":
         return "web"
     if actuator != "xcuitest":
@@ -264,7 +274,7 @@ class SettingsCheck:
         field_name = SETTING_FIELDS[key]
         if self.route is None:
             return field_name
-        platform = self.route if self.route in ("android", "web") else "ios"
+        platform = self.route.split("-", 1)[0]
         return field_name.replace("<platform>", platform)
 
     def unsupported_problems(self) -> list[str]:

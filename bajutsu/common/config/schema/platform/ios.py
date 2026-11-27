@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, Self, get_args
+from typing import Any, Literal, Self, cast, get_args
 
-from pydantic import Field, ValidationInfo, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from .._model import _Model
-from ._shared import AppCommon, RangeField, Reinstall, RunsOnGroup, check_choices, check_list
+from ._shared import (
+    ANY_KIND,
+    AppCommon,
+    RangeField,
+    Reinstall,
+    RunsOnGroup,
+    check_choices,
+    check_kind,
+    check_list,
+)
 
 
 class IosLaunch(_Model):
@@ -41,13 +50,15 @@ class IosDestination(_Model):
 
     `model`, `os`, and `family` are conditions the run matches against the available devices;
     `locale` is device state the run applies. `kind` says whether the target runs on a Simulator, a
-    physical device, or each of them in turn (BE-0468).
+    physical device, each of them in turn (BE-0468), or whichever of them can run the scenario
+    (BE-0518).
     """
 
     model: str | list[str] | None = None
     os: RangeField = None
-    # A list runs once per listed kind; `family` is a priority list, one run on the first that fits.
-    kind: IosKind | list[IosKind] = "simulator"
+    # A list runs once per listed kind, and `any` once on one of them; `family` is a priority list,
+    # one run on the first that fits.
+    kind: IosKind | Literal["any"] | list[IosKind] = "simulator"
     family: IosFamily | list[IosFamily] | None = None
     locale: str | None = None
     # Images seeded into the Simulator's photo library on the erase path, in order, so
@@ -57,25 +68,28 @@ class IosDestination(_Model):
 
     @property
     def kinds(self) -> list[IosKind]:
-        """Every kind the target runs on, in the order written."""
-        return list(self.kind) if isinstance(self.kind, list) else [self.kind]
+        """Every kind the target may run on, in the order written; `any` reads as both."""
+        if self.kind == ANY_KIND:
+            return list(get_args(IosKind))
+        if isinstance(self.kind, list):
+            return list(self.kind)
+        # `any` returned above, so the single value is one of the platform's own kinds.
+        return [cast(IosKind, self.kind)]
 
     @field_validator("model")
     @classmethod
     def _valid_model(cls, v: str | list[str] | None) -> str | list[str] | None:
         return check_list("runsOn.ios.model", v)
 
-    @field_validator("kind", "family", mode="before")
+    @field_validator("kind", mode="before")
     @classmethod
-    def _known_value(cls, v: Any, info: ValidationInfo) -> Any:
-        allowed = get_args(IosKind) if info.field_name == "kind" else get_args(IosFamily)
-        return check_choices(f"runsOn.ios.{info.field_name}", v, allowed)
+    def _known_kind(cls, v: Any) -> Any:
+        return check_kind("runsOn.ios.kind", v, get_args(IosKind))
 
-    @field_validator("kind")
+    @field_validator("family", mode="before")
     @classmethod
-    def _valid_kind(cls, v: IosKind | list[IosKind]) -> IosKind | list[IosKind]:
-        check_list("runsOn.ios.kind", list(v) if isinstance(v, list) else v)
-        return v
+    def _known_family(cls, v: Any) -> Any:
+        return check_choices("runsOn.ios.family", v, get_args(IosFamily))
 
     @field_validator("family")
     @classmethod
@@ -111,7 +125,7 @@ class IosDestination(_Model):
                 verb = "is a device condition" if len(declared) == 1 else "are device conditions"
                 raise ValueError(
                     f"{names} {verb}, which a target whose "
-                    "kind includes device cannot declare: a physical device has no pool to match"
+                    "kind is any or includes device cannot declare: a physical device has no pool to match"
                 )
         return self
 

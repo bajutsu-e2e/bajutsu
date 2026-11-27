@@ -131,7 +131,7 @@ def test_both_languages_carry_the_same_marks() -> None:
 # The launch-settings table: one column per platform route, keyed like `runsOn.ignoredSettings`.
 # Permission keys are left out because the capability table already carries them, and a route reads
 # them from those same tokens (`route_settings`).
-_ROUTES: tuple[settings_support.Route, ...] = ("ios-simulator", "android")
+_ROUTES: tuple[settings_support.Route, ...] = ("ios-simulator", "android-emulator")
 _APPLIED = frozenset({"supported", "satisfied"})
 
 

@@ -84,6 +84,20 @@ class TargetRun:
         )
 
 
+# Spelled here because the config package imports this module; `schema.platform._shared.ANY_KIND`
+# is the same value.
+_ANY_KIND = "any"
+
+
+def _any_kind_unavailable(platform: str) -> str:
+    # TODO(BE-0518): unit 3 picks the kind from the scenario's needs and the free devices; until it
+    # lands, `any` stops the run before any device work rather than guessing a kind.
+    return (
+        f'runsOn.{platform}.kind  "any"  choosing a kind from the free devices is not available yet; '
+        "pass --kind to run, record, crawl, or repl to name the one kind to run on"
+    )
+
+
 def _available(devices: Sequence[DeviceFacts]) -> str:
     return ", ".join(d.describe for d in devices) or "no device"
 
@@ -152,6 +166,16 @@ def form_target_runs(
     """
     if platform == "web":
         return _web_runs(target, conditions, devices, engine)
+    if conditions.get("kind") == _ANY_KIND:
+        return [
+            TargetRun(
+                target=target,
+                platform=platform,
+                outcome="failed",
+                reason=_any_kind_unavailable(platform),
+                conditioned=True,
+            )
+        ]
     if platform not in _MODEL_FIELD or not conditions:
         return [TargetRun(target=target, platform=platform, kind=kind)]
     # A listed kind runs once per kind on that kind's devices; an unlisted one keeps the target on
@@ -515,12 +539,17 @@ def first_run(
     devices: Sequence[DeviceFacts],
     *,
     engine: str | None = None,
+    kind: str | None = None,
 ) -> tuple[TargetRun, DeviceFacts | None]:
     """The run `record`, `crawl`, and `repl` take, and the device it runs on.
 
     These commands never multiply runs: they take the first listed value, the first listed family a
     fitting device has, and the newest major version the pool has within the range. A web run has
     no device to pick, so its device is None.
+
+    Args:
+        kind: The kind the target drives when it lists none. Android passes it, so a pool that
+            holds both kinds keeps the run on the target's own (BE-0518).
 
     Raises:
         LookupError: No available device fits, named with the condition and the devices seen.
@@ -530,11 +559,13 @@ def first_run(
         if run.outcome != "run":
             raise LookupError(run.reason)
         return run, None
+    if conditions.get("kind") == _ANY_KIND:
+        raise LookupError(_any_kind_unavailable(platform))
     if platform not in _MODEL_FIELD or not conditions:
         return TargetRun(target=target, platform=platform), (devices[0] if devices else None)
     model_field, version_field = _MODEL_FIELD[platform], _VERSION_FIELD[platform]
     kinds, kinds_listed = _listed(conditions.get("kind"))
-    kind = kinds[0] if kinds_listed else None
+    kind = kinds[0] if kinds_listed else kind
     models, _ = _listed(conditions.get(model_field))
     model = models[0]
     raw_spec = conditions.get(version_field)

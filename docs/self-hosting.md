@@ -1547,8 +1547,10 @@ deterministic `run` verdict.
   routed to that worker fails when its run drives the device. The job does not stay queued.
 - **A run job also requires what its steps and settings need on its route
   ([BE-0467](../roadmaps/BE-0467-environment-specific-settings/BE-0467-environment-specific-settings.md)).** Each target resolves to an environment route: `ios-simulator`,
-  `ios-device`, `ios-live` (a WebDriver endpoint), `android`, or `web`. A platform alone is not
-  enough, since the three iOS routes support different settings. The job requires two kinds of
+  `ios-device`, `ios-live` (a WebDriver endpoint), `android-emulator`, `android-device`, or `web`.
+  A platform alone is not enough, since the three iOS routes support different settings. An Android
+  target's `runsOn.android.kind` picks its route
+  ([BE-0518](../roadmaps/BE-0518-android-routes-and-kind-any/BE-0518-android-routes-and-kind-any.md)). The job requires two kinds of
   token:
   - `cap:<route>:<capability>` for each capability the steps routed to that target need;
   - `setting:<route>:<key>` for each setting it puts in effect that the target does not declare
@@ -1556,9 +1558,10 @@ deterministic `run` verdict.
 
   A run on an Appium grid puts its iOS targets on `ios-live`.
 - **A worker advertises one token set per route its drivers drive.** `xcuitest` drives the
-  Simulator route, `adb` drives `android`, and `playwright` drives `web`. The drivers are every one
-  its [worker capability file](drivers.md#worker-capability-check-be-0450) offers and its host can
-  start, whatever its `--platform`, since a scenario's other targets run on the same machine. An
+  Simulator route, `adb` drives both Android routes, and `playwright` drives the `web` route. Its
+  drivers are the ones its [worker capability file](drivers.md#worker-capability-check-be-0450)
+  offers. Of those, the worker counts each one its machine can start. The worker ignores its
+  `--platform` here, since a scenario's other targets run on the same machine. An
   `xcuitest` worker adds the `ios-device` route unless its file sets `realDevices: false`, and an
   `appium` worker advertises `ios-live`. The route set is as accurate as the file, so list the drivers
   the machine has installed, and no others. Every such worker also advertises `cap:routing`, which marks it

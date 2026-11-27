@@ -107,7 +107,7 @@ def test_env_add_media_checks_every_name_before_touching_the_device() -> None:
 def _eff() -> Effective:
     return Effective(
         target="app",
-        platform_config=AndroidConfig(package="com.example.app"),
+        platform_config=AndroidConfig(package="com.example.app", device_kind="device"),
         backend=["android"],
         locale="en_US",
         launch_env={},
