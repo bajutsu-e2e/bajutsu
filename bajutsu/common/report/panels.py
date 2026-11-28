@@ -111,6 +111,15 @@ def _videos(r: RunResult) -> list[dict[str, Any]]:
     ]
 
 
+def _note_red_step(rows: list[dict[str, Any]], notes: list[str]) -> bool:
+    """Hang the device notes on the first step row that failed; False when there is none (BE-0520)."""
+    for row in rows:
+        if notes and row.get("rowcls") == "srow ng":
+            row["device_notes"] = notes
+            return True
+    return False
+
+
 def _result_panel(
     r: RunResult,
     definition: dict[str, Any] | None,
@@ -120,20 +129,24 @@ def _result_panel(
     step_lines: list[int] | None,
 ) -> dict[str, Any]:
     plan = (definition or {}).get("steps") or []
+    # The lifecycle phases render as their own blocks (BE-0392), never folded into the numbered
+    # steps: a reviewer can tell setup and teardown from the scenario under test at a glance,
+    # which a `preconditions.setup` prelude spliced into `steps` gives no way to do.
+    setuprows = _phase_rows(r.before_outcomes, (definition or {}).get("setup") or [], r, run_dir)
+    steprows = _merged_rows(r, plan, exchanges, run_dir, step_lines)
+    cleanuprows = _cleanup_rows(r, (definition or {}).get("cleanup") or [], run_dir)
+    noted = _note_red_step(setuprows + steprows + cleanuprows, r.device_notes)
     return {
         "kind": "result",
         "key": "steps",
         "label": "Result",
         "source": source,
         "preconditions": _preconditions_rows(definition),
-        # The lifecycle phases render as their own blocks (BE-0392), never folded into the numbered
-        # steps: a reviewer can tell setup and teardown from the scenario under test at a glance,
-        # which a `preconditions.setup` prelude spliced into `steps` gives no way to do.
-        "setuprows": _phase_rows(
-            r.before_outcomes, (definition or {}).get("setup") or [], r, run_dir
-        ),
-        "steprows": _merged_rows(r, plan, exchanges, run_dir, step_lines),
-        "cleanuprows": _cleanup_rows(r, (definition or {}).get("cleanup") or [], run_dir),
+        "setuprows": setuprows,
+        "steprows": steprows,
+        "cleanuprows": cleanuprows,
+        # Only what no step row could carry: an `expect` failure, or a result with no step at all.
+        "devicenotes": [] if noted else r.device_notes,
         # The setup blocks and cleanup rules the run skipped for their `when` (BE-0513).
         "skippedblocks": (definition or {}).get("skippedBlocks") or [],
         "expects": _expects_data(r, definition),

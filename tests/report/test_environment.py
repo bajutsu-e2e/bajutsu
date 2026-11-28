@@ -332,6 +332,28 @@ def test_html_environment_no_sim_with_ignored_settings_omits_muted_message() -> 
     assert "no environment details captured" not in html_report("run1", [r])
 
 
+def test_html_shows_device_notes_beside_the_red_step() -> None:
+    # BE-0520: the note sits on the failed step's own companion row, not in a block of its own.
+    r = RunResult(
+        scenario="a",
+        ok=False,
+        steps=[StepOutcome(index=0, action="tap", ok=False, reason="no match")],
+        device_notes=["the video never started"],
+    )
+    out = html_report("run1", [r])
+    assert out.count("the video never started") == 1
+    assert out.index("no match") < out.index("the video never started")
+    assert 'class="alertnote devicenote"' not in out
+
+
+def test_html_shows_device_notes_when_no_step_row_failed() -> None:
+    # An `expect` failure, or a result that gave up before any step ran, has no row to hang it on.
+    r = RunResult(scenario="a", ok=False, steps=[], device_notes=["the video never started"])
+    out = html_report("run1", [r])
+    assert 'class="alertnote devicenote"' in out
+    assert out.count("the video never started") == 1
+
+
 def test_html_shows_backend() -> None:
     # The actuator is shown both as a header chip and a per-scenario badge.
     out = html_report("run9", [_passing()])

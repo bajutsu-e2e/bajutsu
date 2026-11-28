@@ -468,6 +468,15 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > other route ignores the request and keeps the strongest retry it has. Both signals are advisory to
 > the *rung*, never to the verdict: a scenario that keeps crashing still exhausts its budget and
 > fails loudly.
+>
+> The stall signal also reaches the result
+> ([BE-0520](../roadmaps/BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md)).
+> A scenario can end red without a crash: a device that stopped painting shows up as a wait timeout.
+> So a result that did not pass, on a lease whose video never confirmed it started, carries one note
+> in `device_notes`. The report shows the note under the first failed step. The note also covers a
+> scenario that used up its respawns, read from the last lease that stopped answering. The note is
+> evidence and no cause: the same warning appears under passing scenarios, which get no note. It
+> never changes `ok` or `failure`, and nothing runs again.
 
 > **Cooperative cancellation (BE-0370).** A cancelled run finishes on its own terms and lands in the
 > run history as a failed run, instead of dying wherever it happens to be. `bajutsu run` answers

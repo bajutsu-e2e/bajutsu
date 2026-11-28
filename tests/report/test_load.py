@@ -95,6 +95,7 @@ def _result() -> RunResult:
         ],
         skipped_captures=[SkippedCapture("video", "no eligible backend")],
         ignored_settings=[IgnoredSetting("device", "erase", "keeps app data")],
+        device_notes=["the video recording never confirmed it started"],
     )
 
 
@@ -107,9 +108,9 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for a scenario's read-channel record (v18), after its ignored settings (v17, BE-0467)
-    # and a step's non-fatal warnings (v16, BE-0474)
-    assert data["schemaVersion"] == 19
+    # bumped for a scenario's device notes (v20, BE-0520), after each target's build identity (v19)
+    # and a scenario's read-channel record (v18)
+    assert data["schemaVersion"] == 20
     assert data["sourceName"] == "smoke.yaml"
 
 

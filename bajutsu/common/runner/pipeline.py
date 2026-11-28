@@ -151,6 +151,24 @@ _CRASH_DIAGNOSTICS_DIR = "crash-diagnostics"
 _APP_CRASH_DIR = "app-crash"
 
 
+# BE-0520: what a result that did not pass says about a lease whose video never confirmed it started.
+# It states the observation and no cause: the same warning also appears under passing scenarios.
+STALLED_VIDEO_NOTE = (
+    "the video recording never confirmed it started; the device may not have been painting"
+)
+
+
+def _stall_notes(lz: Lease) -> list[str]:
+    return [STALLED_VIDEO_NOTE] if lz.video_start_stalled() else []
+
+
+def _with_stall_notes(result: RunResult, lz: Lease) -> RunResult:
+    # Only a result that did not pass: under a passing one the note would explain nothing.
+    if not result.ok:
+        result.device_notes += _stall_notes(lz)
+    return result
+
+
 def _launch_unconfirmed(readiness: ReadinessResult | None) -> bool:
     """Whether this lease's readiness gate left the app's own arrival unproven (BE-0424).
 
@@ -1175,8 +1193,11 @@ class _ScenarioRunner:
                         # work, not recovery. A mid-step crash below re-arms the clock.
                         self.run_crash_budget.add_recovery_time(self._now() - recovery_started)
                         recovery_started = None
-                    return self._run_on_lease(
-                        lz, others, handler, i, s, sid, derived, actuator, hook_outputs
+                    return _with_stall_notes(
+                        self._run_on_lease(
+                            lz, others, handler, i, s, sid, derived, actuator, hook_outputs
+                        ),
+                        lz,
                     )
                 except BackendCrashError as crash:
                     # Nothing is released here: `_lease_set` already rolls back its own partial
@@ -1361,6 +1382,9 @@ class _ScenarioRunner:
             # Every path here follows at least one crash, and that attempt's launch had already
             # dropped them: `enforce_settings` runs before any launch work (BE-0467).
             ignored_settings=self._ignored_settings(s, actuator),
+            # A crash during lease bring-up leaves no lease to ask, so `crashed_lz` is the last one
+            # that did answer.
+            device_notes=_stall_notes(crashed_lz) if crashed_lz is not None else [],
         )
 
     def _write_crash_artifacts(
