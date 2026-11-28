@@ -67,7 +67,7 @@ claims no cause, and it has no effect on the verdict.
 
 After this change, a reader can see the stall from the result alone. A red scenario whose lease saw
 a stalled video start carries a note that says so. The note appears in the run's manifest and in
-its report, next to the step that did not pass.
+its report. The report shows it in the scenario's Environment panel, beside the device it names.
 
 ## Detailed design
 
@@ -104,8 +104,8 @@ chooses between two candidates and states why:
 - **Add a new field**. This choice names the meaning plainly. The manifest writer and the report
   loader then both need to learn the field.
 
-Either way, the manifest and the report carry the note. The report shows the note beside the red
-step.
+Either way, the manifest and the report carry the note. The report shows the note in the scenario's
+Environment panel, beside the device it names.
 
 BE-0361's stall diagnostics may already hold a capture of the same stall. The capture sits in the
 directory that the `BAJUTSU_STALL_DIAGNOSTICS` variable names. The implementing change decides

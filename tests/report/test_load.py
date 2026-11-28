@@ -108,7 +108,7 @@ def test_round_trip_through_manifest_is_lossless() -> None:
 
 def test_manifest_carries_schema_version_and_source_name() -> None:
     data = manifest_dict("r1", [_result()], source_name="smoke.yaml")
-    # bumped for a scenario's suspect-device record (v20, BE-0376), after the build and source
+    # bumped for a scenario's suspect-device record (v20, BE-0520), after the build and source
     # identity (v19, BE-0506), its read-channel record (v18), and its ignored settings (v17, BE-0467)
     assert data["schemaVersion"] == 20
     assert data["sourceName"] == "smoke.yaml"
