@@ -180,7 +180,7 @@ item would design how to apply the list again from configuration.
 - [x] Choose the service list
 - [x] Apply the change before the first boot, or after it with a reboot
 - [x] Wire the `run` and `actuation` jobs
-- [ ] Measure and decide adoption
+- [x] Measure and decide adoption
 - [ ] Extend to other lanes and decide on applying again after an erase
 
 Log:
@@ -204,8 +204,29 @@ Log:
 | Lost change | A job counts as having lost the change when fewer services are off at its end than at its start. No log line marks an erase, so this count stands in for it |
 | Verdict | `scripts/ci_telemetry.py adoption` applies the four criteria and prints `adopt`, `reject`, `trace`, or `incomplete`. A reduced job that did not pass sends the verdict to `trace` |
 
-- [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594): fixed the log fetch behind unit 4. A newer `gh` refused job logs that hold terminal escape
-  sequences, so every log read as unreadable and the verdict could only be `incomplete`.
+- [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594): fixed the log fetch that unit 4 relies on. A newer `gh` refused job logs that hold terminal
+  escape sequences. Every log then read as unreadable, and the verdict could not move past `incomplete`.
+- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM): ran the unit 4 measurement and adopted the
+  reduced list. Each arm ran ten times on 2026-11-27, for 20 jobs per arm. One reduced run and one
+  stock run started together, so both arms shared the same hours. The `adoption` command printed
+  `adopt`, with every criterion met. The table gives the figures per arm.
+
+| Figure | Reduced | Stock |
+|---|---|---|
+| Jobs | 20 | 20 |
+| Jobs that did not pass | 0 | 1 |
+| Jobs with an unconfirmed recording start | 0 | 19 |
+| Runner-channel retries | 0 | 13 |
+| Recovery reboots | 0 | 8 |
+| Replacement devices | 0 | 0 |
+| Jobs that lost the change | 0 | 0 |
+| Median `run` job time in seconds | 891 | 1521 |
+| Median `actuation` job time in seconds | 1102 | 2331 |
+
+The one-sided Fisher's exact test on the first criterion gives a p value near 1.5 × 10⁻¹⁰.
+The `run` and `actuation` jobs already turn the services off by default.
+Adopting the list keeps that default and changes no workflow. Unit 5 stays open, and the item stays
+In progress.
 
 ## References
 
