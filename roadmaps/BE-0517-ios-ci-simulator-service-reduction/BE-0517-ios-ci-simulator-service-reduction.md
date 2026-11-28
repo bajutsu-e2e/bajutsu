@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
-| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3), [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) (unit 4, tooling), [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594) (unit 4, log fetch fix) |
+| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3), [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) (unit 4, tooling), [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594) (unit 4, log fetch fix), [#2617](https://github.com/bajutsu-e2e/bajutsu/pull/2617) (unit 4, verdict) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) |
 <!-- /BE-METADATA -->
@@ -206,7 +206,7 @@ Log:
 
 - [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594): fixed the log fetch that unit 4 relies on. A newer `gh` refused job logs that hold terminal
   escape sequences. Every log then read as unreadable, and the verdict could not move past `incomplete`.
-- [#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM): ran the unit 4 measurement and adopted the
+- [#2617](https://github.com/bajutsu-e2e/bajutsu/pull/2617): ran the unit 4 measurement and adopted the
   reduced list. Each arm ran ten times on 2026-11-27, for 20 jobs per arm. One reduced run and one
   stock run started together, so both arms shared the same hours. The `adoption` command printed
   `adopt`, with every criterion met. The table gives the figures per arm.

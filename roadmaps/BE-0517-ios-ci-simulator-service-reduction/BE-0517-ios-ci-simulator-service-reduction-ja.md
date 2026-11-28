@@ -9,7 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装中** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
-| 実装 PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584)（単位 1〜3）、[#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587)（単位 4 の道具）、[#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594)（単位 4、ログ取得の修正） |
+| 実装 PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584)（単位 1〜3）、[#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587)（単位 4 の道具）、[#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594)（単位 4、ログ取得の修正）、[#2617](https://github.com/bajutsu-e2e/bajutsu/pull/2617)（単位 4、判定） |
 | トピック | CI / build infrastructure |
 | 関連 | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming-ja.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot-ja.md) |
 <!-- /BE-METADATA -->
@@ -148,7 +148,7 @@ BE-0494 の空きメモリは、アプリのインストール後の 1 回の値
 | 判定 | `scripts/ci_telemetry.py adoption` が 4 つの基準を当てはめ、`adopt`、`reject`、`trace`、`incomplete` のいずれかを出力します。変更を入れた側で通らなかったジョブがあれば `trace` になります |
 
 [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594) で、単位 4 が使うログの取得を直しました。新しい `gh` は、ターミナルのエスケープシーケンスを含むジョブログの出力を拒否します。そのためすべてのログが読めない扱いになり、判定は `incomplete` にしかなりませんでした。
-[#PRNUM](https://github.com/bajutsu-e2e/bajutsu/pull/PRNUM) で単位 4 を計測し、削減した一覧の導入を決めました。2026-11-27 に各群を 10 回ずつ実行し、各群 20 ジョブを集めました。削減した群と通常の群を 1 回ずつ同時に起動したので、2 つの群は同じ時間帯に走っています。`adoption` コマンドの出力は `adopt` で、4 つの基準をすべて満たしました。群ごとの数値は次の表のとおりです。
+[#2617](https://github.com/bajutsu-e2e/bajutsu/pull/2617) で単位 4 を計測し、削減した一覧の導入を決めました。2026-11-27 に各群を 10 回ずつ実行し、各群 20 ジョブを集めました。削減した群と通常の群を 1 回ずつ同時に起動したので、2 つの群は同じ時間帯に走っています。`adoption` コマンドの出力は `adopt` で、4 つの基準をすべて満たしました。群ごとの数値は次の表のとおりです。
 
 | 数値 | 削減した群 | 通常の群 |
 |---|---|---|
