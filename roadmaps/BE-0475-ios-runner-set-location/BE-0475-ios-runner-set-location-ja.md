@@ -71,8 +71,8 @@ UI 自動化の経路としても案内しています。テストプランの S
 
 Simulator では、既存の環境を回帰させないために `simctl` をフォールバック先として残します。iOS 16.4 より古い Simulator の
 ランタイムは `unsupported` を返します。Xcode 16.3 より古いツールチェインでビルドしたランナーも同じです。
-そのとき `setLocation` は現在と同じく `simctl location set` を実行し、位置情報の寿命も後述する `simctl` の挙動になります。
-実機にはフォールバック先がないため、`unsupported` はステップの失敗になります。
+このルートより前にビルドしたランナーは `unknown endpoint` を返します。どちらの場合も `setLocation` は現在と同じく `simctl location set` を実行し、位置情報の寿命も後述する `simctl` の挙動になります。
+実機にはフォールバック先がないため、どちらの応答もステップの失敗になります。
 
 その他のデバイス制御は `simctl` のままで、Simulator 専用のままです。権限の付与も同じです。
 対象は次の表のとおりです。
@@ -125,6 +125,7 @@ Xcode 16.3 より古いツールチェインでも、ランナーはビルドで
 （`bajutsu/common/platform_lifecycle/device_control.py`）。
 
 **Simulator でのフォールバック。** Simulator では、`set_location` がドライバの `UnsupportedAction` を受け止めます。
+ドライバが `unknown endpoint` に対して送出する `XcuitestRouteMissingError` も受け止めます。
 そのうえで `simctl location set` を実行します。実機では、それ以外の操作が capability 集合に含まれません。
 プリフライトがそれらに到達することはありません。
 

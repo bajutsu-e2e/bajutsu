@@ -24,6 +24,7 @@ from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest.xcuitest_route_missing_error import XcuitestRouteMissingError
 from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
@@ -1697,15 +1698,16 @@ class XcuitestEnvironment(_DeviceEnvironment):
 
         The location is device-wide, so the lease's own driver serves every group member: they share
         its runner. Read at call time, since `controller(eff)` is built before a lease has a driver.
-        A Simulator whose runtime or runner predates the property falls back to `simctl location
-        set`, as before the runner route existed; a real device has no such fallback, so the
-        driver's `UnsupportedAction`, which names the iOS / Xcode floor, fails the step.
+        A Simulator whose runtime or runner predates the property, or whose runner build predates
+        the route, falls back to `simctl location set`, as before the runner route existed. A real
+        device has no such fallback, so the driver's error, which names the iOS / Xcode floor or
+        the rebuild, fails the step.
         """
         set_via_runner = _runner_set_location(self._lease_driver)
         if set_via_runner is not None:
             try:
                 set_via_runner(lat, lon)
-            except base.UnsupportedAction as exc:
+            except (base.UnsupportedAction, XcuitestRouteMissingError) as exc:
                 if self._is_real_device:
                     raise
                 _logger.debug("setLocation falls back to simctl: %s", exc)

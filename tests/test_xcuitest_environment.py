@@ -34,7 +34,7 @@ from bajutsu.common.config import (
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
 from bajutsu.common.drivers.fake import FakeDriver
-from bajutsu.common.drivers.xcuitest import XcuitestChannelError
+from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestRouteMissingError
 from bajutsu.common.platform_lifecycle.environments.xcuitest import (
     _MAX_WARM_REUSES,
     _MAX_WARM_REUSES_ENV,
@@ -4213,7 +4213,7 @@ def test_an_attach_start_leaves_the_location_alone(
 
 
 def test_a_runner_fault_on_set_location_is_not_hidden_behind_simctl() -> None:
-    # Only `unsupported` falls back: any other runner reply is a fault that must fail the step.
+    # Only `unsupported` and a pre-route runner fall back: any other reply is a fault that fails the step.
     calls: list[list[str]] = []
 
     def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
@@ -4231,6 +4231,39 @@ def test_a_runner_fault_on_set_location_is_not_hidden_behind_simctl() -> None:
     with pytest.raises(XcuitestChannelError):
         control.set_location(1.0, 2.0)
     assert calls == []
+
+
+class _PreRouteRunner:
+    """A runner build from before the `/location` route existed (BE-0475)."""
+
+    def set_location(self, lat: float, lon: float) -> None:
+        raise XcuitestRouteMissingError("the runner predates the /location route")
+
+
+def test_a_runner_predating_the_route_falls_back_to_simctl_on_a_simulator() -> None:
+    # An upgrade that reuses an earlier runner build keeps the `simctl` path it had before.
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], env: Mapping[str, str] | None = None) -> str:
+        calls.append(argv)
+        return ""
+
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=run)
+    env._lease_driver = cast(base.Driver, _PreRouteRunner())
+    control = env.controller(_sim_eff(test_runner="Runner.xctestrun"))
+    assert control is not None
+    control.set_location(1.0, 2.0)
+    assert _location_verbs(calls) == ["location set"]
+
+
+def test_a_runner_predating_the_route_fails_the_step_on_a_real_device() -> None:
+    env = XcuitestEnvironment("xcuitest", "UDID", env_run=_no_simctl)
+    env._is_real_device = True
+    env._lease_driver = cast(base.Driver, _PreRouteRunner())
+    control = env.controller(_sim_eff(test_runner="Runner.xctestrun"))
+    assert control is not None
+    with pytest.raises(XcuitestRouteMissingError):
+        control.set_location(1.0, 2.0)
 
 
 def test_a_failed_simctl_fallback_set_is_a_device_error() -> None:

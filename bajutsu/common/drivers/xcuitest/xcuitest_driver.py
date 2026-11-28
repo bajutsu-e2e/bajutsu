@@ -34,6 +34,7 @@ from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn, UrlSchemeSource
 from .paste_menu import COPY_MENU_LABELS, PASTE_MENU_LABELS, SELECT_ALL_MENU_LABELS
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
+from .xcuitest_route_missing_error import XcuitestRouteMissingError
 
 # Every status `/systemAlert/resolve` answers with (BE-0461 Unit 3).
 _RESOLVE_STATUSES = frozenset({"answered", "changed", "absent", "unidentified", "pending"})
@@ -1172,7 +1173,7 @@ class XcuitestDriver:
         Raises:
             UnsupportedAction: The device or the runner's toolchain predates `XCUIDevice.location`.
             XcuitestChannelError: Any other reply: the assignment raised in the runner, or the
-                runner build predates the route.
+                runner build predates the route (`XcuitestRouteMissingError`).
         """
         self._location("POST", {"lat": lat, "lon": lon})
 
@@ -1182,7 +1183,7 @@ class XcuitestDriver:
         Raises:
             UnsupportedAction: The device or the runner's toolchain predates `XCUIDevice.location`.
             XcuitestChannelError: Any other reply: the assignment raised in the runner, or the
-                runner build predates the route.
+                runner build predates the route (`XcuitestRouteMissingError`).
         """
         self._location("DELETE", None)
 
@@ -1197,7 +1198,7 @@ class XcuitestDriver:
             )
         verb = "setting" if method == "POST" else "clearing"
         if reply.status == "error" and reply.raw and b"unknown endpoint" in reply.raw:
-            raise XcuitestChannelError(
+            raise XcuitestRouteMissingError(
                 f"runner error {verb} the location: the runner predates the /location route; "
                 "rebuild the runner (make runner-build)"
             )

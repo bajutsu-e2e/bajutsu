@@ -74,8 +74,9 @@ scenario the same behavior everywhere. A second path for real devices would not.
 
 The Simulator keeps `simctl` as a fallback, so the change regresses no existing setup. A Simulator
 runtime older than iOS 16.4 answers `unsupported`. So does a runner built with a toolchain older than
-Xcode 16.3. `setLocation` then runs `simctl location set` as it does today. The location keeps the
-`simctl` lifetime described below. A real device has no fallback, so `unsupported` fails the step
+Xcode 16.3. A runner built before the route existed answers `unknown endpoint`. In each case
+`setLocation` runs `simctl location set` as it does today. The location keeps the
+`simctl` lifetime described below. A real device has no fallback, so either reply fails the step
 there.
 
 The other device-control operations keep `simctl` and stay on the Simulator:
@@ -120,7 +121,8 @@ The other device-control operations keep `simctl` and stay on the Simulator:
   `set_location` calls the live driver. Its other operations stay the `simctl` ones
   (`bajutsu/common/platform_lifecycle/device_control.py`).
 - **Simulator fallback.** On the Simulator, `set_location` catches `UnsupportedAction` from the
-  driver. It then runs `simctl location set`. On a real device, the capability set omits the other
+  driver. It also catches `XcuitestRouteMissingError`, which the driver raises for `unknown endpoint`.
+  It then runs `simctl location set`. On a real device, the capability set omits the other
   operations. The preflight never reaches them.
 - **Driver lookup.** The controller's `set_location` reads the lease's driver at call time, like
   `_foreground`. The driver is always `_lease_driver`. The location is device-wide, and every
@@ -180,7 +182,7 @@ position in the run. Prime directive 2 rules that out, so Bajutsu pins the locat
 
 Unit 1 also records what the app sees after the test process exits, and the docs state the result.
 Today nothing in Bajutsu clears a `simctl` location between scenarios. The reset changes behavior
-for a scenario that relied on an earlier scenario's location.
+for one kind of scenario alone. Such a scenario relied on a location an earlier scenario set.
 
 ### Permissions on a real device
 

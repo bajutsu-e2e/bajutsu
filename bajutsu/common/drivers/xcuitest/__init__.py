@@ -69,6 +69,7 @@ from .xcuitest_driver import _STALE_MAX_ATTEMPTS as _STALE_MAX_ATTEMPTS
 from .xcuitest_driver import _UNIT as _UNIT
 from .xcuitest_driver import _VALUE_NOT_FOUND as _VALUE_NOT_FOUND
 from .xcuitest_driver import XcuitestDriver
+from .xcuitest_route_missing_error import XcuitestRouteMissingError
 from .xcuitest_runner_crash_error import XcuitestRunnerCrashError
 
 __all__ = [
@@ -77,5 +78,6 @@ __all__ = [
     "UrlSchemeSource",
     "XcuitestChannelError",
     "XcuitestDriver",
+    "XcuitestRouteMissingError",
     "XcuitestRunnerCrashError",
 ]

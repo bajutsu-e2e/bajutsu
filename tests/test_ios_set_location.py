@@ -12,7 +12,12 @@ import pytest
 from pydantic import ValidationError
 
 from bajutsu.common.drivers import base
-from bajutsu.common.drivers.xcuitest import XcuitestChannelError, XcuitestDriver, _Reply
+from bajutsu.common.drivers.xcuitest import (
+    XcuitestChannelError,
+    XcuitestDriver,
+    XcuitestRouteMissingError,
+    _Reply,
+)
 from bajutsu.common.scenario import SetLocation
 
 
@@ -68,13 +73,14 @@ def test_unsupported_names_the_ios_and_xcode_floor(call: str) -> None:
 
 
 @pytest.mark.parametrize(("call", "verb"), [("set", "setting"), ("clear", "clearing")])
-def test_a_runner_predating_the_route_is_a_channel_error_naming_the_rebuild(
+def test_a_runner_predating_the_route_is_a_route_missing_error_naming_the_rebuild(
     call: str, verb: str
 ) -> None:
     # A runner build without `/location` answers 404 with the router's own `unknown endpoint`.
     raw = b'{"status":"error","message":"unknown endpoint"}'
     driver = XcuitestDriver(transport=_Runner("error", raw))
-    with pytest.raises(XcuitestChannelError, match=rf"{verb} the location.*make runner-build"):
+    # A distinct channel error, so a Simulator can take its simctl fallback on it.
+    with pytest.raises(XcuitestRouteMissingError, match=rf"{verb} the location.*make runner-build"):
         driver.set_location(1.0, 2.0) if call == "set" else driver.clear_location()
 
 
@@ -82,5 +88,8 @@ def test_a_raised_assignment_is_a_channel_error_not_the_floor() -> None:
     # The runner reports an assignment that raised as `error`: a runner fault, which must neither
     # read as the iOS / Xcode floor nor send the author to rebuild a current runner.
     driver = XcuitestDriver(transport=_Runner("error", b'{"status":"error"}'))
-    with pytest.raises(XcuitestChannelError, match=r"setting the location \(status=error\)$"):
+    with pytest.raises(
+        XcuitestChannelError, match=r"setting the location \(status=error\)$"
+    ) as exc:
         driver.set_location(1.0, 2.0)
+    assert not isinstance(exc.value, XcuitestRouteMissingError)
