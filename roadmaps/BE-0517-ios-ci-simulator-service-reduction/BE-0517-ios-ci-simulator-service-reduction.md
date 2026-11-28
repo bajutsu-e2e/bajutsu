@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **In progress** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0517") |
-| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3), [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) (unit 4, tooling), [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594) (unit 4, log fetch fix) |
+| Implementing PR | [#2584](https://github.com/bajutsu-e2e/bajutsu/pull/2584) (units 1–3), [#2587](https://github.com/bajutsu-e2e/bajutsu/pull/2587) (unit 4, tooling), [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594) (unit 4, log fetch fix), [#2617](https://github.com/bajutsu-e2e/bajutsu/pull/2617) (unit 4, verdict) |
 | Topic | CI / build infrastructure |
 | Related | [BE-0494](../BE-0494-simslim-ci-simulator-slimming/BE-0494-simslim-ci-simulator-slimming.md), [BE-0088](../BE-0088-overlap-simulator-boot/BE-0088-overlap-simulator-boot.md) |
 <!-- /BE-METADATA -->
@@ -180,7 +180,7 @@ item would design how to apply the list again from configuration.
 - [x] Choose the service list
 - [x] Apply the change before the first boot, or after it with a reboot
 - [x] Wire the `run` and `actuation` jobs
-- [ ] Measure and decide adoption
+- [x] Measure and decide adoption
 - [ ] Extend to other lanes and decide on applying again after an erase
 
 Log:
@@ -204,8 +204,29 @@ Log:
 | Lost change | A job counts as having lost the change when fewer services are off at its end than at its start. No log line marks an erase, so this count stands in for it |
 | Verdict | `scripts/ci_telemetry.py adoption` applies the four criteria and prints `adopt`, `reject`, `trace`, or `incomplete`. A reduced job that did not pass sends the verdict to `trace` |
 
-- [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594): fixed the log fetch behind unit 4. A newer `gh` refused job logs that hold terminal escape
-  sequences, so every log read as unreadable and the verdict could only be `incomplete`.
+- [#2594](https://github.com/bajutsu-e2e/bajutsu/pull/2594): fixed the log fetch that unit 4 relies on. A newer `gh` refused job logs that hold terminal
+  escape sequences. Every log then read as unreadable, and the verdict could not move past `incomplete`.
+- [#2617](https://github.com/bajutsu-e2e/bajutsu/pull/2617): ran the unit 4 measurement and adopted the
+  reduced list. Each arm ran ten times on 2026-11-27, for 20 jobs per arm. One reduced run and one
+  stock run started together, so both arms shared the same hours. The `adoption` command printed
+  `adopt`, with every criterion met. The table gives the figures per arm.
+
+| Figure | Reduced | Stock |
+|---|---|---|
+| Jobs | 20 | 20 |
+| Jobs that did not pass | 0 | 1 |
+| Jobs with an unconfirmed recording start | 0 | 19 |
+| Runner-channel retries | 0 | 13 |
+| Recovery reboots | 0 | 8 |
+| Replacement devices | 0 | 0 |
+| Jobs that lost the change | 0 | 0 |
+| Median `run` job time in seconds | 891 | 1521 |
+| Median `actuation` job time in seconds | 1102 | 2331 |
+
+The one-sided Fisher's exact test on the first criterion gives a p value near 1.5 × 10⁻¹⁰.
+The `run` and `actuation` jobs already turn the services off by default.
+Adopting the list keeps that default and changes no workflow. Unit 5 stays open, and the item stays
+In progress.
 
 ## References
 
