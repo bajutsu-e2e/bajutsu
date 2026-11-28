@@ -187,12 +187,13 @@ meaning after the run that produced it exits
   before `schemaVersion` 18 lacks it, and a reader treats such a run as healthy.
 - `channel_notes`: what the same read channel did after the scenario's last step. No later step could carry these notes in its `warnings`. The list is empty when nothing happened. Every run
   recorded before `schemaVersion` 18 lacks it.
-- `device_notes`: what the run observed about the device under a result that did not pass, such as a
-  video recording that never confirmed it started
-  ([BE-0520](../roadmaps/BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md),
-  [run loop](run-loop.md)). It states an observation and never changes `ok` or `failure`. The list is
-  empty on a passing scenario and when nothing was observed. Every run recorded before
-  `schemaVersion` 20 lacks it.
+- `device_notes`: what the run observed about the device under a result that did not pass. One
+  example is a video recording that never confirmed it started. The background is in
+  [BE-0520](../roadmaps/BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md)
+  and the [run loop](run-loop.md).
+  A note states an observation and never changes `ok` or `failure`. The list is empty on a passing
+  scenario and on a run that observed nothing. Every run recorded before `schemaVersion` 20 lacks
+  the list.
 - `ignored_settings`: the settings a target's route could not apply, as `{target, key, reason}`.
   It lists each setting that the scenario put in effect and the target declared under
   `runsOn.ignoredSettings`

@@ -5,12 +5,12 @@
 > Tier 2 の決定的ランナーです。各ステップを **act → (wait) → verify** で処理し、合否は機械アサーション
 > のみで決めます。AI は関与しません。最初の失敗で停止します。
 >
-> 実装:
+> 実装は次の 2 つのパッケージです。
 >
-> - `bajutsu/common/orchestrator/` はループ本体です。package のモジュールは `loop`、`waits`、
->   `substitution`、`evidence_rules`、`actions`、`control_channel` です。
-> - `bajutsu/common/runner/` は実機の起動とレポートの連結を担います。package のモジュールは
->   `pipeline`、`pool`、`launch` です。
+> | パッケージ | 役割 | モジュール |
+> |---|---|---|
+> | `bajutsu/common/orchestrator/` | ループ本体 | `loop`、`waits`、`substitution`、`evidence_rules`、`actions`、`control_channel` |
+> | `bajutsu/common/runner/` | 実機の起動とレポートの連結 | `pipeline`、`pool`、`launch` |
 
 関連: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](evidence.md) · [reporting](reporting.md)
 
@@ -22,11 +22,23 @@
 def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...) -> RunResult
 ```
 
-- `driver`: `base.Driver`（実ドライバ or `FakeDriver`）。ループはこれにしか依存しません。
-- `clock`: 時刻 / sleep の注入（テストで待機を決定化）。既定 `RealClock`（`time.monotonic` / `time.sleep`）。
-- `sink`: 証跡の出力先（既定 `NullSink` は何も書かない）。詳細は [evidence](evidence.md)。
-- `alert_guard`: ステップ失敗時に「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラです。イベントを返した場合、**そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)）。`wait` ステップ（`for`/`settled`/`screenChanged`）では、同じハンドラが **wait の途中でも**待ち構えています（BE-0269）。すでにポーリング済みの画面のツリーが崩壊して見えた時点で発火し、デバウンスとクールダウンを挟んで、1 回の wait につき最大 2 回までです。末尾の再試行とは独立に、wait 自体のタイムアウトを待たず回復できます。
-- `target_runtimes`: シナリオが宣言したターゲットごとに 1 つずつの束で、名前をキーにします。各束は、そのターゲット自身のライブドライバと、そのリースに紐づく残りすべてを持ちます。ターゲットを宣言しないシナリオにはありません。その場合は上の平坦な引数をそのまま読みます。
+- `driver`: `base.Driver`（実ドライバ or `FakeDriver`）。ループの依存先はこのインタフェースのみ。
+- `clock`: 時刻 / sleep の注入（テストで待機を決定化）。デフォルトは `RealClock`（`time.monotonic` / `time.sleep`）。
+- `sink`: 証跡の出力先（デフォルトの `NullSink` は何も書かない）。詳細は [evidence](evidence.md)。
+- `alert_guard`: ステップが成功しなかったときのハンドラ（詳細は下の表）
+- `target_runtimes`: ターゲットごとの束（詳細は下の段落）
+
+`alert_guard` の動きは次のとおりです。
+
+| 場面 | 動き |
+|---|---|
+| ステップが成功しなかった | 「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラとして呼ぶ |
+| イベントが返った | **そのステップを 1 回だけ再試行する**（[recording の alert guard](recording.md#システムアラートの自動対処)） |
+| `wait` ステップ（`for`/`settled`/`screenChanged`） | 同じハンドラが **wait の途中でも**待ち構える（BE-0269） |
+| wait の途中で発火する条件 | すでにポーリング済みの画面のツリーが崩壊して見えた時点。デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで |
+| 末尾の再試行との関係 | 独立に働き、wait 自体のタイムアウトを待たず回復できる |
+
+`target_runtimes` は、シナリオが宣言したターゲットごとに 1 つずつの束で、名前をキーにします。各束は、そのターゲット自身のライブドライバと、そのリースに紐づく残りすべてを持ちます。ターゲットを宣言しないシナリオにはありません。その場合は上の平坦な引数をそのまま読みます。
 
 ### ステップを自分のターゲットへ振り分ける（複数ターゲットシナリオ）
 
@@ -49,9 +61,11 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 ループ状態を共有することから、3 つの帰結が出ます。
 
-- **採番が 1 つ。** どのターゲットが走らせたかによらず、各ステップは次の番号を取ります。2 つのターゲットの証跡ディレクトリが衝突しません。
-- **`${vars.*}` の辞書が 1 つ。** `live_bindings` はどのドライバのものでもありません。あるターゲットの `extract` が捕まえた値は、別のターゲットに対するアサーションから読めます。
-- **判定が 1 つ。** 2 つめのターゲットでの取りこぼしは、1 つめでの取りこぼしと同じようにシナリオを終わらせます。
+| 帰結 | 内容 |
+|---|---|
+| **採番が 1 つ** | どのターゲットが走らせたかによらず、各ステップは次の番号を取る。2 つのターゲットの証跡ディレクトリは衝突しない |
+| **`${vars.*}` の辞書が 1 つ** | `live_bindings` はどのドライバのものでもない。あるターゲットの `extract` が捕まえた値は、別のターゲットに対するアサーションから読める |
+| **判定が 1 つ** | 2 つめのターゲットでの取りこぼしは、1 つめでの取りこぼしと同じようにシナリオを終わらせる |
 
 `target` を名指ししないステップは、すでにアクティブなドライバをそのまま使います。この規則が効くのは
 `web:` ブロックの内側です。その入れ子のステップは、ブロック自身の `WebContextDriver` に対して走り続ける
@@ -65,36 +79,42 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 シナリオの `setup` / `cleanup`（[scenarios](scenarios.md#setup--cleanupセットアップとティアダウンのフェーズ)）は、ステップループの前後にもう 2 つのフェーズを足します。どちらも同じステップランナーが動かすので、フックのステップは他のステップとまったく同じことができ、run の `vars.*` バインディングを共有します。
 
-1. **`setup` が最初に走ります。** ここで失敗すると `failure = "setup: …"` を立て、`steps` と `expect` をまったく実行しません。`setup` はシナリオ内部のステップではなく、シナリオの前提条件だからです。
-2. **`steps` と `expect` はそのまま走り**、判定はこれまでどおり計算されます。
-3. **判定が出てから `cleanup` が走ります。** 成功した経路、失敗した経路、キャンセルされた経路を含め、`steps` を抜けるすべての経路で到達します。`on` が `always` かその判定に一致するルールが、宣言順に走ります。run が成功していたなら、ルール自身の失敗がその run の failure になります。そうでなければ、ルール自身の失敗は既存の failure の後ろに追記されます。
+| 順序 | フェーズ | 動き |
+|---|---|---|
+| 1 | **`setup` が最初に走る** | ここで成功しなければ `failure = "setup: …"` を立て、`steps` と `expect` をまったく実行しない。`setup` はシナリオ内部のステップではなく、シナリオの前提条件だからである |
+| 2 | **`steps` と `expect` はそのまま走る** | 判定はこれまでどおり計算される |
+| 3 | **判定が出てから `cleanup` が走る** | 成功した経路、成功しなかった経路、キャンセルされた経路を含め、`steps` を抜けるすべての経路で到達する。`on` が `always` かその判定に一致するルールが、宣言順に走る |
+
+`cleanup` のルール自身が成功しなかった場合の扱いは、run の状態で分かれます。run が成功していたなら、ルール自身のメッセージがその run の `failure` になります。そうでなければ、そのメッセージは既存の `failure` の後ろに追記されます。
 
 キャンセルされた run では、キャンセル用のソースで `cleanup` フェーズを縛れません。ソースはラッチされた `threading.Event.is_set` です。フェーズ内での最初の読み取りがふたたび `RunCancelled` を投げ、後片付けのステップが 1 つも走らなくなります。
 
-代わりにフェーズは専用の期限のもとで走ります。期限は `grace_seconds()` の 1 割で、これを過ぎると残りのルールを打ち切ります。後片付けに限られた実行機会を与えつつ、シャットダウンの後始末が `serve` の無条件 kill までの猶予時間を超えないようにするためです。
+代わりにフェーズは専用の期限のもとで走ります。期限は `grace_seconds()` の 1 割で、これを過ぎると残りのルールを打ち切ります。後片付けに限られた実行機会を与えつつ、シャットダウンの後始末が `serve` の無条件の強制終了までの猶予時間を超えないようにするためです。
 
 各フェーズはステップを 0 から数え直し、それぞれ専用の `RunResult` のリストに記録します。そのためレポートは、シナリオの連番のステップとは別のブロックとして setup と cleanup を表示します。`RunResult.after_verdict` には、cleanup フェーズがルールを振り分けた判定を記録します。BE-0452 より前に保存した run はここに `error` を持ちますが、レポートのローダーは `error` を `failure` として読みます。そのため、以前の run も cleanup のブロックを表示できます。
 
 ### 1 ステップの流れ
 
-各ステップ `i` について（`orchestrator/loop.py` 内）:
+各ステップ `i` は、次の順に処理します（`orchestrator/loop.py` 内）。
 
-1. `kind = _action_of(step)`：どのアクションか判定します。
-2. `step_id = step.name or f"step{i}"`：証跡の出力単位です。
-3. （`capturePolicy` に `screenChanged` トリガーがあれば）操作前の `query()` を控えます。
-4. **区間証跡を開始**します（`video` / `deviceLog` のうち、操作前から始める必要があるもの）。`_pre_intervals` は「ステップ自身から判定可能なトリガー」だけを拾います（`screenChanged`/`error` は遅すぎるため対象外）。
-5. `_run_step_body` で **act**（or wait / assert）を実行し、`(ok, reason, assertion_results)` を得ます。
-6. 失敗かつ `alert_guard` がブロッカーを片付けた場合は **1 回再試行します**。
-7. **区間証跡を停止**します（ステップが落ち着いてから）。アーティファクトを記録します。
-8. **瞬時証跡**（`screenshot` / `elements`）を取得します（`_collect_captures` の発火結果）。
-9. `StepOutcome` を積みます。失敗なら `failure` を設定して **break** します。
+1. `kind = _action_of(step)`：どのアクションかの判定
+2. `step_id = step.name or f"step{i}"`：証跡の出力単位
+3. 操作前の `query()` の控え（`capturePolicy` に `screenChanged` トリガーがある場合）
+4. **区間証跡の開始**（`video` / `deviceLog` のうち、操作前から始める必要があるもの）。`_pre_intervals` が拾う対象は「ステップ自身から判定可能なトリガー」のみ（`screenChanged`/`error` は遅すぎるため対象外）
+5. `_run_step_body` による **act**（or wait / assert）の実行と、`(ok, reason, assertion_results)` の取得
+6. 成功せず、かつ `alert_guard` がブロッカーを片付けた場合の **1 回の再試行**
+7. **区間証跡の停止**（ステップが落ち着いてから）とアーティファクトの記録
+8. **瞬時証跡**（`screenshot` / `elements`）の取得（対象は `_collect_captures` の発火結果）
+9. `StepOutcome` の追加。成功しなければ `failure` を設定して **break**
 
 ### `_run_step_body`（act / wait / assert の分岐）
 
-- `wait` → `_wait`（条件待機、下記）。
-- `assert_` → `assertions.evaluate(driver.query(), ...)` を評価し AND を取ります。
-- それ以外（tap/longPress/type/swipe/relaunch）→ `_do_action`。
-- `SelectorError` / `NotImplementedError` を捕捉して `(False, 理由, [])` に変換します（例外を上に投げません）。
+| 条件 | 呼び出し先と扱い |
+|---|---|
+| `wait` | `_wait`（条件待機、下記） |
+| `assert_` | `assertions.evaluate(driver.query(), ...)` を評価し、すべての結果の論理積を取る |
+| それ以外（tap/longPress/type/swipe/relaunch） | `_do_action` |
+| `SelectorError` / `NotImplementedError` の送出 | 捕捉して `(False, 理由, [])` に変換する（例外を上に投げない） |
 
 ### `_do_action`（操作の実体）
 
@@ -103,7 +123,7 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 | `tap` | `driver.tap(sel)` |
 | `longPress` | `driver.long_press(sel, duration)` |
 | `type` | `into` があれば先に `driver.tap(into)` → `driver.type_text(text)` |
-| `swipe` | `{from,to}` ならそのまま `driver.swipe`。`{on,direction}` なら対象を `resolve_unique` → frame 中心から方向へ画面に対する割合分（`_SWIPE_FRACTION`、既定 0.125。`amount` で上書き）。固定量ではなく割合にすることで、frame の単位が異なる backend 間（iOS はポイント、Android はピクセル）でもスクロール到達量が揃います |
+| `swipe` | `{from,to}` ならそのまま `driver.swipe`。`{on,direction}` なら対象を `resolve_unique` → frame 中心から方向へ画面に対する割合分（`_SWIPE_FRACTION`、デフォルトは 0.125。`amount` で上書き）。固定量ではなく割合にすることで、frame の単位が異なる backend 間（iOS はポイント、Android はピクセル）でもスクロール到達量が揃います |
 | `relaunch` | runner が注入する relauncher でアプリを terminate + 再起動します（launch env/args 再適用＋上書き）。ready まで待ちます |
 
 ## 待機（条件待機）
@@ -127,20 +147,35 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 `capturePolicy` の各ルールがこのステップで発火するかを判定します（[evidence](evidence.md#a-capturepolicyルール方式)）。
 
-- `_rule_fires`: `on.action`（+ 任意の `idMatches`）/ `on.event == screenChanged` / `on.result == error` のいずれかに一致するかを確認します。アクション名は DSL（ドメイン固有言語）名へ変換します（`long_press`→`longPress`、`assert_`→`assert`）。
-- `_collect_captures`: 先頭に `elements` を置いたうえで、インライン `step.capture`、発火したルールの
-  capture、ターゲットの `evidence.capture`（他の2つと異なり常に適用される最低保証）を集めて重複排除します。
-  先頭の `elements` があるため、3つの取得元が何を要求したかによらず、どのステップにも動作後のツリーが
-  残ります。ステップ前の baseline はツリーを取得しません（BE-0407）。そのためこの取得がそのステップの
-  唯一のツリー取得であり、`elements.json` という 1 つのファイル名に書き込まれます。
-- 対になるもう一方の `after.png` は、この一覧にはありません。`_handle_action` が、ステップの動作の直後に
-  自分で撮ります。ここでツリーを読みうる処理（`screenChanged` の比較、`for` wait のタイムアウト診断、
-  `extract`）よりも先に撮るためです。そのうえで、上記の一覧から `screenshot.after` を取り除きます。
-  どの取得元から来た `screenshot` 単体のトークンも先に `screenshot.after` へ正規化するのは、このためです。
-  同じ 1 枚を二重に撮ることはありません。ただし、この撮影より前に読まれるツリーが 1 つあります。
-  動作しないステップ（`assert`、`wait`）は、自身が評価に使ったツリーを読み直さずに再利用します
-  （BE-0259）。この 2 種類では、`elements.json` は `after.png` の直後ではなく直前の時点のものになります。
-- 瞬時種別（screenshot/elements）は sink の `capture()` で取得し、区間種別（video/deviceLog）は事前に `start_intervals()` で開始済みのものを停止して回収します。
+`_rule_fires` の確認対象は、次のいずれかへの一致です。
+
+- `on.action`（+ 任意の `idMatches`）
+- `on.event == screenChanged`
+- `on.result == error`
+
+確認の前に、アクション名を Domain Specific Language (DSL) の名前へ変換します（`long_press`→`longPress`、`assert_`→`assert`）。
+
+`_collect_captures` は、先頭に `elements` を置いたうえで、次の 3 つの取得元を集めて重複排除します。
+
+| 取得元 | 適用 |
+|---|---|
+| インラインの `step.capture` | そのステップに書いた場合 |
+| 発火したルールの capture | ルールが一致した場合 |
+| ターゲットの `evidence.capture` | 他の 2 つと異なり常に適用される最低保証 |
+
+先頭の `elements` があるため、3 つの取得元が何を要求したかによらず、どのステップにも動作後のツリーが残ります。ステップ前の baseline はツリーを取得しません（BE-0407）。そのためこの取得がそのステップの唯一のツリー取得であり、`elements.json` という 1 つのファイル名に書き込まれます。
+
+対になるもう一方の `after.png` は、この一覧にはありません。`_handle_action` が、ステップの動作の直後に自分で撮ります。撮影は、ツリーを読みうる次の処理よりも先です。
+
+- `screenChanged` の比較
+- `for` wait のタイムアウト診断
+- `extract`
+
+撮影を先に済ませる `_handle_action` は、上記の一覧から `screenshot.after` を取り除きます。どの取得元から来た `screenshot` 単体のトークンも先に `screenshot.after` へ正規化するのは、このためです。同じ 1 枚を二重に撮ることはありません。
+
+ただし、この撮影より前に読まれるツリーが 1 つあります。動作しないステップ（`assert`、`wait`）は、自身が評価に使ったツリーを読み直さずに再利用します（BE-0259）。この 2 種類では、`elements.json` は `after.png` の直後ではなく直前の時点のものになります。
+
+瞬時種別（screenshot/elements）は sink の `capture()` で取得します。区間種別（video/deviceLog）は、事前に `start_intervals()` で開始済みのものを停止して回収します。
 
 `primary_id` は「ステップの主対象セレクタの `id`」です（tap なら tap 先、type なら `into`、swipe なら `on`）。`idMatches` トリガーはこの `id` に対して `fnmatch` します。
 
@@ -180,7 +215,7 @@ class RunResult:
 単一ターゲットの run は単数形のフィールドを埋め、`target_devices` を空にします。どちらの読み手にも、
 従来どおりの値が見えます。
 
-`expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
+`expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / Hyper Text Markup Language (HTML) になります（[reporting](reporting.md)）。
 
 ## runner（実行パイプライン）
 
@@ -188,7 +223,7 @@ class RunResult:
 
 ### `launch_driver`（アプリを起動して準備済みドライバを返す）
 
-`preconditions` に従って `simctl` で環境を構築します:
+`preconditions` に従って `simctl` で環境を構築します。
 
 ```
 erase（pre.subject.reinstall が erase なら shutdown → erase） → boot → bootstatus -b（起動の完了を待つ）
@@ -198,13 +233,13 @@ erase（pre.subject.reinstall が erase なら shutdown → erase） → boot �
   → await_ready（query() が 2 要素以上返すまで最大 10s ポーリング）
 ```
 
-> `await_ready` は、利用できる中で最も強いレディネスシグナルを、次の順に探してポーリングします。
+> `await_ready` は、利用できる中でもっとも強いレディネスシグナルを、次の順に探してポーリングします。
 >
 > 1. 明示的な `subject.startWhen` の条件
 > 2. アプリが報告する画面遷移イベント
 >    （[BE-0310](../../roadmaps/BE-0310-ios-accessibility-screen-change-readiness/BE-0310-ios-accessibility-screen-change-readiness-ja.md)。`BajutsuKit` 経由のオプトイン）
 > 3. 宣言済みの `subject.idNamespaces` に属する id を持つ要素
-> 4. どれも無ければ、「アプリが UI を描画した（ルート要素より多い）」ことへのフォールバック。最大 10s まで待ちます
+> 4. どれもない場合のフォールバックである「アプリが UI を描画した（ルート要素より多い）」状態（最大 10s の待機）
 >
 > 各段の詳細は [configuration](configuration.md) を参照してください。
 >
@@ -236,17 +271,19 @@ erase（pre.subject.reinstall が erase なら shutdown → erase） → boot �
 
 ### `device_pool` / `run_all` / `run_and_report`
 
-- `device_pool(udids, backends, ...)`: actuator を選び、`(lease, shutdown)` の組を返します。`lease(eff, scenario)` は空いているデバイスをリースし、シナリオごとに `launch_driver` します。
-- `run_all(eff, scenarios, lease, ...)`: 各シナリオを **新しくリースした、新しいドライバで** 実行します（クリーン分離）。
-- `run_and_report(...)`: `run_all` の結果を `write_report(runs_dir/run_id, ...)` で書き出し、`(results, manifest_path)` を返します。
+| 関数 | 役割 |
+|---|---|
+| `device_pool(udids, backends, ...)` | actuator を選び、`(lease, shutdown)` の組を返す。`lease(eff, scenario)` は空いているデバイスをリースし、シナリオごとに `launch_driver` する |
+| `run_all(eff, scenarios, lease, ...)` | 各シナリオを **新しくリースした、新しいドライバで** 実行する（クリーン分離） |
+| `run_and_report(...)` | `run_all` の結果を `write_report(runs_dir/run_id, ...)` で書き出し、`(results, manifest_path)` を返す |
 
-CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）。
+Command Line Interface (CLI) の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）。
 
 **デバイスの条件から作る run（BE-0452）。** シナリオを動かすターゲットの `runsOn` は、デバイスの条件を宣言できます。そのときは、シナリオを実行する前に `bajutsu/run/device_matrix.py` が呼び出し全体の計画を、次の順で立てます。
 
-1. 各プールを 1 回だけ読みます（`common/devices/facts.py`）。
-2. 各シナリオの run を作り、run ごとに適格なデバイスを選びます（`common/devices/runs.py`）。
-3. 同じデバイスを使う run を、1 つのセルにまとめます。
+1. 各プールの 1 回だけの読み取り（`common/devices/facts.py`）
+2. 各シナリオの run の作成と、run ごとの適格なデバイスの選択（`common/devices/runs.py`）
+3. 同じデバイスを使う run の、1 つのセルへのまとめ
 
 セルは 1 つずつ順に実行します。各セルは、適格なデバイスに絞ったプールで `run_and_report` を通ります。そのため、`--workers` はセルの run を同一のデバイスに振り分けます。合うデバイスがない run は失敗します。片側が開いた範囲なら、その run は対象外の記録になり（[configuration](configuration.md#デバイスの条件runson)）、ドライバには届きません。どのターゲットも条件を宣言していない呼び出しは、上の経路をそのまま通ります。
 
@@ -278,10 +315,10 @@ CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）�
 >
 > 再試行には 2 つの上限があります。
 >
-> - `crash_retries`：リトライ回数の上限です。既定は 1 で、最初のクラッシュ後に 1 回だけ再試行します。
->   環境変数 `BAJUTSU_CRASH_RETRIES` で上書きできます。
-> - `crash_recovery_budget`：再生成に費やす合計時間の任意の wall-clock 上限です。既定は無制限で、
->   環境変数 `BAJUTSU_CRASH_RECOVERY_BUDGET`（秒単位）で上書きできます。
+> | 設定 | 内容 | デフォルト | 上書きする環境変数 |
+> |---|---|---|---|
+> | `crash_retries` | リトライ回数の上限 | 1（最初のクラッシュ後に 1 回だけ再試行） | `BAJUTSU_CRASH_RETRIES` |
+> | `crash_recovery_budget` | 再生成に費やす合計時間の任意の wall-clock 上限 | 無制限 | `BAJUTSU_CRASH_RECOVERY_BUDGET`（秒単位） |
 >
 > この予算があるのは、回数の上限だけでは時間を制限できないためです。復旧しないランナーを相手にすると、
 > `crash_retries` の試行のたびにコールド起動の上限いっぱいまで時間を費やし、はっきりした失敗ではなく
@@ -299,7 +336,7 @@ CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）�
 > まだ機能していることを示しているにすぎないからです。あるシナリオ自身のクラッシュ再試行ループが、
 > この予算を主因として実際に失敗した後は、`run_one` がそれ以降のどのシナリオでも、その先頭でこの状態を
 > 確認します。確認はクラッシュ再試行ループ自身の `except` 節の中だけでなく、そのシナリオ自身の最初の
-> リースすらまだ試みていない時点でも行います。これにより、すでに復旧できないと分かっているデバイスに
+> リースすらまだ試みていない時点でも行います。これにより、すでに復旧できないとわかっているデバイスに
 > 対して、残る全シナリオが同じ打ち切りに至るまでにコールド起動の試行を 1 回ずつ余計に払わずに済みます。
 >
 > このラッチにはもう 1 つの原因があり、そこには同じ限定が要りません。デバイスの準備がタイムアウトした
@@ -320,12 +357,11 @@ CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）�
 > アプリレベルのクリーンな状態化であり、直前にクラッシュしたそのデバイスへのその場での respawn
 > ではありません。次の 3 つの場合は、強制 erase をスキップします。
 >
-> - マージ後の reinstall（シナリオの値、なければターゲットの値）が `overwrite` で、アプリのデータを
->   リースをまたいで残す場合。
-> - 経路自体が `erase` の precondition をそもそも受け付けない場合。実機（`runsOn.ios.kind: device`）や、
->   `appium` グリッドへの live 経路です。
-> - 明示的な `bajutsu run --no-erase`。CLI はこのフラグを `force_erase_on_retry` として run に渡すため、
->   オペレーターの明示的な選択は強制再試行を止められます。
+> | スキップする場合 | 内容 |
+> |---|---|
+> | マージ後の reinstall が `overwrite` | シナリオの値（なければターゲットの値）が `overwrite` で、アプリのデータをリースをまたいで残す |
+> | 経路が `erase` の precondition をそもそも受け付けない | 実機（`runsOn.ios.kind: device`）や、`appium` グリッドへの live 経路 |
+> | 明示的な `bajutsu run --no-erase` | CLI はこのフラグを `force_erase_on_retry` として run に渡すため、オペレーターの明示的な選択は強制再試行を止められる |
 >
 > 組み込みの既定であるマージ後の `clean` は、強制 erase をスキップしません。`clean` もアプリのデータを
 > 消すので、その値を見るガードでは、強制 erase がまさに対象としている実運用の経路そのもので強制再試行を
@@ -374,10 +410,12 @@ CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）�
 >
 > この段が働くのは、udid を固定しておらず `subject.path` を持つ run にかぎります。
 >
-> - `--udid` はオペレーターが名指ししたデバイスであり、置き換えれば run が黙ってそのデバイスから
->   離れてしまいます。udid を固定しない run はデバイス 1 台をワーカー 1 つで扱うので、置き換えを要求
->   した試行の次のリースは必ず同じデバイスを取り直します。
-> - まっさらなデバイスには入れるアプリが必要です。そのため、この段は `subject.path` を要求します。
+> そう限る理由は次のとおりです。
+>
+> | 条件 | 理由 |
+> |---|---|
+> | udid を固定していない | `--udid` はオペレーターが名指ししたデバイスであり、置き換えれば run が黙ってそのデバイスから離れてしまう。udid を固定しない run はデバイス 1 台をワーカー 1 つで扱うので、置き換えを要求した試行の次のリースは必ず同じデバイスを取り直す |
+> | `subject.path` がある | まっさらなデバイスには入れるアプリが必要である |
 >
 > 置き換えが消すものは erase より多いので、erase の段が尊重する 2 つの離脱指定、
 > `reinstall: overwrite` と `bajutsu run --no-erase` も同じように尊重します。ほかの経路は要求を無視し、
@@ -399,14 +437,16 @@ CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）�
 > （即座のプロセス終了）に任せる代わりにイベントを立てます。パイプラインは、そのイベントを 3 つの
 > 安全な境界で読みます。
 >
-> - `run_all` のディスパッチループでシナリオを始める直前
-> - 1 つのシナリオのステップとステップのあいだ
-> - 条件待ちを支える既存のポーリングループの内側
+> | 境界 | 位置 |
+> |---|---|
+> | 1 つめ | `run_all` のディスパッチループでシナリオを始める直前 |
+> | 2 つめ | 1 つのシナリオのステップとステップのあいだ |
+> | 3 つめ | 条件待ちを支える既存のポーリングループの内側 |
 >
 > キャンセル要求が届いたシナリオは `RunResult(ok=False, failure="cancelled")` になります。これは
 > バックエンドのクラッシュや preflight の失敗がすでに作るのと同じ形です。そのため `run_all` は今までどおり
 > 宣言順にシナリオ 1 件あたり 1 件の結果を返し、`run_and_report` は `manifest.json`、`report.html`、
-> JUnit XML を、ほかの失敗した run とまったく同じように書きます。長いスイートの早い段階でキャンセル
+> `junit.xml` を、ほかの失敗した run とまったく同じように書きます。長いスイートの早い段階でキャンセル
 > したオペレーターには、実行に至らなかったシナリオも失敗として数えられて見えます。キャンセルされた
 > run を失敗として扱うこと自体から出てくる帰結として、これを受け入れます。
 >
@@ -415,7 +455,7 @@ CLI の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）�
 > 書かないまま終わらせられてしまいます。
 >
 > シャットダウンは、外側で待っている者がいるかどうかに関わらず有界です。1 回のドライバ呼び出しの内側で
-> 止まっているシナリオは、その呼び出しが返るまでキャンセル要求に気付きません。XCUITest の HTTP
+> 止まっているシナリオは、その呼び出しが返るまでキャンセル要求に気付きません。XCUITest の Hyper Text Transfer Protocol (HTTP)
 > リクエスト、`adb` のサブプロセス、Playwright の呼び出しは、いずれもその長さだけシナリオを保持します。
 > そのため協調的な経路には猶予窓を与えます。猶予窓は `BAJUTSU_CANCEL_GRACE` で決めます。既定は 90 秒で、
 > 一過性リトライに乗る読み取りが保持しうる 60 秒に、その後ろのシャットダウンの尻尾（残るシナリオを

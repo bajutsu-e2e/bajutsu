@@ -170,11 +170,13 @@ The units of work below are Mutually Exclusive and Collectively Exhaustive (MECE
 
 Log:
 
-- All three units landed together. The note lives in a new field, `RunResult.device_notes`
-  (manifest `schemaVersion` 20), rather than in `channel_notes`, which describes the driver's read
-  channel. The report shows it under the first failed step, or above the step table when no step row
-  failed. The note does not point at BE-0361's stall capture: the cap per reason means the capture
-  can be missing, so a pointer could name an absent file.
+- All three units landed together.
+  - The note lives in a new field, `RunResult.device_notes` (manifest `schemaVersion` 20). We did
+    not reuse `channel_notes`, because that list describes the driver's read channel.
+  - The report shows the note under the first step that did not pass. Without a red step row, the
+    note appears above the step table.
+  - The note does not point at BE-0361's stall capture. The cap per reason means the capture can be
+    missing, so a pointer could name an absent file.
 
 ## References
 
