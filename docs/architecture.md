@@ -772,6 +772,16 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - **Visual regression**: `visual` against a baseline, where the `approve` command promotes baselines.
   - `capturePolicy` firing.
   - **Redaction applied** to logs, element trees, and network exchanges before they are written.
+- **The in-app control channel** (BE-0365, iOS) lets `run` change one of BajutsuKit's in-app
+  capabilities mid-scenario, where the launch env alone reaches the app only once, at startup. The
+  run loop queues a command on the collector; the app polls `GET /commands` roughly every 0.15
+  seconds, applies the command, and acknowledges on `/commands/ack`. The run loop waits on that
+  acknowledgement as a condition, bounded at five seconds, so a command either provably took effect
+  or the step fails — never a fixed pause. The channel needs the `xcuitest` actuator with network
+  collection on, and stays closed unless both a `-DBAJUTSU_ENABLE_CONTROL_CHANNEL` compile flag and a
+  `BAJUTSU_CONTROL_CHANNEL=1` launch env are set. It carries only two commands, `touch_visualization`
+  and `stub_table`, and no assertion ever reads from it. See
+  [`network.md#the-in-app-control-channel`](network.md#the-in-app-control-channel).
 - `bajutsu run --touch-markers` (BE-0371, iOS only, needs an app that links `BajutsuKit`) draws a marker at each touch that the app's `UIEvent` queue actually delivers.
   - The marker is evidence that a gesture was received, not merely sent. It appears in the recorded video and in each step's screenshot.
   - The flag is off by default and on in the repo's own iOS CI lanes.
@@ -867,6 +877,15 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - It regenerates `report.html` / `junit.xml` / `ctrf.json` from the stored `manifest.json` and `scenario.yaml`, stamps the manifest's `provenance.source` as `import`, and records the run under the caller's organization.
   - The route needs the editor role. The organization-API-key allowlist above names it, and it is the only route there. The BE-0414 machine allowlist omits it.
   - A signed-in user or an `editor` API key can call it, and a key imports into its own organization. A server without OAuth also accepts the shared token. `scripts/upload_run.py` sends either one as its key.
+- **Posting a run's address to a pull request, an issue, or a release** (BE-0508). The standalone
+  `scripts/post_run_url.py` writes a sticky comment (created once, then edited on a rerun) that gives
+  the verdict and counts, names each failing scenario with its first failing step and reason (up to
+  `--max-failures`, 10 by default, and fewer when the body would pass GitHub's size limit),
+  and links the run that `scripts/upload_run.py` imported. For a release it writes the same text as a
+  delimited block in the release notes instead. The script uploads nothing and imports nothing from
+  `bajutsu`; it checks that `--url` addresses this very run, refuses a credential pasted into either
+  `--url` or `--archive-url`, and prints a plan and asks for confirmation before any write
+  (`--dry-run`/`--yes`).
 - **Per-job artifact overrides, independent of the active config binding** ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)): on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the sha256 of an already-stored artifact (BE-0268).
   - A named leg resolves against that artifact alone: the binary placed at the job's own target `subject.path`, or a `scenarios` zip replacing that target's scenarios directory.
   - An unnamed leg keeps resolving through the org's active config binding, untouched. Two concurrent CI dispatches against one deployment thus no longer contend for the deployment's fallback binding or write the org's remembered configuration.
