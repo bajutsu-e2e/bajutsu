@@ -237,8 +237,7 @@ An existing reader of either sees what it always did.
 
 The runner evaluates `expect` after all steps pass, and not earlier. If `alert_guard` is present,
 `expect` is also re-evaluated once. These results go directly into `report/`'s outputs
-([reporting](reporting.md)). The outputs are `manifest.json`, JUnit, and the Hyper Text Markup
-Language (HTML) report.
+([reporting](reporting.md)). The outputs are `manifest.json`, JUnit, and the HTML report.
 
 ## runner (the run pipeline)
 
@@ -491,8 +490,8 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > So a result that did not pass, on a lease whose video never confirmed it started, carries one note
 > in `device_notes`. The report shows the note under the first failed step. For a scenario that used
 > up its respawns, the signal is read from the last lease that stopped answering. The note is
-> evidence, not a cause: the same warning appears under passing scenarios, which get no note. It
-> never changes `ok` or `failure`, and nothing runs again.
+> evidence, not a cause: the same warning also appears on scenarios that pass. A passing result
+> therefore gets no note. The note never changes `ok` or `failure`, and nothing runs again.
 
 > **Cooperative cancellation (BE-0370).** A cancelled run finishes on its own terms and lands in the
 > run history as a failed run, instead of dying wherever it happens to be. `bajutsu run` answers
@@ -516,9 +515,9 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > and so leave the run killed before it wrote anything.
 >
 > The shutdown stays bounded, with or without a canceller watching. A scenario blocked inside a
-> single driver call notices the request only once that call returns. An XCUITest
-> Hyper Text Transfer Protocol (HTTP) request, an `adb` subprocess, or a Playwright call can each
-> hold it that long. The graceful path gets a grace window. `BAJUTSU_CANCEL_GRACE` sets that window, 90 seconds by default. The default
+> single driver call notices the request only once that call returns. An XCUITest HTTP request, an
+> `adb` subprocess, or a Playwright call can each hold it that long. The graceful path gets a grace
+> window. `BAJUTSU_CANCEL_GRACE` sets that window, 90 seconds by default. The default
 > combines the 60 seconds a read riding the transient retry can hold, plus 30 for the shutdown tail behind it:
 > failing the remaining scenarios, writing the report, and printing the verdict line. A window equal
 > to the call alone would leave that tail nothing.

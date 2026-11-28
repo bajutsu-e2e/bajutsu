@@ -32,11 +32,11 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 | 場面 | 動き |
 |---|---|
-| ステップが成功しなかった | 「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラとして呼ぶ |
-| イベントが返った | **そのステップを 1 回だけ再試行する**（[recording の alert guard](recording.md#システムアラートの自動対処)） |
-| `wait` ステップ（`for`/`settled`/`screenChanged`） | 同じハンドラが **wait の途中でも**待ち構える（BE-0269） |
-| wait の途中で発火する条件 | すでにポーリング済みの画面のツリーが崩壊して見えた時点。デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回まで |
-| 末尾の再試行との関係 | 独立に働き、wait 自体のタイムアウトを待たず回復できる |
+| ステップが成功しなかった場合 | 「ブロッカー（システムアラート等）を片付けたら、その片付けたイベントを返す」ハンドラとして呼びます |
+| イベントが返った場合 | **そのステップを 1 回だけ再試行します**（[recording の alert guard](recording.md#システムアラートの自動対処)） |
+| `wait` ステップ（`for`/`settled`/`screenChanged`） | 同じハンドラが **wait の途中でも**待ち構えます（BE-0269） |
+| wait の途中で発火する条件 | すでにポーリング済みの画面のツリーが崩壊して見えた時点。デバウンスとクールダウンを挟み、1 回の wait につき最大 2 回までです |
+| 末尾の再試行との関係 | 独立に働き、wait 自体のタイムアウトを待たず回復できます |
 
 `target_runtimes` は、シナリオが宣言したターゲットごとに 1 つずつの束で、名前をキーにします。各束は、そのターゲット自身のライブドライバと、そのリースに紐づく残りすべてを持ちます。ターゲットを宣言しないシナリオにはありません。その場合は上の平坦な引数をそのまま読みます。
 
@@ -63,9 +63,9 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 | 帰結 | 内容 |
 |---|---|
-| **採番が 1 つ** | どのターゲットが走らせたかによらず、各ステップは次の番号を取る。2 つのターゲットの証跡ディレクトリは衝突しない |
-| **`${vars.*}` の辞書が 1 つ** | `live_bindings` はどのドライバのものでもない。あるターゲットの `extract` が捕まえた値は、別のターゲットに対するアサーションから読める |
-| **判定が 1 つ** | 2 つめのターゲットでの取りこぼしは、1 つめでの取りこぼしと同じようにシナリオを終わらせる |
+| **採番が 1 つ** | どのターゲットが走らせたかによらず、各ステップは次の番号を取ります。2 つのターゲットの証跡ディレクトリは衝突しません |
+| **`${vars.*}` の辞書が 1 つ** | `live_bindings` はどのドライバのものでもありません。あるターゲットの `extract` が捕まえた値は、別のターゲットに対するアサーションから読めます |
+| **判定が 1 つ** | 2 つめのターゲットでの取りこぼしは、1 つめでの取りこぼしと同じようにシナリオを終わらせます |
 
 `target` を名指ししないステップは、すでにアクティブなドライバをそのまま使います。この規則が効くのは
 `web:` ブロックの内側です。その入れ子のステップは、ブロック自身の `WebContextDriver` に対して走り続ける
@@ -81,9 +81,9 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 
 | 順序 | フェーズ | 動き |
 |---|---|---|
-| 1 | **`setup` が最初に走る** | ここで成功しなければ `failure = "setup: …"` を立て、`steps` と `expect` をまったく実行しない。`setup` はシナリオ内部のステップではなく、シナリオの前提条件だからである |
-| 2 | **`steps` と `expect` はそのまま走る** | 判定はこれまでどおり計算される |
-| 3 | **判定が出てから `cleanup` が走る** | 成功した経路、成功しなかった経路、キャンセルされた経路を含め、`steps` を抜けるすべての経路で到達する。`on` が `always` かその判定に一致するルールが、宣言順に走る |
+| 1 | **`setup` が最初に走ります** | ここで成功しなければ `failure = "setup: …"` を立て、`steps` と `expect` をまったく実行しません。`setup` はシナリオ内部のステップではなく、シナリオの前提条件だからです |
+| 2 | **`steps` と `expect` はそのまま走ります** | 判定はこれまでどおり計算されます |
+| 3 | **判定が出てから `cleanup` が走ります** | 成功した経路、成功しなかった経路、キャンセルされた経路を含め、`steps` を抜けるすべての経路で到達します。`on` が `always` かその判定に一致するルールが、宣言順に走ります |
 
 `cleanup` のルール自身が成功しなかった場合の扱いは、run の状態で分かれます。run が成功していたなら、ルール自身のメッセージがその run の `failure` になります。そうでなければ、そのメッセージは既存の `failure` の後ろに追記されます。
 
@@ -112,9 +112,9 @@ def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...)
 | 条件 | 呼び出し先と扱い |
 |---|---|
 | `wait` | `_wait`（条件待機、下記） |
-| `assert_` | `assertions.evaluate(driver.query(), ...)` を評価し、すべての結果の論理積を取る |
+| `assert_` | `assertions.evaluate(driver.query(), ...)` を評価し、すべての結果の論理積を取ります |
 | それ以外（tap/longPress/type/swipe/relaunch） | `_do_action` |
-| `SelectorError` / `NotImplementedError` の送出 | 捕捉して `(False, 理由, [])` に変換する（例外を上に投げない） |
+| `SelectorError` / `NotImplementedError` の送出 | 捕捉して `(False, 理由, [])` に変換します（例外を上に投げません） |
 
 ### `_do_action`（操作の実体）
 
@@ -215,7 +215,7 @@ class RunResult:
 単一ターゲットの run は単数形のフィールドを埋め、`target_devices` を空にします。どちらの読み手にも、
 従来どおりの値が見えます。
 
-`expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / Hyper Text Markup Language (HTML) になります（[reporting](reporting.md)）。
+`expect` は全ステップ成功後にのみ評価されます。`alert_guard` があれば expect も 1 回だけ再評価します。これらはそのまま `report/` の `manifest.json` / JUnit / HTML になります（[reporting](reporting.md)）。
 
 ## runner（実行パイプライン）
 
@@ -273,9 +273,9 @@ erase（pre.subject.reinstall が erase なら shutdown → erase） → boot �
 
 | 関数 | 役割 |
 |---|---|
-| `device_pool(udids, backends, ...)` | actuator を選び、`(lease, shutdown)` の組を返す。`lease(eff, scenario)` は空いているデバイスをリースし、シナリオごとに `launch_driver` する |
-| `run_all(eff, scenarios, lease, ...)` | 各シナリオを **新しくリースした、新しいドライバで** 実行する（クリーン分離） |
-| `run_and_report(...)` | `run_all` の結果を `write_report(runs_dir/run_id, ...)` で書き出し、`(results, manifest_path)` を返す |
+| `device_pool(udids, backends, ...)` | actuator を選び、`(lease, shutdown)` の組を返します。`lease(eff, scenario)` は空いているデバイスをリースし、シナリオごとに `launch_driver` します |
+| `run_all(eff, scenarios, lease, ...)` | 各シナリオを **新しくリースした、新しいドライバで** 実行します（クリーン分離） |
+| `run_and_report(...)` | `run_all` の結果を `write_report(runs_dir/run_id, ...)` で書き出し、`(results, manifest_path)` を返します |
 
 Command Line Interface (CLI) の `run` はこの `run_and_report` を呼びます（[cli](cli.md#run)）。
 
@@ -359,9 +359,9 @@ Command Line Interface (CLI) の `run` はこの `run_and_report` を呼びま�
 >
 > | スキップする場合 | 内容 |
 > |---|---|
-> | マージ後の reinstall が `overwrite` | シナリオの値（なければターゲットの値）が `overwrite` で、アプリのデータをリースをまたいで残す |
-> | 経路が `erase` の precondition をそもそも受け付けない | 実機（`runsOn.ios.kind: device`）や、`appium` グリッドへの live 経路 |
-> | 明示的な `bajutsu run --no-erase` | CLI はこのフラグを `force_erase_on_retry` として run に渡すため、オペレーターの明示的な選択は強制再試行を止められる |
+> | マージ後の reinstall が `overwrite` | シナリオの値（なければターゲットの値）が `overwrite` で、アプリのデータをリースをまたいで残します |
+> | `erase` の precondition をそもそも受け付けない経路 | 実機（`runsOn.ios.kind: device`）や、`appium` グリッドへの live 経路 |
+> | 明示的な `bajutsu run --no-erase` | CLI はこのフラグを `force_erase_on_retry` として run に渡すため、オペレーターの明示的な選択は強制再試行を止められます |
 >
 > 組み込みの既定であるマージ後の `clean` は、強制 erase をスキップしません。`clean` もアプリのデータを
 > 消すので、その値を見るガードでは、強制 erase がまさに対象としている実運用の経路そのもので強制再試行を
@@ -414,8 +414,8 @@ Command Line Interface (CLI) の `run` はこの `run_and_report` を呼びま�
 >
 > | 条件 | 理由 |
 > |---|---|
-> | udid を固定していない | `--udid` はオペレーターが名指ししたデバイスであり、置き換えれば run が黙ってそのデバイスから離れてしまう。udid を固定しない run はデバイス 1 台をワーカー 1 つで扱うので、置き換えを要求した試行の次のリースは必ず同じデバイスを取り直す |
-> | `subject.path` がある | まっさらなデバイスには入れるアプリが必要である |
+> | udid の固定がないこと | `--udid` はオペレーターが名指ししたデバイスであり、置き換えれば run が黙ってそのデバイスから離れてしまいます。udid を固定しない run はデバイス 1 台をワーカー 1 つで扱うので、置き換えを要求した試行の次のリースは必ず同じデバイスを取り直します |
+> | `subject.path` があること | まっさらなデバイスには入れるアプリが必要です |
 >
 > 置き換えが消すものは erase より多いので、erase の段が尊重する 2 つの離脱指定、
 > `reinstall: overwrite` と `bajutsu run --no-erase` も同じように尊重します。ほかの経路は要求を無視し、
@@ -455,7 +455,7 @@ Command Line Interface (CLI) の `run` はこの `run_and_report` を呼びま�
 > 書かないまま終わらせられてしまいます。
 >
 > シャットダウンは、外側で待っている者がいるかどうかに関わらず有界です。1 回のドライバ呼び出しの内側で
-> 止まっているシナリオは、その呼び出しが返るまでキャンセル要求に気付きません。XCUITest の Hyper Text Transfer Protocol (HTTP)
+> 止まっているシナリオは、その呼び出しが返るまでキャンセル要求に気付きません。XCUITest の HTTP
 > リクエスト、`adb` のサブプロセス、Playwright の呼び出しは、いずれもその長さだけシナリオを保持します。
 > そのため協調的な経路には猶予窓を与えます。猶予窓は `BAJUTSU_CANCEL_GRACE` で決めます。既定は 90 秒で、
 > 一過性リトライに乗る読み取りが保持しうる 60 秒に、その後ろのシャットダウンの尻尾（残るシナリオを
