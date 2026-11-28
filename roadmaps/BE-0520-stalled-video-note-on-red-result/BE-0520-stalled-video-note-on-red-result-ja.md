@@ -9,6 +9,7 @@
 | 提案者 | [@0x0c](https://github.com/0x0c) |
 | 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0520") |
+| 実装 PR | [#2619](https://github.com/bajutsu-e2e/bajutsu/pull/2619) |
 | トピック | Platform support |
 | 関連 | [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md)、[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) |
 <!-- /BE-METADATA -->
@@ -138,7 +139,7 @@ CI で効かせる方法の問いは、開いたままです。レーンを固�
 
 ログを次に記録します。
 
-3 つの単位はまとめて実装しました。
+[#2619](https://github.com/bajutsu-e2e/bajutsu/pull/2619) で、3 つの単位をまとめて実装しました。
 
 注記は新しいフィールド `RunResult.device_notes` に置き、manifest の `schemaVersion` は 20 になります。
 `channel_notes` はドライバの読み取りチャネルを扱う欄なので、流用しませんでした。
