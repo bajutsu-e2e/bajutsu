@@ -30,6 +30,7 @@ def device_control(
     env_run: simctl.RunFn = simctl.real_run,
     *,
     foreground: Callable[[], None] | None = None,
+    set_location: Callable[[float, float], None] | None = None,
 ) -> DeviceControl:
     """A `DeviceControl` bound to one device.
 
@@ -43,13 +44,16 @@ def device_control(
         env_run: The subprocess runner for simctl, injectable for tests.
         foreground: The environment's own `foreground` (BE-0447), which launches the app when it
             is not running; None resumes it with `simctl launch`, as before.
+        set_location: The environment's own `setLocation`, which goes through the XCUITest runner
+            (BE-0475); None sets it with `simctl location set`.
     """
     e = simctl.Env(udid, run=env_run)
     bring_forward = foreground or (lambda: e.foreground(bundle_id))
+    locate = set_location or e.set_location
 
     class _Control:
         def set_location(self, lat: float, lon: float) -> None:
-            e.set_location(lat, lon)
+            locate(lat, lon)
 
         def push(self, payload: dict[str, object]) -> None:
             e.push(bundle_id, payload)

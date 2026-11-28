@@ -214,7 +214,7 @@ def _project(tmp_path: Path, target_yaml: str, scenarios: dict[str, str]) -> tup
 
 
 _TAP = "- name: a\n  steps:\n    - tap: { id: x }\n"
-_LOCATE = "- name: locate\n  steps:\n    - setLocation: { lat: 1, lon: 2 }\n"
+_PUSH = "- name: push\n  steps:\n    - push: { payload: { aps: {} } }\n"
 
 
 def test_fan_out_takes_a_web_target_with_no_app(tmp_path: Path) -> None:
@@ -262,7 +262,7 @@ def test_a_group_job_carries_its_scenarios_route_needs(tmp_path: Path) -> None:
         "    runsOn: {ios: {kind: device}}\n"
         "    subject: {id: com.example.demo, path: app.ipa}\n"
     )
-    scn_dir, cfg = _project(tmp_path, target, {"locate.yaml": _LOCATE, "tap.yaml": _TAP})
+    scn_dir, cfg = _project(tmp_path, target, {"push.yaml": _PUSH, "tap.yaml": _TAP})
     (tmp_path / "app.ipa").write_text("IPA", encoding="utf-8")
     state, executor = _state(tmp_path, cfg, scn_dir)
 
@@ -270,8 +270,8 @@ def test_a_group_job_carries_its_scenarios_route_needs(tmp_path: Path) -> None:
 
     assert status == 200
     caps = {j.intent.scenario: j.capabilities for j in executor.jobs if j.intent is not None}
-    assert "cap:ios-device:deviceControl.setLocation" in caps["scenarios/locate.yaml"]
-    assert "kind:device" in caps["scenarios/locate.yaml"]
+    assert "cap:ios-device:deviceControl.push" in caps["scenarios/push.yaml"]
+    assert "kind:device" in caps["scenarios/push.yaml"]
     assert not [t for t in caps["scenarios/tap.yaml"] if t.startswith("cap:ios-device:device")]
 
 
@@ -297,10 +297,10 @@ def test_fan_out_refuses_a_group_whose_route_no_live_worker_can_run(tmp_path: Pa
         "    runsOn: {ios: {kind: device}}\n"
         "    subject: {id: com.example.demo, path: app.ipa}\n"
     )
-    scn_dir, cfg = _project(tmp_path, target, {"locate.yaml": _LOCATE, "tap.yaml": _TAP})
+    scn_dir, cfg = _project(tmp_path, target, {"push.yaml": _PUSH, "tap.yaml": _TAP})
     (tmp_path / "app.ipa").write_text("IPA", encoding="utf-8")
     state, executor = _state(tmp_path, cfg, scn_dir)
-    # A live worker drives the real-device route, which cannot override the location.
+    # A live worker drives the real-device route, which cannot deliver a push (simctl-backed).
     assert state.repository is not None
     state.repository.register_worker(
         "mac", ["platform:ios", "kind:device", "job:run-intent", *route_tokens("ios-device")]
@@ -309,8 +309,8 @@ def test_fan_out_refuses_a_group_whose_route_no_live_worker_can_run(tmp_path: Pa
     payload, status = start_run_set(state, _DF)
 
     assert status == 400
-    assert "cap:ios-device:deviceControl.setLocation" in payload["missing"]
-    assert "locate.yaml" in payload["error"] and "step 1: setLocation" in payload["error"]
+    assert "cap:ios-device:deviceControl.push" in payload["missing"]
+    assert "push.yaml" in payload["error"] and "step 1: push" in payload["error"]
     assert executor.jobs == []
 
 
@@ -321,7 +321,7 @@ def test_fan_out_reads_the_route_needs_once_per_distinct_scenario_text(
     from bajutsu.serve.operations import dispatch
 
     scn_dir, cfg = _android_batch_project(tmp_path, scenarios=["one.yaml", "two.yaml"])
-    (scn_dir / "three.yaml").write_text(_LOCATE, encoding="utf-8")
+    (scn_dir / "three.yaml").write_text(_PUSH, encoding="utf-8")
     state, _executor = _state(tmp_path, cfg, scn_dir)
     texts: list[str | None] = []
     real = helpers.scenario_route_needs
@@ -335,7 +335,7 @@ def test_fan_out_reads_the_route_needs_once_per_distinct_scenario_text(
     _payload, status = start_run_set(state, _DF)
 
     assert status == 200
-    assert sorted(t or "" for t in texts) == sorted([_LOCATE, _TAP])
+    assert sorted(t or "" for t in texts) == sorted([_PUSH, _TAP])
 
 
 def test_fan_out_rejects_an_unknown_scenario_before_dispatching_any(tmp_path: Path) -> None:

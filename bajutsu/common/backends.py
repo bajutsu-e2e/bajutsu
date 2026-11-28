@@ -310,7 +310,8 @@ def capabilities_for_run(
       disagree. The URL arrives from the `appium` provider's endpoint (BE-0452), which a target's
       `device_provider` carries before any device is acquired, so it is read from there first.
     - **A real device via `runsOn.ios.kind: device`** loses the simctl-backed `DeviceControl`
-      family, the simctl-privacy permission grants, and the simctl interval evidence kinds (simctl
+      family except `setLocation`, which the runner sets (BE-0475), the simctl-privacy permission
+      grants, and the simctl interval evidence kinds (simctl
       cannot reach a physical device), the
       same fail-fast the permission preconditions already get in the XCUITest lifecycle (Unit 1). This
       keys on config (`deviceType`), which a udid spec cannot express, so it stays an `eff` check.
@@ -359,10 +360,13 @@ def capabilities_for_route(route: str) -> frozenset[str]:
         return XcuitestLiveDriver.CAPABILITIES
     if route == "ios-device":
         # simctl cannot reach a physical device, and nothing installs a second build on a real
-        # iPhone, so it cannot share it either.
+        # iPhone, so it cannot share it either. `setLocation` stays: the runner sets it through
+        # `XCUIDevice.location` (BE-0475). Nothing here knows the device's iOS version, so a device
+        # below the iOS 16.4 / Xcode 16.3 floor advertises it and fails the step at run time, as
+        # `openUrl` already does below the same floor.
         return (
             capabilities_for("xcuitest")
-            - base.DEVICE_CONTROL_ALL
+            - (base.DEVICE_CONTROL_ALL - {base.Capability.DC_SET_LOCATION})
             - base.IOS_PERMISSION_CAPABILITIES
             - base.SIMCTL_EVIDENCE_CAPABILITIES
             - {base.Capability.DEVICE_GROUP}

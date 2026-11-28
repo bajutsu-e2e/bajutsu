@@ -73,6 +73,8 @@ final class APIHandlerConcurrencyTests: XCTestCase {
         func leaveApp() -> AppActivationResult { .ok }
         func targetApp(bundleId: String) {}
         func openUrl(_ url: String) -> AppOpenResult { .ok }
+        func setLocation(lat: Double, lon: Double) -> LocationResult { .ok }
+        func clearLocation() -> LocationResult { .ok }
         func appState() -> AppRunState { .runningForeground }
     }
 

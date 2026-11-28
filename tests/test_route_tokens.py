@@ -94,7 +94,9 @@ def test_a_token_names_its_route() -> None:
 def test_each_route_advertises_its_own_capabilities_and_settings() -> None:
     sim, device = route_tokens("ios-simulator"), route_tokens("ios-device")
     assert cap_token("ios-simulator", "deviceControl.setLocation") in sim
-    assert cap_token("ios-device", "deviceControl.setLocation") not in device
+    # The runner sets the location on a real device too (BE-0475); push still needs simctl.
+    assert cap_token("ios-device", "deviceControl.setLocation") in device
+    assert cap_token("ios-device", "deviceControl.push") not in device
     assert setting_token("ios-simulator", "erase") in sim
     assert setting_token("ios-device", "erase") not in device
     # A web run's fresh context satisfies `erase`, so the web route advertises it.
@@ -198,15 +200,13 @@ def test_a_job_no_live_worker_drives_the_route_of_stays_queued() -> None:
 
 
 def test_a_job_is_refused_when_its_route_s_drivers_all_lack_a_token() -> None:
-    required = ["platform:ios", cap_token("ios-device", "deviceControl.setLocation")]
+    required = ["platform:ios", cap_token("ios-device", "deviceControl.push")]
     device = {"platform:ios", *route_tokens("ios-device")}
-    assert route_refusal(required, [device]) == [
-        cap_token("ios-device", "deviceControl.setLocation")
-    ]
+    assert route_refusal(required, [device]) == [cap_token("ios-device", "deviceControl.push")]
 
 
 def test_a_legacy_worker_that_can_serve_the_job_keeps_it_from_refusal() -> None:
-    required = ["platform:ios", cap_token("ios-device", "deviceControl.setLocation")]
+    required = ["platform:ios", cap_token("ios-device", "deviceControl.push")]
     device = {"platform:ios", *route_tokens("ios-device")}
     assert route_refusal(required, [device, {"platform:ios"}]) is None
 

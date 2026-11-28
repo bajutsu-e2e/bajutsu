@@ -34,6 +34,7 @@ from ._shared import _OK, _TIPKIT_DISMISS_REGION, TransportFn, UrlSchemeSource
 from .paste_menu import COPY_MENU_LABELS, PASTE_MENU_LABELS, SELECT_ALL_MENU_LABELS
 from .runner_target import RunnerTarget
 from .xcuitest_channel_error import XcuitestChannelError
+from .xcuitest_route_missing_error import XcuitestRouteMissingError
 
 # Every status `/systemAlert/resolve` answers with (BE-0461 Unit 3).
 _RESOLVE_STATUSES = frozenset({"answered", "changed", "absent", "unidentified", "pending"})
@@ -100,7 +101,8 @@ class XcuitestDriver:
     # lifecycle, which wires a real simctl-backed `DeviceControl` for its runs too (BE-0128;
     # per-operation tokens since BE-0212). This is the *static* set; `backends.capabilities_for_run`
     # narrows it at run time in two directions: a real device (`deviceType: device`) drops the
-    # simctl-backed capabilities, since simctl reaches only the Simulator (BE-0238), while
+    # simctl-backed capabilities, since simctl reaches only the Simulator (BE-0238) — all but
+    # `setLocation`, which this runner's `/location` route sets on any device (BE-0475) — while
     # SELECT_PHOTOS is dropped the other way — present here, removed on an Apple Silicon Simulator
     # specifically. A class constant so the preflight (BE-0082) reads it via backends.capabilities_for
     # without constructing a driver.
@@ -1161,6 +1163,46 @@ class XcuitestDriver:
         if reply.status == _UNSUPPORTED:
             raise base.UnsupportedAction("openUrl needs iOS 16.4 or later on the device")
         raise XcuitestChannelError(f"runner error opening a URL (status={reply.status})")
+
+    def set_location(self, lat: float, lon: float) -> None:
+        """Simulate the device's location through the runner's `XCUIDevice.location` (BE-0475).
+
+        Reaches a Simulator and a real device alike. On a Simulator the value is device-wide and
+        outlives the runner, like `simctl location set`, so the environment clears it per lease.
+
+        Raises:
+            UnsupportedAction: The device or the runner's toolchain predates `XCUIDevice.location`.
+            XcuitestChannelError: Any other reply: the assignment raised in the runner, or the
+                runner build predates the route (`XcuitestRouteMissingError`).
+        """
+        self._location("POST", {"lat": lat, "lon": lon})
+
+    def clear_location(self) -> None:
+        """Stop simulating the device's location, the environment's lease-start reset (BE-0475).
+
+        Raises:
+            UnsupportedAction: The device or the runner's toolchain predates `XCUIDevice.location`.
+            XcuitestChannelError: Any other reply: the assignment raised in the runner, or the
+                runner build predates the route (`XcuitestRouteMissingError`).
+        """
+        self._location("DELETE", None)
+
+    def _location(self, method: str, body: Mapping[str, Any] | None) -> None:
+        reply = self._transport(method, "/location", body)
+        if reply.status == _OK:
+            return
+        if reply.status == _UNSUPPORTED:
+            raise base.UnsupportedAction(
+                "setLocation needs iOS 16.4 or later on the device and a runner built with "
+                "Xcode 16.3 or later"
+            )
+        verb = "setting" if method == "POST" else "clearing"
+        if reply.status == "error" and reply.raw and b"unknown endpoint" in reply.raw:
+            raise XcuitestRouteMissingError(
+                f"runner error {verb} the location: the runner predates the /location route; "
+                "rebuild the runner (make runner-build)"
+            )
+        raise XcuitestChannelError(f"runner error {verb} the location (status={reply.status})")
 
     def _require_declared_scheme(self, url: str) -> None:
         # `http` and `https` reach an app through its associated domains, which no `Info.plist`

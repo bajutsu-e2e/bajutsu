@@ -540,12 +540,13 @@ def _ios_eff(
 
 
 def test_capabilities_for_run_drops_simctl_backed_caps_on_a_real_ios_device() -> None:
-    # A real device is not managed through simctl, so the whole simctl-backed DeviceControl family
-    # and the simctl-privacy permission grants do not apply (BE-0238 Unit 3): preflight must not
-    # advertise them, or a scenario needing one fails late with a simctl error instead of up front.
+    # A real device is not managed through simctl, so the simctl-backed DeviceControl family and the
+    # simctl-privacy permission grants do not apply (BE-0238 Unit 3): preflight must not advertise
+    # them, or a scenario needing one fails late with a simctl error instead of up front. setLocation
+    # alone stays, since the runner sets it through `XCUIDevice.location` (BE-0475).
     eff = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
     caps = capabilities_for_run("xcuitest", eff)
-    assert base.DEVICE_CONTROL_ALL.isdisjoint(caps)
+    assert caps & base.DEVICE_CONTROL_ALL == {base.Capability.DC_SET_LOCATION}
     assert base.IOS_PERMISSION_CAPABILITIES.isdisjoint(caps)
     # simctl records no video, device log, or app trace off a real device either (BE-0467).
     assert base.SIMCTL_EVIDENCE_CAPABILITIES.isdisjoint(caps)
@@ -595,17 +596,25 @@ def test_capabilities_for_run_is_a_noop_for_non_xcuitest_backends() -> None:
 
 
 def test_real_device_narrowing_makes_a_device_control_scenario_unsupported() -> None:
-    # End-to-end with the preflight (BE-0082): a setLocation scenario runs on the Simulator but is
-    # skipped up front on a real device, where simctl device control does not apply (BE-0238 Unit 3).
+    # End-to-end with the preflight (BE-0082): a push scenario runs on the Simulator but is skipped
+    # up front on a real device, where simctl device control does not apply (BE-0238 Unit 3), while
+    # a setLocation scenario now runs on both through the runner (BE-0475).
     from bajutsu.common.capability import capability_preflight
 
-    scenario = Scenario.model_validate(
+    push = Scenario.model_validate({"name": "push", "steps": [{"push": {"payload": {"aps": {}}}}]})
+    loc = Scenario.model_validate(
         {"name": "loc", "steps": [{"setLocation": {"lat": 1.0, "lon": 2.0}}]}
     )
     sim = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="simulator"))
     dev = _ios_eff(xcuitest=XcuitestConfig(testRunner="Runner.xctestrun", deviceType="device"))
-    assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", sim)) == []
-    assert capability_preflight.unsupported(scenario, capabilities_for_run("xcuitest", dev))
+    sim_caps, dev_caps = (
+        capabilities_for_run("xcuitest", sim),
+        capabilities_for_run("xcuitest", dev),
+    )
+    assert capability_preflight.unsupported(push, sim_caps) == []
+    assert capability_preflight.unsupported(push, dev_caps)
+    assert capability_preflight.unsupported(loc, sim_caps) == []
+    assert capability_preflight.unsupported(loc, dev_caps) == []
 
 
 # --- BE-0238 Slice C: the live WebDriver route narrows to what that transport actually drives -------

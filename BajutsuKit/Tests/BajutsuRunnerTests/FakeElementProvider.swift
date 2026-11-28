@@ -65,6 +65,10 @@ final class FakeElementProvider: ElementProviding {
     // What `openUrl` reports, and the URLs it was called with (BE-0487).
     var openUrlResult: AppOpenResult = .ok
     var openUrlCalls: [String] = []
+    // What the location routes report, and the coordinates `setLocation` was called with; a
+    // `clearLocation` call records nil (BE-0475).
+    var locationResult: LocationResult = .ok
+    var locationCalls: [[Double]?] = []
 
     func queryElements() -> [ElementSnapshot] {
         beforeQueryElements?()
@@ -169,6 +173,16 @@ final class FakeElementProvider: ElementProviding {
     func openUrl(_ url: String) -> AppOpenResult {
         openUrlCalls.append(url)
         return openUrlResult
+    }
+
+    func setLocation(lat: Double, lon: Double) -> LocationResult {
+        locationCalls.append([lat, lon])
+        return locationResult
+    }
+
+    func clearLocation() -> LocationResult {
+        locationCalls.append(nil)
+        return locationResult
     }
 
     func appState() -> AppRunState { appRunState }

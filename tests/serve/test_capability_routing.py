@@ -347,7 +347,7 @@ def _run_project(tmp_path: Path, scenario: str) -> srv.ServeState:
     )
 
 
-_LOCATE = "- name: locate\n  steps:\n    - setLocation: { lat: 1, lon: 2 }\n"
+_PUSH = "- name: push\n  steps:\n    - push: { payload: { aps: {} } }\n"
 
 
 def test_start_run_refuses_a_job_no_live_worker_on_its_route_can_run(
@@ -356,21 +356,21 @@ def test_start_run_refuses_a_job_no_live_worker_on_its_route_can_run(
     from bajutsu.common.capability.route_tokens import route_tokens
 
     repo = _repo(serve_engine)
-    state = _run_project(tmp_path, _LOCATE)
+    state = _run_project(tmp_path, _PUSH)
     state.executor, state.repository = DbQueueExecutor(repo), repo
-    # A live worker drives the real-device route, which cannot override the location.
+    # A live worker drives the real-device route, which cannot deliver a push (simctl-backed).
     repo.register_worker("mac", ["platform:ios", "host:darwin", *route_tokens("ios-device")])
     payload, code = ops.start_run(state, {"scenario": "s.yaml", "target": "phone"})
     assert code == 400
-    assert payload["missing"] == ["cap:ios-device:deviceControl.setLocation"]
-    assert "step 1: setLocation" in payload["error"]
+    assert payload["missing"] == ["cap:ios-device:deviceControl.push"]
+    assert "step 1: push" in payload["error"]
 
 
 def test_start_run_queues_a_job_while_no_worker_drives_its_route(
     serve_engine: Callable[..., Engine], tmp_path: Path
 ) -> None:
     repo = _repo(serve_engine)
-    state = _run_project(tmp_path, _LOCATE)
+    state = _run_project(tmp_path, _PUSH)
     state.executor, state.repository = DbQueueExecutor(repo), repo
     _, code = ops.start_run(state, {"scenario": "s.yaml", "target": "phone"})
     assert code == 200

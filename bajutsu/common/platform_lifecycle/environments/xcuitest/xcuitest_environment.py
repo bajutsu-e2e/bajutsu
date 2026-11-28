@@ -24,6 +24,7 @@ from bajutsu.common.config.preconditions import ResolvedPreconditions
 from bajutsu.common.devices import os as device_os
 from bajutsu.common.devices.os import DeviceOS
 from bajutsu.common.drivers import base
+from bajutsu.common.drivers.xcuitest.xcuitest_route_missing_error import XcuitestRouteMissingError
 from bajutsu.common.drivers.zorder import ZOrderResponder, ZOrderSource
 from bajutsu.common.orchestrator import DeviceControl, RelaunchFn
 from bajutsu.common.platform_lifecycle import readiness
@@ -316,6 +317,8 @@ class XcuitestEnvironment(_DeviceEnvironment):
                 record_video_dir=record_video_dir,
                 permissions=permissions,
             )
+            if self._is_real_device and not self._attach:
+                self._reset_device_location(driver)
         except BaseException:
             # No driver comes back, so no teardown will close the lease's `nativeZ` bridge, which
             # `_start` opens before any precondition can refuse the lease.
@@ -1185,6 +1188,11 @@ class XcuitestEnvironment(_DeviceEnvironment):
             # start from a known state under `overwrite` names every service it cares about here.
             if permissions:
                 e.apply_permissions(ios.bundle_id, permissions)
+            # A simulated location outlives the runner, so without this a scenario would start at
+            # one an earlier scenario set (BE-0475). Cleared before the app launches, so a launch-time
+            # location request never sees it either; the runner's `XCUIDevice.location` writes the
+            # same device-wide value, so this one call clears both routes (the BE-0475 Unit 1 spike).
+            e.clear_location()
         except subprocess.CalledProcessError as exc:
             raise simctl.device_error(exc) from exc
 
@@ -1682,7 +1690,57 @@ class XcuitestEnvironment(_DeviceEnvironment):
             require_ios(eff).bundle_id,
             self._run,
             foreground=lambda: self._foreground(eff),
+            set_location=self._set_location,
         )
+
+    def _set_location(self, lat: float, lon: float) -> None:
+        """`setLocation` through the runner's `XCUIDevice.location`, on any device (BE-0475).
+
+        The location is device-wide, so the lease's own driver serves every group member: they share
+        its runner. Read at call time, since `controller(eff)` is built before a lease has a driver.
+        A Simulator whose runtime or runner predates the property, or whose runner build predates
+        the route, falls back to `simctl location set`, as before the runner route existed. A real
+        device has no such fallback, so the driver's error, which names the iOS / Xcode floor or
+        the rebuild, fails the step.
+        """
+        set_via_runner = _runner_set_location(self._lease_driver)
+        if set_via_runner is not None:
+            try:
+                set_via_runner(lat, lon)
+            except (base.UnsupportedAction, XcuitestRouteMissingError) as exc:
+                if self._is_real_device:
+                    raise
+                _logger.debug("setLocation falls back to simctl: %s", exc)
+            else:
+                return
+        elif self._is_real_device:
+            raise base.UnsupportedAction("setLocation on a real device needs the XCUITest runner")
+        try:
+            simctl.Env(self._udid, run=self._run).set_location(lat, lon)
+        except subprocess.CalledProcessError as exc:
+            raise simctl.device_error(exc) from exc
+
+    def _reset_device_location(self, driver: base.Driver) -> None:
+        """Clear a real device's simulated location when its lease starts (BE-0475).
+
+        A Simulator clears it in `_prepare_simulator`, before the app launches. A real device has no
+        simctl, so the runner's `DELETE /location` clears it here, after the runner has launched the
+        app; whether a real device keeps the value past the previous runner at all is the open half
+        of the Unit 1 spike. A runner that cannot reset never set a location either. Any other reply
+        discards the runner and fails the lease: a runner build that predates the route fails every
+        lease until it is rebuilt, which its message says.
+        """
+        clear_via_runner = _runner_clear_location(driver)
+        if clear_via_runner is None:
+            return
+        try:
+            clear_via_runner()
+        except base.UnsupportedAction:
+            return
+        except BaseException:
+            # No driver reaches the caller, so no teardown would stop this runner.
+            self._discard_runner(warn_on_crash=False)
+            raise
 
     def _foreground(self, eff: Effective) -> None:
         """Bring *eff*'s app to the front, launching it the way `relaunch` would if it is not running.
@@ -2095,6 +2153,18 @@ def _retarget(driver: base.Driver, bundle_id: str) -> None:
     retarget = getattr(driver, "retarget", None)
     if callable(retarget):
         retarget(bundle_id)
+
+
+def _runner_set_location(driver: base.Driver | None) -> Callable[[float, float], None] | None:
+    """*driver*'s runner `setLocation`, or None where it has none (a non-XCUITest fake, BE-0475)."""
+    call = getattr(driver, "set_location", None)
+    return cast("Callable[[float, float], None]", call) if callable(call) else None
+
+
+def _runner_clear_location(driver: base.Driver | None) -> Callable[[], None] | None:
+    """*driver*'s runner location reset, or None where it has none (a non-XCUITest fake, BE-0475)."""
+    call = getattr(driver, "clear_location", None)
+    return cast("Callable[[], None]", call) if callable(call) else None
 
 
 def _app_state(driver: base.Driver) -> str:
