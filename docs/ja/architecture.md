@@ -760,16 +760,16 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - **ビジュアルリグレッション**：baseline に対する `visual`。`approve` コマンドで baseline を昇格します。
   - `capturePolicy` 発火。
   - 書き出し前の、ログ、要素ツリー、ネットワーク exchange への **redaction 適用**。
-- **アプリ内制御チャネル**（BE-0365、iOS）は、起動時の launch env だけでは一度しか届かない BajutsuKit の
-  in-app capability を、シナリオの途中で切り替えられるようにします。run ループがコマンドを collector に
-  積み、アプリはおよそ 0.15 秒ごとに `GET /commands` をポーリングしてコマンドを適用し、
+- **アプリ内制御チャネル**（BE-0365、iOS）は、BajutsuKit の in-app capability をシナリオの途中で
+  切り替えられるようにします。起動時の launch env が値をアプリに届けるのは、一度だけです。run ループが
+  コマンドを collector に積み、アプリはおよそ 0.15 秒ごとに `GET /commands` をポーリングしてコマンドを適用し、
   `/commands/ack` で確認応答します。run ループはその確認応答を条件として待ち、上限は 5 秒です。
   つまりコマンドは実際に効いたことが確認されて初めて先へ進み、効かなければそのステップは失敗します。
   固定の待機はありません。このチャネルには、ネットワーク収集を有効にした `xcuitest` actuator が必要で、
   `-DBAJUTSU_ENABLE_CONTROL_CHANNEL` コンパイルフラグと `BAJUTSU_CONTROL_CHANNEL=1` の launch env の
   両方が揃わない限り閉じたままです。運ぶコマンドは `touch_visualization` と `stub_table` の 2 つだけで、
   これを読んでアサーションが判定することはありません。詳細は
-  [`network.md#the-in-app-control-channel`](../network.md#the-in-app-control-channel) を参照してください。
+  [`network.md#アプリ内制御チャネル`](network.md#アプリ内制御チャネル) を参照してください。
 - `bajutsu run --touch-markers`（BE-0371、iOS 限定、`BajutsuKit` をリンクするアプリが必要）は、アプリの `UIEvent` キューが実際に配送した各タッチを、マーカーとして描画します。
   - マーカーは、ジェスチャが実際に届いた証跡です。録画と各ステップのスクリーンショットへ描画します。
   - 既定では無効で、リポジトリ自身の iOS CI レーンでは有効です。
@@ -866,12 +866,13 @@ iOS 側の対になるジョブ `pool (xcuitest)` は、Simulator を 2 台起�
   - このルートには editor ロールが必要です。上記の org 単位の API キーの許可リストに載っている唯一のルートです。マシンセッションの許可リストには載っていません。
   - サインイン済みのセッションか `editor` の API キーで呼び出せます。キーで取り込んだ run は、キーの org に記録します。OAuth のないサーバーは共有トークンも受け付けます。`scripts/upload_run.py` は、そのどちらかをキーとして送ります。
 - **run のアドレスをプルリクエスト、Issue、リリースへ投稿する**（BE-0508）。独立したスクリプト
-  `scripts/post_run_url.py` は、`scripts/upload_run.py` が取り込んだ run へのリンクとともに、判定と件数、
-  失敗した各シナリオの最初に失敗したステップとその理由を載せた、sticky なコメントを書きます（初回は作成し、
-  再実行すると書き換えます）。リリースが対象のときは、同じ内容をリリースノートの区切りブロックとして
-  書きます。スクリプトは何もアップロードせず、`bajutsu` から何もインポートしません。`--url`/`--archive-url`
-  がこの run を指しているかを確認し、どちらにも認証情報を紛れ込ませられないようにし、書き込みの前には
-  必ず計画を表示して確認を求めます（`--dry-run`/`--yes`）。
+  `scripts/post_run_url.py` は、sticky なコメントを書きます（初回は作成し、再実行すると書き換えます）。
+  コメントには判定と件数、失敗した各シナリオで最初に失敗したステップとその理由、`scripts/upload_run.py` が
+  取り込んだ run へのリンクを載せます。並べる失敗は `--max-failures`（デフォルトは 10 件）までで、GitHub の
+  文字数上限に収まらない分はさらに省きます。リリースが対象のときは、同じ内容をリリースノートの区切り
+  ブロックとして書きます。スクリプトは何もアップロードせず、`bajutsu` から何もインポートしません。`--url`
+  がこの run を指しているかを確認し、`--url` と `--archive-url` のどちらについても認証情報を含む値を
+  拒否します。書き込みの前には、必ず計画を表示して確認を求めます（`--dry-run`/`--yes`）。
 - **有効な config の binding とは独立した、job 単位のアーティファクト差し替え**（[BE-0431](../../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override-ja.md)）。ホスト型デプロイでは、`POST /api/run` が `binaryArtifact` と `scenariosArtifact` を受け付けます。どちらも、保存済みのアーティファクトの sha256 です（BE-0268）。
   - 指定した方の脚は、そのアーティファクトだけを解決先とします。binary はその job 自身の target の `subject.path` に配置し、`scenarios` の zip はその target の scenarios ディレクトリを置き換えます。
   - 指定しなかった脚は、従来どおり org の有効な config の binding を解決先とするため、そちらは変更されません。この結果、1 つのデプロイに対する 2 つの同時 CI ディスパッチが、デプロイのフォールバック binding を奪い合ったり、org の記憶済み設定を書き換えたりすることがなくなります。

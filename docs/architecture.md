@@ -879,11 +879,13 @@ Each red run spent about half an hour of a runner billed at 10x. BE-0361 measure
   - A signed-in user or an `editor` API key can call it, and a key imports into its own organization. A server without OAuth also accepts the shared token. `scripts/upload_run.py` sends either one as its key.
 - **Posting a run's address to a pull request, an issue, or a release** (BE-0508). The standalone
   `scripts/post_run_url.py` writes a sticky comment (created once, then edited on a rerun) that gives
-  the verdict and counts, names each failing scenario with its first failing step and reason, and
-  links the run that `scripts/upload_run.py` imported. For a release it writes the same text as a
+  the verdict and counts, names each failing scenario with its first failing step and reason (up to
+  `--max-failures`, 10 by default, and fewer when the body would pass GitHub's size limit),
+  and links the run that `scripts/upload_run.py` imported. For a release it writes the same text as a
   delimited block in the release notes instead. The script uploads nothing and imports nothing from
-  `bajutsu`; it checks `--url`/`--archive-url` against the target run and refuses credentials pasted
-  into either, and it prints a plan and asks for confirmation before any write (`--dry-run`/`--yes`).
+  `bajutsu`; it checks that `--url` addresses this very run, refuses a credential pasted into either
+  `--url` or `--archive-url`, and prints a plan and asks for confirmation before any write
+  (`--dry-run`/`--yes`).
 - **Per-job artifact overrides, independent of the active config binding** ([BE-0431](../roadmaps/BE-0431-job-scoped-artifact-override/BE-0431-job-scoped-artifact-override.md)): on a hosted deployment, `POST /api/run` accepts `binaryArtifact` and `scenariosArtifact`, each the sha256 of an already-stored artifact (BE-0268).
   - A named leg resolves against that artifact alone: the binary placed at the job's own target `subject.path`, or a `scenarios` zip replacing that target's scenarios directory.
   - An unnamed leg keeps resolving through the org's active config binding, untouched. Two concurrent CI dispatches against one deployment thus no longer contend for the deployment's fallback binding or write the org's remembered configuration.
