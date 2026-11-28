@@ -7,8 +7,9 @@
 |---|---|
 | Proposal | [BE-0520](BE-0520-stalled-video-note-on-red-result.md) |
 | Author | [@0x0c](https://github.com/0x0c) |
-| Status | **Approved** |
+| Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0520") |
+| Implementing PR | [#2619](https://github.com/bajutsu-e2e/bajutsu/pull/2619) |
 | Topic | Platform support |
 | Related | [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
 <!-- /BE-METADATA -->
@@ -164,9 +165,19 @@ The units of work below are Mutually Exclusive and Collectively Exhaustive (MECE
 > *Detailed design* (one box per unit of work); the log records what changed and when
 > (oldest first), linking the PRs.
 
-- [ ] Unit 1 — the note on a red result, through the manifest and the report
-- [ ] Unit 2 — tests, including the verdict-neutrality regression
-- [ ] Unit 3 — docs (`run-loop.md` and its `ja` mirror)
+- [x] Unit 1 — the note on a red result, through the manifest and the report
+- [x] Unit 2 — tests, including the verdict-neutrality regression
+- [x] Unit 3 — docs (`run-loop.md` and its `ja` mirror)
+
+Log:
+
+- [#2619](https://github.com/bajutsu-e2e/bajutsu/pull/2619): all three units landed together.
+  - The note lives in a new field, `RunResult.device_notes` (manifest `schemaVersion` 20). We did
+    not reuse `channel_notes`, because that list describes the driver's read channel.
+  - The report shows the note under the first step that did not pass. Without a red step row, the
+    note appears above the step table.
+  - The note does not point at BE-0361's stall capture. The cap per reason means the capture can be
+    missing, so a pointer could name an absent file.
 
 ## References
 

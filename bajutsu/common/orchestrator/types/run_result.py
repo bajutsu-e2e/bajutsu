@@ -90,6 +90,9 @@ class RunResult:
     # Why the read channel was degraded when the scenario ended, empty when it was healthy, so a run
     # that passed on the fallback path can be told from one that did not (Android only today).
     channel_degraded: str = ""
+    # What the run observed about the device under a result that did not pass, such as a video that
+    # never confirmed it started (BE-0520). Evidence only: the verdict never reads it.
+    device_notes: list[str] = field(default_factory=list)
     # Evidence kinds the run couldn't supply (no eligible backend) — disclosed, not silent (BE-0020).
     skipped_captures: list[SkippedCapture] = field(default_factory=list)
     # Settings a target's route could not apply and the target declared ignored (BE-0467), so the

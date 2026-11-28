@@ -123,7 +123,10 @@ def _run_backend(results: list[RunResult]) -> str:
 # `hashKind` / `version` / `buildNumber`) and `appSource` (`commit` / `uncommitted`) — and
 # `provenance.toolSource` records Bajutsu's own commit. An unreadable value is null, named under a
 # sibling `unavailable` mapping (BE-0506).
-SCHEMA_VERSION = 19
+# v20 (BE-0520): a scenario carries "device_notes" — what the run observed about the device under a
+# result that did not pass, e.g. a video recording that never confirmed it started. Evidence only.
+# Absent on an older run, which a reader treats as nothing observed.
+SCHEMA_VERSION = 20
 
 # How the run matrix heads the column of a run no condition formed: a scenario without conditions,
 # run in an invocation where other scenarios' conditions formed runs.

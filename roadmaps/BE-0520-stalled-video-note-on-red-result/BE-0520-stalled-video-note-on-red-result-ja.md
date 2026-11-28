@@ -7,8 +7,9 @@
 |---|---|
 | 提案 | [BE-0520](BE-0520-stalled-video-note-on-red-result-ja.md) |
 | 提案者 | [@0x0c](https://github.com/0x0c) |
-| 状態 | **承認済み** |
+| 状態 | **実装済み** |
 | トラッキング Issue | [検索](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0520") |
+| 実装 PR | [#2619](https://github.com/bajutsu-e2e/bajutsu/pull/2619) |
 | トピック | Platform support |
 | 関連 | [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure-ja.md)、[BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement-ja.md)、[BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery-ja.md)、[BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery-ja.md) |
 <!-- /BE-METADATA -->
@@ -132,9 +133,22 @@ CI で効かせる方法の問いは、開いたままです。レーンを固�
 > 作業分解(作業の単位ごとに 1 つ)に対応し、ログには変更内容と時期(古い順)を PR へのリンクと
 > ともに記録します。
 
-- [ ] Unit 1 — 赤い結果への注記と、マニフェストおよびレポートへの反映
-- [ ] Unit 2 — テスト(判定への中立性の回帰テストを含む)
-- [ ] Unit 3 — ドキュメント(`run-loop.md` とその `ja` 側)
+- [x] Unit 1 — 赤い結果への注記と、マニフェストおよびレポートへの反映
+- [x] Unit 2 — テスト(判定への中立性の回帰テストを含む)
+- [x] Unit 3 — ドキュメント(`run-loop.md` とその `ja` 側)
+
+ログを次に記録します。
+
+[#2619](https://github.com/bajutsu-e2e/bajutsu/pull/2619) で、3 つの単位をまとめて実装しました。
+
+注記は新しいフィールド `RunResult.device_notes` に置き、manifest の `schemaVersion` は 20 になります。
+`channel_notes` はドライバの読み取りチャネルを扱う欄なので、流用しませんでした。
+
+レポートは、最初に成功しなかったステップの下に注記を表示します。赤いステップの行がない場合は、
+ステップの表の上に表示します。
+
+注記から BE-0361 の停止キャプチャへの案内は付けません。理由ごとの回数の上限により、キャプチャは
+残らないことがあります。案内を付けると、存在しないファイルを指しかねないからです。
 
 ## 参考
 

@@ -28,6 +28,7 @@ from bajutsu.common.orchestrator import (
 from bajutsu.common.orchestrator.types._functions import _MAX_SLUG_CHARS
 from bajutsu.common.report.format import video_seconds
 from bajutsu.common.runner import Lease, run_all, run_and_report, run_matrix_and_report
+from bajutsu.common.runner.pipeline import STALLED_VIDEO_NOTE
 from bajutsu.common.runner.types import TargetPool
 from bajutsu.common.scenario import Scenario
 
@@ -2996,3 +2997,43 @@ def test_a_routed_android_target_fails_a_status_bar_value_it_cannot_show() -> No
     assert not results[0].ok
     assert "(target 'phone')" in (results[0].failure or "")
     assert "must be H:MM or HH:MM" in (results[0].failure or "")
+
+
+# BE-0520: a stalled video start is recorded on a result that did not pass, as evidence only.
+def _stall_run(*, ok: bool, stalled: bool, crash: bool = False) -> RunResult:
+    def lease(eff: Effective, scenario: Scenario) -> Lease:
+        return Lease(
+            driver=_crashing_driver() if crash else _fake_driver(),
+            sink=NullSink(),
+            relaunch=None,
+            control=None,
+            collector=None,
+            release=lambda: None,
+            video_start_stalled=lambda: stalled,
+        )
+
+    step = {"tap": {"id": "ok" if ok else "missing"}}
+    scenarios = [Scenario.model_validate({"name": "a", "steps": [step]})]
+    return run_all(_ios_eff(), scenarios, lease, actuator="xcuitest", crash_retries=1)[0]
+
+
+@pytest.mark.parametrize("crash", [False, True], ids=["red-step", "retries-exhausted"])
+def test_a_red_result_whose_video_start_stalled_carries_the_note(crash: bool) -> None:
+    result = _stall_run(ok=False, stalled=True, crash=crash)
+    assert not result.ok
+    assert result.device_notes == [STALLED_VIDEO_NOTE]
+
+
+@pytest.mark.parametrize(("ok", "stalled"), [(True, True), (False, False)])
+def test_no_note_without_both_a_red_result_and_a_stall(ok: bool, stalled: bool) -> None:
+    result = _stall_run(ok=ok, stalled=stalled)
+    assert result.ok is ok
+    assert result.device_notes == []
+
+
+@pytest.mark.parametrize("crash", [False, True], ids=["red-step", "retries-exhausted"])
+def test_the_stall_note_leaves_the_verdict_byte_identical(crash: bool) -> None:
+    with_note = _stall_run(ok=False, stalled=True, crash=crash)
+    without = _stall_run(ok=False, stalled=False, crash=crash)
+    assert with_note.device_notes and not without.device_notes
+    assert (with_note.ok, with_note.failure) == (without.ok, without.failure)

@@ -22,17 +22,19 @@ Related: [scenarios](scenarios.md) · [selectors](selectors.md) · [evidence](ev
 def run_scenario(driver, scenario, clock=None, sink=None, alert_guard=None, ...) -> RunResult
 ```
 
-- `driver`: a `base.Driver` (a real driver or `FakeDriver`). The loop depends only on this interface.
+- `driver`: a `base.Driver` (a real driver or `FakeDriver`). The loop depends on this interface alone.
 - `clock`: injected time / sleep (to make waits deterministic in tests). Default `RealClock`
   (`time.monotonic` / `time.sleep`).
 - `sink`: the evidence output target (default `NullSink` = writes nothing) ([evidence](evidence.md)).
-- `alert_guard`: a handler that, on step failure, "cleans up a blocker (a system alert, etc.) and
-  returns the event it dismissed." If it dismissed one, **the step is retried exactly once**
-  ([the alert guard](recording.md#dismissing-system-alerts-automatically)). For a `wait` step
-  (`for`/`settled`/`screenChanged`), the same handler is also armed **mid-wait** (BE-0269). The
-  handler fires against the already-polled screen as soon as the tree looks collapsed. The
-  handler waits out a debounce and a cooldown, and it makes at most two attempts per wait. A blocked
-  wait can recover before its own timeout elapses, independent of the end-of-step retry.
+- `alert_guard`: a handler for a step that did not pass. It "cleans up a blocker (a system alert,
+  etc.) and returns the event it dismissed."
+  - If it dismissed one, **the runner retries the step once, never more**
+    ([the alert guard](recording.md#dismissing-system-alerts-automatically)).
+  - For a `wait` step (`for`/`settled`/`screenChanged`), the same handler is also armed
+    **mid-wait** (BE-0269). The handler runs against the already-polled screen as soon as the tree
+    looks collapsed.
+  - The handler waits out a debounce and a cooldown, and it makes at most two attempts per wait. A
+    blocked wait can recover before its own timeout elapses, independent of the end-of-step retry.
 - `target_runtimes`: one bundle per target the scenario declares, keyed by name. Each bundle holds
   that target's own live driver and everything else bound to its lease. Absent for a scenario
   declaring no targets, which reads the flat arguments above unchanged.
@@ -74,24 +76,25 @@ scenario's declared order, so a reader sees the block as authored.
 ### The lifecycle phases around the step loop
 
 A scenario's `setup` / `cleanup` fields ([scenarios](scenarios.md#setup--cleanup-setup-and-teardown-phases))
-wrap the step loop in two more phases. The same step runner drives both. A hook's steps are
+wrap the step loop in two more phases. The same step runner drives both. Their steps are
 as capable as any other step, and they share the run's `vars.*` bindings:
 
-1. **`setup` runs first.** A failure there sets `failure = "setup: …"` and skips `steps` and
+1. **`setup` runs first.** A miss there sets `failure = "setup: …"` and skips `steps` and
    `expect` entirely, because `setup` is a precondition for the scenario, not a step within it.
-2. **`steps` and `expect` run unchanged**, computing the verdict exactly as they did before.
-3. **`cleanup` runs once a verdict exists**, on every path out of `steps`: the passing one, the
-   failing one, and the cancelled one. Each rule whose `on` matches `always` or that verdict runs, in
-   declaration order. When the run was passing, a failing rule's message becomes the run's `failure`.
-   Otherwise the message goes behind the existing `failure`.
+2. **`steps` and `expect` run unchanged**, computing the verdict as they did before.
+3. **`cleanup` runs once a verdict exists**, on every path out of `steps`. Those paths are the
+   passing one, the failing one, and the cancelled one.
+   - Each rule whose `on` matches `always` or that verdict runs, in declaration order.
+   - When the run was passing, a failing rule's message becomes the run's `failure`. Otherwise the
+     message goes behind the existing `failure`.
 
 A cancelled run cannot bound the `cleanup` phase with the cancel source. That source is a latched
-`threading.Event.is_set`. Its first read inside the phase would raise `RunCancelled` again, and no
+`threading.Event.is_set`. Its first read inside the phase would raise `RunCancelled` again. No
 cleanup step would run at all.
 
 The phase runs under its own deadline instead, a tenth of `grace_seconds()`. It abandons the
-remaining rules once the deadline passes. Cleanup thus gets a bounded chance to run, and the
-shutdown tail stays within the window `serve` waits before an unconditional kill.
+remaining rules once the deadline passes. Cleanup thus gets a bounded chance to run. The
+shutdown tail also fits the window `serve` waits before terminating unconditionally.
 
 Each phase numbers its steps from zero and records them in its own `RunResult` list. The report
 shows the setup and cleanup blocks apart from the scenario's numbered steps.
@@ -104,23 +107,23 @@ still renders its cleanup block.
 
 For each step `i` (in `orchestrator/loop.py`):
 
-1. `kind = _action_of(step)` — determine which action it is.
+1. `kind = _action_of(step)` — determine which action the step is.
 2. `step_id = step.name or f"step{i}"` — the evidence output unit.
 3. (If `capturePolicy` has a `screenChanged` trigger) record the pre-action `query()`.
 4. **Start interval captures** (`video` / `deviceLog` among those that must begin before the
-   action). `_pre_intervals` picks only the triggers determinable from the step itself, because
+   action). `_pre_intervals` picks the triggers determinable from the step itself and no others, because
    `screenChanged` and `error` are too late.
 5. Run the **act** (or wait / assert) via `_run_step_body` → `(ok, reason, assertion_results)`.
-6. On failure, if `alert_guard` cleared a blocker, **retry once**.
+6. If the step did not pass and `alert_guard` cleared a blocker, **retry once**.
 7. **Stop interval captures** (after the step has settled). Record the artifacts.
-8. Take the **instant captures** (`screenshot` / `elements`), as `_collect_captures`'s
-   firing result lists them.
-9. Push a `StepOutcome`. On failure, set `failure` and **break**.
+8. Take the **instant captures** (`screenshot` / `elements`) that `_collect_captures` lists for
+   this step.
+9. Push a `StepOutcome`. If the step did not pass, set `failure` and **break**.
 
 ### `_run_step_body` (act / wait / assert dispatch)
 
 - `wait` → `_wait` (condition wait, below).
-- `assert_` → evaluate `assertions.evaluate(driver.query(), ...)` and AND.
+- `assert_` → call `assertions.evaluate(driver.query(), ...)` and require every result to pass.
 - otherwise (tap/longPress/type/swipe/relaunch) → `_do_action`.
 - catches `SelectorError` / `NotImplementedError` and converts the exception to
   `(False, reason, [])` instead of propagating it.
@@ -138,7 +141,7 @@ For each step `i` (in `orchestrator/loop.py`):
 ## Waits (condition waits only)
 
 `_wait(driver, w, clock) -> (ok, reason)` uses no fixed sleep. It polls `query()` at `_POLL = 0.05s`
-intervals until the condition holds or `timeout` is reached.
+intervals until the condition holds or the `timeout` expires.
 
 The one fixed pause is the separate `sleep` step. `_do_sleep` runs it in quarter-second slices, so a
 cancelled run stops within one slice. The step reads no tree. The determinism audit lists every
@@ -160,34 +163,37 @@ cancelled run stops within one slice. The step reads no tree. The determinism au
 > started." It is read-only and opt-in (an app linking `BajutsuKit`'s observer). A target that
 > doesn't report the signal keeps the tree-diff behavior exactly as before.
 
-## Evidence rule firing
+<a id="evidence-rule-firing"></a>
 
-Decides whether each `capturePolicy` rule fires for this step ([evidence](evidence.md#a-capturepolicy-rule-based)).
+## Evidence rule matching
+
+Decides whether each `capturePolicy` rule applies to this step ([evidence](evidence.md#a-capturepolicy-rule-based)).
 
 - `_rule_fires`: whether the step matches one of `on.action` (+ optional `idMatches`),
   `on.event == screenChanged`, or `on.result == error`. The check first converts the action name to
-  the DSL name (`long_press`→`longPress`, `assert_`→`assert`).
-- `_collect_captures`: leads with `elements`, then gathers three sources and dedupes them. The
-  sources are the inline `step.capture`, the fired rules' captures, and the target's
-  `evidence.capture` baseline. The baseline applies unconditionally, unlike the other two.
+  the Domain Specific Language (DSL) name (`long_press`→`longPress`, `assert_`→`assert`).
+- `_collect_captures`: leads with `elements`, then gathers three sources and dedupes them.
+  - The sources are the inline `step.capture`, the matched rules' captures, and the target's
+    `evidence.capture` baseline. The baseline applies unconditionally, unlike the other two.
   - Leading with `elements` gives every step the post-action tree, whatever the three sources
-    asked for.
-  - The pre-step baseline writes no tree of its own (BE-0407). This read is the step's only one,
+    ask for.
+  - The pre-step baseline writes no tree of its own (BE-0407). This read is the step's sole one,
     into `elements.json`'s single filename.
-- The other half of the pair, `after.png`, is not on this list. `_handle_action` shoots it
-  immediately after the step's action, ahead of every consumer that could otherwise read the tree
-  first: a `screenChanged` comparison, a `for`-wait timeout diagnostic, and `extract`.
+- The other half of the pair, `after.png`, is not on this list. `_handle_action` takes that
+  screenshot right after the step's action.
+  - The shot comes ahead of every consumer that could otherwise read the tree first: a
+    `screenChanged` comparison, a `for`-wait timeout diagnostic, and `extract`.
   - `_handle_action` then drops `screenshot.after` from the capture list above.
-  - For that reason, a bare `screenshot` from any source becomes that token first, and the shot is
+  - For that reason, a bare `screenshot` from any source becomes that token first. The shot is thus
     never taken twice.
-- One tree still predates the shot. A non-mutating step (`assert`, `wait`) reuses the tree it
-  already settled on rather than re-reading it (BE-0259). On those two kinds, `elements.json`
-  comes from just before `after.png` instead of just after.
-- The sink's `capture()` takes the instant kinds (screenshot/elements). Interval kinds
-  (video/deviceLog) are collected by stopping the ones that `start_intervals()` started earlier.
+- One tree still predates the shot. A non-mutating step (`assert`, `wait`) reuses its
+  settled tree rather than re-reading it (BE-0259). On those two kinds, `elements.json` records the
+  screen from before `after.png`, not from after.
+- The sink's `capture()` takes the instant kinds (screenshot/elements). The interval kinds are video
+  and deviceLog. For those, the runner stops what `start_intervals()` began and collects it.
 
-`primary_id` is "the id of the step's primary target selector" (tap → the tap target, type → `into`,
-swipe → `on`). An `idMatches` trigger `fnmatch`es against this `id`.
+`primary_id` is "the id of the step's primary target selector". That selector is the tap target for
+tap, `into` for type, and `on` for swipe. An `idMatches` trigger `fnmatch`es against this `id`.
 
 ## Run results (data structures)
 
@@ -219,15 +225,19 @@ class RunResult:
     run_coordinates: dict[str, dict[str, str]]  # the same coordinates per target and condition field
 ```
 
-`RunResult`'s singular `backend` / `device` / `device_name` / `device_runtime` each describe one
-target alone. A multi-target run leaves all four empty and fills `target_devices` instead.
-`target_devices` holds one row per declared target, and each row carries that target's backend,
-udid, model, and OS version. A single-target run fills the singular fields and leaves
-`target_devices` empty. An existing reader of either sees what it always did.
+Each of `RunResult`'s singular fields describes one target alone. Those fields are `backend`,
+`device`, `device_name`, and `device_runtime`.
 
-`expect` is evaluated only after all steps pass. If `alert_guard` is present, `expect` is also
-re-evaluated once. These results become `report/`'s `manifest.json`, JUnit, and HTML directly
-([reporting](reporting.md)).
+- A multi-target run leaves all four empty and fills `target_devices` instead. `target_devices`
+  holds one row per declared target. Each row carries that target's backend, udid, model, and OS
+  version.
+- A single-target run fills the singular fields and leaves `target_devices` empty.
+
+An existing reader of either sees what it always did.
+
+The runner evaluates `expect` after all steps pass, and not earlier. If `alert_guard` is present,
+`expect` is also re-evaluated once. These results go directly into `report/`'s outputs
+([reporting](reporting.md)). The outputs are `manifest.json`, JUnit, and the HTML report.
 
 ## runner (the run pipeline)
 
@@ -288,16 +298,20 @@ The command-line layer fills the map. The pipeline needs neither the config file
 device registry to bring a second target up.
 
 The pipeline builds one pool per distinct **actuator**, not per target. A pool resolves one
-environment's device catalog and pre-starts that backend's collectors. An iOS target and a web
-target need two differently-built pools, and two targets sharing an actuator share a pool. The
-config each target hands `lease()` tells the targets apart and decides the app that lease launches.
+environment's device catalog and pre-starts that backend's collectors.
+
+- An iOS target and a web target need two differently-built pools.
+- Two targets sharing an actuator share a pool.
+
+The config each target hands `lease()` tells the targets apart. That config also decides the app
+the lease launches.
 
 The pipeline leases every declared target before the scenario's first step. Every worker takes the
 pools in one fixed order: the pool's actuator, then the target name. That ordering rules out the
 circular wait a deadlock needs. All workers approach all pools the same way round, so no two can
 hold each other's next pool.
 
-A launch that fails partway through releases everything already up before propagating the failure.
+A launch that fails partway through releases everything already up before propagating the error.
 The scenario's own end releases the whole set.
 
 ### `device_pool` / `run_all` / `run_and_report`
@@ -305,23 +319,24 @@ The scenario's own end releases the whole set.
 - `device_pool(udids, backends, ...)`: selects the actuator and returns a `(lease, shutdown)` pair.
   `lease(eff, scenario)` leases a free device and `launch_driver`s it per scenario.
 - `run_all(eff, scenarios, lease, ...)`: runs each scenario **with a freshly leased, freshly built
-  driver** (clean isolation).
-- `run_and_report(...)`: writes the `run_all` results via `write_report(runs_dir/run_id, ...)` and
+  driver**. The result is clean isolation.
+- `run_and_report(...)`: writes the `run_all` results via `write_report(runs_dir/run_id, ...)`. It
   returns `(results, manifest_path)`.
 
-The CLI's `run` calls `run_and_report` ([cli](cli.md#run)).
+The Command Line Interface (CLI) command `run` calls `run_and_report` ([cli](cli.md#run)).
 
-**Runs formed by device conditions (BE-0452).** The `runsOn` of a target a scenario runs against
-may declare a condition. `bajutsu/run/device_matrix.py` then plans the invocation before any
-scenario runs:
+**Runs formed by device conditions (BE-0452)**
+
+Each target a scenario runs against has a `runsOn`, which may declare a condition.
+`bajutsu/run/device_matrix.py` then plans the invocation before any scenario runs:
 
 1. It reads each pool once, through `common/devices/facts.py`.
 2. It forms each scenario's runs and picks each run's eligible devices, through
    `common/devices/runs.py`.
 3. It groups the runs that take the same devices into a cell.
 
-The cells run one after another. Each cell goes through `run_and_report` on a pool narrowed to its
-eligible devices, so `--workers` spreads a cell's runs over identical devices.
+The cells run one after another. Each cell goes through `run_and_report`, on a pool narrowed to the
+cell's eligible devices. As a result, `--workers` spreads a cell's runs over identical devices.
 
 A run that no device fits fails. Under an open range, the run becomes a not-applicable record
 instead ([configuration](configuration.md#device-conditions-runson)). That record never reaches a
@@ -340,8 +355,8 @@ driver. An invocation whose targets declare no condition keeps the path above un
 >
 > The other backends (adb, Playwright, fake) spawn no such resident and are unchanged.
 >
-> The resident runner crashes after a handful of `app.launch()` cycles (an XCTest-session limit; see
-> `docs/architecture.md`), so warm reuse is **bounded** (BE-0287). After
+> The resident runner crashes after a handful of `app.launch()` cycles because of an XCTest-session limit
+> that `docs/architecture.md` describes. Warm reuse is thus **bounded** (BE-0287). After
 > `BAJUTSU_XCUITEST_MAX_WARM_REUSES` reuses (default 3), the runner is respawned cold *before* the
 > next launch can crash it, rather than letting the crash land mid-scenario and fail it. The `/health`
 > probe above is merely reactive, because it catches an already-crashed runner. This proactive
@@ -356,11 +371,11 @@ driver. An invocation whose targets declare no condition keeps the path above un
 >
 > Two settings bound the retries:
 >
-> - `crash_retries` (default 1, so one retry after the first crash; overridable via
->   `BAJUTSU_CRASH_RETRIES`) caps the number of retries.
-> - `crash_recovery_budget` (unset by default, i.e. unbounded; overridable in seconds via
->   `BAJUTSU_CRASH_RECOVERY_BUDGET`) is an optional wall-clock ceiling on the total time spent
->   respawning.
+> - `crash_retries` caps the number of retries. The default is 1, so one retry follows the first
+>   crash. `BAJUTSU_CRASH_RETRIES` overrides the value.
+> - `crash_recovery_budget` is an optional wall-clock ceiling on the total time spent respawning.
+>   The default is unset, meaning unbounded. `BAJUTSU_CRASH_RECOVERY_BUDGET` overrides the value, in
+>   seconds.
 >
 > The budget exists because the count alone caps retries, not time. A runner that never comes back
 > would otherwise pay a full cold-startup ceiling on every one of its `crash_retries` attempts, and
@@ -468,6 +483,15 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > other route ignores the request and keeps the strongest retry it has. Both signals are advisory to
 > the *rung*, never to the verdict: a scenario that keeps crashing still exhausts its budget and
 > fails loudly.
+>
+> The stall signal also reaches the result
+> ([BE-0520](../roadmaps/BE-0520-stalled-video-note-on-red-result/BE-0520-stalled-video-note-on-red-result.md)).
+> A scenario can end red without a crash: a device that stopped painting shows up as a wait timeout.
+> So a result that did not pass, on a lease whose video never confirmed it started, carries one note
+> in `device_notes`. The report shows the note under the first failed step. For a scenario that used
+> up its respawns, the signal is read from the last lease that stopped answering. The note is
+> evidence, not a cause: the same warning also appears on scenarios that pass. A passing result
+> therefore gets no note. The note never changes `ok` or `failure`, and nothing runs again.
 
 > **Cooperative cancellation (BE-0370).** A cancelled run finishes on its own terms and lands in the
 > run history as a failed run, instead of dying wherever it happens to be. `bajutsu run` answers
@@ -481,7 +505,7 @@ driver. An invocation whose targets declare no condition keeps the path above un
 > A scenario the request reaches becomes `RunResult(ok=False, failure="cancelled")`, the same shape
 > a backend crash or a failed preflight already produces. `run_all` thus still returns exactly one
 > result per scenario in declaration order. `run_and_report` writes `manifest.json`, `report.html`,
-> and the JUnit XML the way it does for any other failing run.
+> and `junit.xml` the way it does for any other failing run.
 >
 > An operator who cancels early in a long suite sees every scenario that never got to run counted
 > as failed too. That is the accepted consequence of treating a cancelled run as failed at all.
@@ -492,8 +516,8 @@ driver. An invocation whose targets declare no condition keeps the path above un
 >
 > The shutdown stays bounded, with or without a canceller watching. A scenario blocked inside a
 > single driver call notices the request only once that call returns. An XCUITest HTTP request, an
-> `adb` subprocess, or a Playwright call can each hold it that long. The graceful path
-> gets a grace window. `BAJUTSU_CANCEL_GRACE` sets that window, 90 seconds by default. The default
+> `adb` subprocess, or a Playwright call can each hold it that long. The graceful path gets a grace
+> window. `BAJUTSU_CANCEL_GRACE` sets that window, 90 seconds by default. The default
 > combines the 60 seconds a read riding the transient retry can hold, plus 30 for the shutdown tail behind it:
 > failing the remaining scenarios, writing the report, and printing the verdict line. A window equal
 > to the call alone would leave that tail nothing.
