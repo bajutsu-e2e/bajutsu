@@ -9,7 +9,7 @@
 | Author | [@0x0c](https://github.com/0x0c) |
 | Status | **Implemented** |
 | Tracking issue | [Search](https://github.com/bajutsu-e2e/bajutsu/issues?q=is%3Aissue+label%3Aroadmap-tracking+in%3Atitle+"BE-0520") |
-| Implementing PR | [#2610](https://github.com/bajutsu-e2e/bajutsu/pull/2610) |
+| Implementing PR | [#2616](https://github.com/bajutsu-e2e/bajutsu/pull/2616) |
 | Topic | Platform support |
 | Related | [BE-0376](../BE-0376-degraded-device-quarantine-on-ordinary-failure/BE-0376-degraded-device-quarantine-on-ordinary-failure.md), [BE-0354](../BE-0354-xcuitest-wedge-fastfail-device-replacement/BE-0354-xcuitest-wedge-fastfail-device-replacement.md), [BE-0353](../BE-0353-xcuitest-adb-crash-retry-device-recovery/BE-0353-xcuitest-adb-crash-retry-device-recovery.md), [BE-0344](../BE-0344-xcuitest-device-recovery/BE-0344-xcuitest-device-recovery.md) |
 <!-- /BE-METADATA -->
@@ -171,7 +171,7 @@ The units of work below are Mutually Exclusive and Collectively Exhaustive (MECE
 
 Log:
 
-- 2026-11-28 ([#2610](https://github.com/bajutsu-e2e/bajutsu/pull/2610)) — Shipped all three units. The function `run_one` reads the stall signal on
+- 2026-11-28 ([#2616](https://github.com/bajutsu-e2e/bajutsu/pull/2616)) — Shipped all three units. The function `run_one` reads the stall signal on
   both red exits. The note lands in a new `device_suspect` field. We chose a new field because
   `channel_notes` describes the read channel. The manifest's schema version is now 20. The Common Test Report Format (CTRF)
   export and the HTML Environment panel show the note. The note does not point at BE-0361's
