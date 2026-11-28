@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from _report import _passing, _scenarios
+from _report import _failing, _passing, _scenarios
 
 from bajutsu.common.drivers.actuation import Actuation
 from bajutsu.common.orchestrator import (
@@ -349,6 +349,27 @@ def test_html_shows_device_notes_beside_the_red_step() -> None:
 def test_html_shows_device_notes_when_no_step_row_failed() -> None:
     # An `expect` failure, or a result that gave up before any step ran, has no row to hang it on.
     r = RunResult(scenario="a", ok=False, steps=[], device_notes=["the video never started"])
+    out = html_report("run1", [r])
+    assert 'class="alertnote devicenote"' in out
+    assert out.count("the video never started") == 1
+
+
+def test_html_prefers_the_first_red_row_across_phases() -> None:
+    r = RunResult(
+        scenario="a",
+        ok=False,
+        before_outcomes=[StepOutcome(index=0, action="tap", ok=False, reason="setup broke")],
+        steps=[StepOutcome(index=0, action="tap", ok=False, reason="step broke")],
+        device_notes=["the video never started"],
+    )
+    out = html_report("run1", [r])
+    assert out.count("the video never started") == 1
+    assert out.index("setup broke") < out.index("the video never started") < out.index("step broke")
+
+
+def test_html_shows_device_notes_above_passing_rows_when_only_expect_failed() -> None:
+    r = _failing()
+    r.device_notes = ["the video never started"]
     out = html_report("run1", [r])
     assert 'class="alertnote devicenote"' in out
     assert out.count("the video never started") == 1
